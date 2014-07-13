@@ -4,30 +4,8 @@
 
 #include "binfmt/elf.h"
 #include "syscall/mm.h"
+#include "syscall/syscall.h"
 #include "log.h"
-
-LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
-{
-	if (ep->ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION)
-	{
-		uint8_t* code = (uint8_t *) ep->ContextRecord->Eip;
-		if (code >= 0 && code < 0x80000000U)
-		{
-			if (code[0] == 0xCD && code[1] == 0x80) /* INT 80h */
-			{
-				printf("%d\n", ep->ContextRecord->Eax);
-				ep->ContextRecord->Eip += 2;
-				return EXCEPTION_CONTINUE_EXECUTION;
-			}
-		}
-	}
-	return EXCEPTION_CONTINUE_SEARCH;
-}
-
-void install_syscall_handler()
-{
-	AddVectoredExceptionHandler(TRUE, exception_handler);
-}
 
 void run_elf(const char *filename)
 {

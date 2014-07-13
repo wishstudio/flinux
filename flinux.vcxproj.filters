@@ -28,6 +28,15 @@
       <Filter>syscall</Filter>
     </ClInclude>
     <ClInclude Include="src\log.h" />
+    <ClInclude Include="src\syscall\syscall.h">
+      <Filter>syscall</Filter>
+    </ClInclude>
+    <ClInclude Include="src\syscall\err.h">
+      <Filter>syscall</Filter>
+    </ClInclude>
+    <ClInclude Include="src\syscall\syscall_table.h">
+      <Filter>syscall</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
@@ -35,5 +44,11 @@
       <Filter>syscall</Filter>
     </ClCompile>
     <ClCompile Include="src\log.c" />
+    <ClCompile Include="src\syscall\syscall.c">
+      <Filter>syscall</Filter>
+    </ClCompile>
+    <ClCompile Include="src\syscall\err.c">
+      <Filter>syscall</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

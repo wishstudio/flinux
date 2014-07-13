@@ -14,15 +14,20 @@
     <ClInclude Include="src\binfmt\elf-em.h" />
     <ClInclude Include="src\binfmt\elf.h" />
     <ClInclude Include="src\log.h" />
+    <ClInclude Include="src\syscall\err.h" />
     <ClInclude Include="src\syscall\errno-base.h" />
     <ClInclude Include="src\syscall\errno.h" />
     <ClInclude Include="src\syscall\mm.h" />
+    <ClInclude Include="src\syscall\syscall.h" />
+    <ClInclude Include="src\syscall\syscall_table.h" />
     <ClInclude Include="src\syscall\types.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\log.c" />
     <ClCompile Include="src\main.c" />
+    <ClCompile Include="src\syscall\err.c" />
     <ClCompile Include="src\syscall\mm.c" />
+    <ClCompile Include="src\syscall\syscall.c" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{A2C5DF3A-D377-47F0-AC4C-0B1011585778}</ProjectGuid>
