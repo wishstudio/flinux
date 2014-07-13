@@ -2,27 +2,29 @@
 
 #include <Windows.h>
 #include <stdarg.h>
-#include <stdio.h>
 
 #ifdef _DEBUG
 
-static FILE *debug_file;
+#define BUFFER_SIZE 1024
+static HANDLE hFile;
+static char buffer[BUFFER_SIZE];
 
 void log_init()
 {
-	fopen_s(&debug_file, "flinux.log", "w");
+	hFile = CreateFile("flinux.log", GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 }
 
 void log_shutdown()
 {
-	fclose(debug_file);
+	CloseHandle(hFile);
 }
 
 void log_debug(const char *format, ...)
 {
 	va_list ap;
 	va_start(ap, format);
-	vfprintf(debug_file, format, ap);
-	fflush(debug_file);
+	int size = vsprintf_s(buffer, BUFFER_SIZE, format, ap);
+	WriteFile(hFile, buffer, size, NULL, NULL);
+	FlushFileBuffers(hFile);
 }
 #endif
