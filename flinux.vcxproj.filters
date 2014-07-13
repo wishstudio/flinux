@@ -1,0 +1,37 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="binfmt">
+      <UniqueIdentifier>{b9dc5c1c-c76a-40fd-abbf-6e6afc3b960f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="syscall">
+      <UniqueIdentifier>{98a5eaca-cdd6-4edf-ba43-e9a789818762}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\binfmt\elf.h">
+      <Filter>binfmt</Filter>
+    </ClInclude>
+    <ClInclude Include="src\binfmt\elf-em.h">
+      <Filter>binfmt</Filter>
+    </ClInclude>
+    <ClInclude Include="src\syscall\mm.h">
+      <Filter>syscall</Filter>
+    </ClInclude>
+    <ClInclude Include="src\syscall\types.h">
+      <Filter>syscall</Filter>
+    </ClInclude>
+    <ClInclude Include="src\syscall\errno.h">
+      <Filter>syscall</Filter>
+    </ClInclude>
+    <ClInclude Include="src\syscall\errno-base.h">
+      <Filter>syscall</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\main.c" />
+    <ClCompile Include="src\syscall\mm.c">
+      <Filter>syscall</Filter>
+    </ClCompile>
+  </ItemGroup>
+</Project>
