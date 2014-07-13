@@ -23,7 +23,7 @@
 #define MS_SYNC			2
 #define MS_INVALIDATE	4
 
-void initialize_mm();
+void mm_init();
 
 void* mmap(void *addr, size_t len, int prot, int flags, int fd, off_t off);
 int munmap(void *addr, size_t len);

@@ -13,12 +13,14 @@
   <ItemGroup>
     <ClInclude Include="src\binfmt\elf-em.h" />
     <ClInclude Include="src\binfmt\elf.h" />
+    <ClInclude Include="src\log.h" />
     <ClInclude Include="src\syscall\errno-base.h" />
     <ClInclude Include="src\syscall\errno.h" />
     <ClInclude Include="src\syscall\mm.h" />
     <ClInclude Include="src\syscall\types.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\log.c" />
     <ClCompile Include="src\main.c" />
     <ClCompile Include="src\syscall\mm.c" />
   </ItemGroup>

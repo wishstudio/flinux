@@ -74,7 +74,7 @@ uint8_t block_alloc_pages[BLOCK_COUNT];
 /* Mapping info entry for a given page */
 uint16_t page_map_entry[PAGE_COUNT];
 
-void initialize_mm()
+void mm_init()
 {
 	/* Initialize mapping info freelist */
 	for (uint16_t i = 1; i + 1 < MAX_MMAP_COUNT; i++)
@@ -165,7 +165,6 @@ void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
 					MEM_COMMIT | MEM_RESERVE,
 					prot_linux2win(prot)))
 					return NULL;
-				printf("VirtualAlloc: %x %x\n", GET_BLOCK_ADDRESS(start_alloc_block), (end_alloc_block - start_alloc_block + 1) * BLOCK_SIZE);
 				block_alloc_start[start_alloc_block] = start_alloc_block;
 				block_alloc_start[end_alloc_block] = start_alloc_block;
 			}

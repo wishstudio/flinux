@@ -4,6 +4,7 @@
 
 #include "binfmt/elf.h"
 #include "syscall/mm.h"
+#include "log.h"
 
 LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
 {
@@ -53,7 +54,7 @@ void run_elf(const char *filename)
 	SetFilePointer(hFile, eh.e_phoff, NULL, FILE_BEGIN);
 	ReadFile(hFile, pht, phsize, NULL, NULL);
 
-	initialize_mm();
+	mm_init();
 	for (int i = 0; i < eh.e_phnum; i++)
 	{
 		Elf32_Phdr *ph = (Elf32_Phdr *) ((uint8_t *) pht + (eh.e_phentsize * i));
@@ -71,7 +72,6 @@ void run_elf(const char *filename)
 			if (ph->p_flags & PF_X)
 				prot |= PROT_EXEC;
 			void *mem = mmap((void *) addr, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_FIXED | MAP_ANONYMOUS, -1, 0);
-			printf("START: %x, END: %x, OFFSET: %x, SIZE: %x\n", ph->p_vaddr, ph->p_vaddr + ph->p_filesz, ph->p_offset, ph->p_memsz);
 			SetFilePointer(hFile, ph->p_offset, NULL, FILE_BEGIN);
 			ReadFile(hFile, (void *) ph->p_vaddr, ph->p_filesz, NULL, NULL);
 		}
@@ -83,7 +83,7 @@ void run_elf(const char *filename)
 
 	/* Call executable entrypoint */
 	uint32_t entrypoint = eh.e_entry;
-	printf("Entrypoint: %x\n", entrypoint);
+	log_debug("Entrypoint: %x\n", entrypoint);
 	__asm
 	{
 		push 0 // env
@@ -115,6 +115,7 @@ int main(int argc, const char **argv[])
 		else if (!filename)
 			filename = argv[i];
 	}
+	log_init();
 	run_elf(filename);
 	return 0;
 }

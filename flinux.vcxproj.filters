@@ -27,11 +27,13 @@
     <ClInclude Include="src\syscall\errno-base.h">
       <Filter>syscall</Filter>
     </ClInclude>
+    <ClInclude Include="src\log.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
     <ClCompile Include="src\syscall\mm.c">
       <Filter>syscall</Filter>
     </ClCompile>
+    <ClCompile Include="src\log.c" />
   </ItemGroup>
 </Project>
