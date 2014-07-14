@@ -1,7 +1,7 @@
 #ifndef _SYSCALL_PROCESS_H
 #define _SYSCALL_PROCESS_H
 
-#include "types.h"
+#include <common/types.h>
 
 pid_t sys_getpid();
 

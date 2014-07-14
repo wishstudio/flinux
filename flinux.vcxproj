@@ -13,16 +13,17 @@
   <ItemGroup>
     <ClInclude Include="src\binfmt\elf-em.h" />
     <ClInclude Include="src\binfmt\elf.h" />
+    <ClInclude Include="src\common\stat.h" />
+    <ClInclude Include="src\common\types.h" />
+    <ClInclude Include="src\common\errno.h" />
+    <ClInclude Include="src\common\mman.h" />
     <ClInclude Include="src\log.h" />
     <ClInclude Include="src\syscall\err.h" />
-    <ClInclude Include="src\syscall\errno-base.h" />
-    <ClInclude Include="src\syscall\errno.h" />
     <ClInclude Include="src\syscall\mm.h" />
     <ClInclude Include="src\syscall\process.h" />
     <ClInclude Include="src\syscall\signal.h" />
     <ClInclude Include="src\syscall\syscall.h" />
     <ClInclude Include="src\syscall\syscall_table.h" />
-    <ClInclude Include="src\syscall\types.h" />
     <ClInclude Include="src\syscall\vfs.h" />
   </ItemGroup>
   <ItemGroup>
@@ -63,7 +64,12 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
-  <PropertyGroup />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <IncludePath>$(ProjectDir)\src;$(IncludePath)</IncludePath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <IncludePath>$(ProjectDir)\src;$(IncludePath)</IncludePath>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>

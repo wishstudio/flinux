@@ -4,6 +4,9 @@
     <Filter Include="binfmt">
       <UniqueIdentifier>{b9dc5c1c-c76a-40fd-abbf-6e6afc3b960f}</UniqueIdentifier>
     </Filter>
+    <Filter Include="common">
+      <UniqueIdentifier>{47fb1fb1-d692-4fb7-a45e-e0a7a6fa8caf}</UniqueIdentifier>
+    </Filter>
     <Filter Include="syscall">
       <UniqueIdentifier>{98a5eaca-cdd6-4edf-ba43-e9a789818762}</UniqueIdentifier>
     </Filter>
@@ -16,15 +19,6 @@
       <Filter>binfmt</Filter>
     </ClInclude>
     <ClInclude Include="src\syscall\mm.h">
-      <Filter>syscall</Filter>
-    </ClInclude>
-    <ClInclude Include="src\syscall\types.h">
-      <Filter>syscall</Filter>
-    </ClInclude>
-    <ClInclude Include="src\syscall\errno.h">
-      <Filter>syscall</Filter>
-    </ClInclude>
-    <ClInclude Include="src\syscall\errno-base.h">
       <Filter>syscall</Filter>
     </ClInclude>
     <ClInclude Include="src\log.h" />
@@ -45,6 +39,18 @@
     </ClInclude>
     <ClInclude Include="src\syscall\vfs.h">
       <Filter>syscall</Filter>
+    </ClInclude>
+    <ClInclude Include="src\common\errno.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="src\common\mman.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="src\common\types.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="src\common\stat.h">
+      <Filter>common</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

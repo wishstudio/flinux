@@ -1,5 +1,5 @@
 #include "syscall.h"
-#include "../log.h"
+#include <log.h>
 
 #include <stdint.h>
 #include <Windows.h>

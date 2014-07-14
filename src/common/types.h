@@ -1,5 +1,5 @@
-#ifndef _SYSCALL_TYPES_H
-#define _SYSCALL_TYPES_H
+#ifndef _COMMON_TYPES_H
+#define _COMMON_TYPES_H
 
 #include <stdint.h>
 
