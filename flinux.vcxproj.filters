@@ -37,6 +37,15 @@
     <ClInclude Include="src\syscall\syscall_table.h">
       <Filter>syscall</Filter>
     </ClInclude>
+    <ClInclude Include="src\syscall\signal.h">
+      <Filter>syscall</Filter>
+    </ClInclude>
+    <ClInclude Include="src\syscall\process.h">
+      <Filter>syscall</Filter>
+    </ClInclude>
+    <ClInclude Include="src\syscall\vfs.h">
+      <Filter>syscall</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
@@ -48,6 +57,15 @@
       <Filter>syscall</Filter>
     </ClCompile>
     <ClCompile Include="src\syscall\err.c">
+      <Filter>syscall</Filter>
+    </ClCompile>
+    <ClCompile Include="src\syscall\signal.c">
+      <Filter>syscall</Filter>
+    </ClCompile>
+    <ClCompile Include="src\syscall\process.c">
+      <Filter>syscall</Filter>
+    </ClCompile>
+    <ClCompile Include="src\syscall\vfs.c">
       <Filter>syscall</Filter>
     </ClCompile>
   </ItemGroup>

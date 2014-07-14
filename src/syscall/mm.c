@@ -1,5 +1,6 @@
 #include "mm.h"
 #include "errno.h"
+#include "../log.h"
 
 #include <stdint.h>
 #include <Windows.h>
@@ -118,6 +119,7 @@ static DWORD prot_linux2win(int prot)
 
 void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
 {
+	log_debug("mmap(%x, %x, %x, %x, %u, %x)\n", addr, length, prot, flags, fd, offset);
 	/* TODO: errno */
 	if (!IS_ALIGNED(offset, PAGE_SIZE))
 		return NULL;
@@ -182,6 +184,22 @@ void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
 		}
 	}
 	return NULL;
+}
+
+void *sys_oldmmap(void *_args)
+{
+	log_debug("oldmmap(%x)\n", _args);
+	struct oldmmap_args_t
+	{
+		unsigned long addr;
+		unsigned long len;
+		unsigned long prot;
+		unsigned long flags;
+		unsigned long fd;
+		unsigned long offset;
+	};
+	struct oldmmap_args_t *args = _args;
+	return mmap(args->addr, args->len, args->prot, args->flags, args->fd, args->offset);
 }
 
 int munmap(void *addr, size_t length)

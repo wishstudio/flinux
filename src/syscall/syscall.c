@@ -25,6 +25,7 @@ static void dispatch_syscall(PCONTEXT context)
 	if (syscall_table[context->Eax] == sys_unimplemented)
 		log_debug("FATAL: Unimplemented syscall: %d\n", context->Eax);
 #endif
+	log_debug("%x\n", context->Eip);
 	context->Eax = (*syscall_table[context->Eax])(context->Ebx, context->Ecx, context->Edx, context->Esi, context->Edi);
 }
 
