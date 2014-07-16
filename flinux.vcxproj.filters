@@ -10,6 +10,9 @@
     <Filter Include="syscall">
       <UniqueIdentifier>{98a5eaca-cdd6-4edf-ba43-e9a789818762}</UniqueIdentifier>
     </Filter>
+    <Filter Include="fs">
+      <UniqueIdentifier>{b5499d5e-1549-4423-8644-e1c3d92fee62}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\binfmt\elf.h">
@@ -52,6 +55,12 @@
     <ClInclude Include="src\common\stat.h">
       <Filter>common</Filter>
     </ClInclude>
+    <ClInclude Include="src\fs\fp.h">
+      <Filter>fs</Filter>
+    </ClInclude>
+    <ClInclude Include="src\fs\tty.h">
+      <Filter>fs</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
@@ -73,6 +82,9 @@
     </ClCompile>
     <ClCompile Include="src\syscall\vfs.c">
       <Filter>syscall</Filter>
+    </ClCompile>
+    <ClCompile Include="src\fs\tty.c">
+      <Filter>fs</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

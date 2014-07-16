@@ -17,6 +17,8 @@
     <ClInclude Include="src\common\types.h" />
     <ClInclude Include="src\common\errno.h" />
     <ClInclude Include="src\common\mman.h" />
+    <ClInclude Include="src\fs\fp.h" />
+    <ClInclude Include="src\fs\tty.h" />
     <ClInclude Include="src\log.h" />
     <ClInclude Include="src\syscall\err.h" />
     <ClInclude Include="src\syscall\mm.h" />
@@ -27,6 +29,7 @@
     <ClInclude Include="src\syscall\vfs.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\fs\tty.c" />
     <ClCompile Include="src\log.c" />
     <ClCompile Include="src\main.c" />
     <ClCompile Include="src\syscall\err.c" />

@@ -1,10 +1,23 @@
 #ifndef _SYSCALL_VFS_H
 #define _SYSCALL_VFS_H
 
+#include <stdint.h>
 #include <common/stat.h>
+
+void vfs_init();
+void vfs_shutdown();
+
+size_t sys_read(int fd, char *buf, size_t count);
+size_t sys_write(int fd, const char *buf, size_t count);
 
 int sys_stat(const char *pathname, struct stat *buf);
 int sys_lstat(const char *pathname, struct stat *buf);
 int sys_fstat(int fd, struct stat *buf);
+
+int sys_stat64(const char *pathname, struct stat64 *buf);
+int sys_lstat64(const char *pathname, struct stat64 *buf);
+int sys_fstat64(int fd, struct stat64 *buf);
+
+int sys_ioctl(int fd, unsigned int cmd, unsigned long arg);
 
 #endif

@@ -33,3 +33,10 @@ gid_t sys_getegid()
 	log_debug("getegid(): %d\n", 0);
 	return 0;
 }
+
+void sys_exit(int status)
+{
+	log_debug("exit(%d)\n", status);
+	/* TODO: Gracefully shutdown mm, vfs, etc. */
+	exit(status);
+}

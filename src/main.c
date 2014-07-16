@@ -5,6 +5,7 @@
 #include "binfmt/elf.h"
 #include "syscall/mm.h"
 #include "syscall/syscall.h"
+#include "syscall/vfs.h"
 #include "log.h"
 
 void run_elf(const char *filename)
@@ -32,7 +33,6 @@ void run_elf(const char *filename)
 	SetFilePointer(hFile, eh.e_phoff, NULL, FILE_BEGIN);
 	ReadFile(hFile, pht, phsize, NULL, NULL);
 
-	mm_init();
 	for (int i = 0; i < eh.e_phnum; i++)
 	{
 		Elf32_Phdr *ph = (Elf32_Phdr *) ((uint8_t *) pht + (eh.e_phentsize * i));
@@ -49,7 +49,7 @@ void run_elf(const char *filename)
 				prot |= PROT_WRITE;
 			if (ph->p_flags & PF_X)
 				prot |= PROT_EXEC;
-			void *mem = mmap((void *) addr, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_FIXED | MAP_ANONYMOUS, -1, 0);
+			void *mem = sys_mmap((void *) addr, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_FIXED | MAP_ANONYMOUS, -1, 0);
 			SetFilePointer(hFile, ph->p_offset, NULL, FILE_BEGIN);
 			ReadFile(hFile, (void *) ph->p_vaddr, ph->p_filesz, NULL, NULL);
 		}
@@ -94,6 +94,8 @@ int main(int argc, const char **argv[])
 			filename = argv[i];
 	}
 	log_init();
+	mm_init();
+	vfs_init();
 	run_elf(filename);
 	return 0;
 }

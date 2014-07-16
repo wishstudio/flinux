@@ -6,11 +6,11 @@
 
 void mm_init();
 
-void* mmap(void *addr, size_t len, int prot, int flags, int fd, off_t off);
-int munmap(void *addr, size_t len);
-int mprotect(void *addr, size_t len, int prot);
-int msync(void *addr, size_t len, int flags);
-int mlock(const void *addr, size_t len);
-int munlock(const void *addr, size_t len);
+void* sys_mmap(void *addr, size_t len, int prot, int flags, int fd, off_t off);
+int sys_munmap(void *addr, size_t len);
+int sys_mprotect(void *addr, size_t len, int prot);
+int sys_msync(void *addr, size_t len, int flags);
+int sys_mlock(const void *addr, size_t len);
+int sys_munlock(const void *addr, size_t len);
 
 #endif

@@ -10,4 +10,6 @@ gid_t sys_getgid();
 uid_t sys_geteuid();
 gid_t sys_getegid();
 
+void sys_exit(int status);
+
 #endif

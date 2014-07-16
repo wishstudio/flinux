@@ -25,7 +25,7 @@ static void dispatch_syscall(PCONTEXT context)
 	if (syscall_table[context->Eax] == sys_unimplemented)
 		log_debug("FATAL: Unimplemented syscall: %d\n", context->Eax);
 #endif
-	log_debug("%x\n", context->Eip);
+	log_debug("EIP: %x\n", context->Eip);
 	context->Eax = (*syscall_table[context->Eax])(context->Ebx, context->Ecx, context->Edx, context->Esi, context->Edi);
 }
 
@@ -43,6 +43,12 @@ static LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
 				return EXCEPTION_CONTINUE_EXECUTION;
 			}
 		}
+		if (ep->ExceptionRecord->ExceptionInformation[0] == 0)
+			log_debug("Page fault(read): %x\n", ep->ExceptionRecord->ExceptionInformation[1]);
+		else if (ep->ExceptionRecord->ExceptionInformation[0] == 1)
+			log_debug("Page fault(write): %x\n", ep->ExceptionRecord->ExceptionInformation[1]);
+		else if (ep->ExceptionRecord->ExceptionInformation[0] == 2)
+			log_debug("Page fault(DEP): %x\n", ep->ExceptionRecord->ExceptionInformation[1]);
 	}
 	return EXCEPTION_CONTINUE_SEARCH;
 }

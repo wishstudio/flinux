@@ -65,12 +65,10 @@ struct map_info
 } map_entries[MAX_MMAP_COUNT];
 uint16_t map_free_head;
 
-/* Start block of an VirtualAlloc() allocation region,
- * Note only the first and the last block need this information.
- */
+/* Start block of an VirtualAlloc() allocation region */
 uint16_t block_alloc_start[BLOCK_COUNT];
-/* Number of allocated pages inside a block */
-uint8_t block_alloc_pages[BLOCK_COUNT];
+/* Number of allocated pages inside a allocation region */
+uint32_t block_alloc_pages[BLOCK_COUNT];
 
 /* Mapping info entry for a given page */
 uint16_t page_map_entry[PAGE_COUNT];
@@ -117,8 +115,9 @@ static DWORD prot_linux2win(int prot)
 		return PAGE_NOACCESS;
 }
 
-void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
+void *sys_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
 {
+	/* TODO: We should mark NOACCESS for VirtualAlloc()-ed but currently unused pages */
 	log_debug("mmap(%x, %x, %x, %x, %u, %x)\n", addr, length, prot, flags, fd, offset);
 	/* TODO: errno */
 	if (!IS_ALIGNED(offset, PAGE_SIZE))
@@ -134,7 +133,7 @@ void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
 	{
 		if (!IS_ALIGNED(addr, PAGE_SIZE))
 			return NULL;
-		if ((flags & MAP_SHARED) || (flags & MAP_PRIVATE))
+		if (flags & MAP_SHARED)
 			return NULL;
 		if (flags & MAP_ANONYMOUS)
 		{
@@ -167,8 +166,8 @@ void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
 					MEM_COMMIT | MEM_RESERVE,
 					prot_linux2win(prot)))
 					return NULL;
-				block_alloc_start[start_alloc_block] = start_alloc_block;
-				block_alloc_start[end_alloc_block] = start_alloc_block;
+				for (uint16_t i = start_alloc_block; i <= end_alloc_block; i++)
+					block_alloc_start[i] = start_alloc_block;
 			}
 
 			/* Set up all kinds of flags */
@@ -178,7 +177,37 @@ void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
 			for (uint32_t i = start_page; i <= end_page; i++)
 			{
 				page_map_entry[i] = entry;
-				block_alloc_pages[GET_BLOCK_OF_PAGE(i)]++; /* TODO: Optimization */
+				block_alloc_pages[block_alloc_start[GET_BLOCK_OF_PAGE(i)]]++; /* TODO: Optimization */
+			}
+			return addr;
+		}
+	}
+	else /* not MAP_FIXED */
+	{
+		if (flags & MAP_SHARED)
+			return NULL;
+		if (flags & MAP_ANONYMOUS)
+		{
+			size_t alloc_len = ALIGN_TO_BLOCK(length);
+			if (!(addr = VirtualAlloc(NULL, alloc_len, MEM_COMMIT | MEM_RESERVE, prot_linux2win(prot))))
+			{
+				return NULL;
+			}
+			uint32_t start_block = GET_BLOCK(addr);
+			uint32_t end_block = GET_BLOCK((size_t)addr + length - 1);
+			uint32_t start_page = GET_PAGE(addr);
+			uint32_t end_page = GET_PAGE((size_t)addr + length - 1);
+			for (uint16_t i = start_block; i <= end_block; i++)
+				block_alloc_start[i] = start_block;
+
+			/* Add map entry */
+			uint16_t entry = new_map_entry();
+			map_entries[entry].start_page = start_page;
+			map_entries[entry].end_page = end_page;
+			for (uint32_t i = start_page; i <= end_page; i++)
+			{
+				page_map_entry[i] = entry;
+				block_alloc_pages[block_alloc_start[GET_BLOCK_OF_PAGE(i)]]++; /* TODO: Optimization */
 			}
 			return addr;
 		}
@@ -191,7 +220,7 @@ void *sys_oldmmap(void *_args)
 	log_debug("oldmmap(%x)\n", _args);
 	struct oldmmap_args_t
 	{
-		unsigned long addr;
+		void *addr;
 		unsigned long len;
 		unsigned long prot;
 		unsigned long flags;
@@ -199,30 +228,76 @@ void *sys_oldmmap(void *_args)
 		unsigned long offset;
 	};
 	struct oldmmap_args_t *args = _args;
-	return mmap(args->addr, args->len, args->prot, args->flags, args->fd, args->offset);
+	return sys_mmap(args->addr, args->len, args->prot, args->flags, args->fd, args->offset);
 }
 
-int munmap(void *addr, size_t length)
+int sys_munmap(void *addr, size_t length)
+{
+	/* TODO: We should mark NOACCESS for munmap()-ed but not VirtualFree()-ed pages */
+	/* TODO: We currently only support unmap full pages */
+	/* TODO: errno */
+	if (!IS_ALIGNED(addr, PAGE_SIZE))
+		return -1;
+	length = ALIGN_TO_PAGE(length);
+	if ((size_t)addr < ADDRESS_SPACE_LOW || (size_t)addr >= ADDRESS_SPACE_HIGH
+		|| (size_t)addr + length < ADDRESS_SPACE_LOW || (size_t)addr + length >= ADDRESS_SPACE_HIGH
+		|| (size_t)addr + length < (size_t)addr)
+	{
+		return -1;
+	}
+
+	uint16_t entry = page_map_entry[GET_PAGE(addr)];
+	if (entry == 0)
+	{
+		return 0;
+	}
+	uint32_t start_page = map_entries[entry].start_page;
+	uint32_t end_page = map_entries[entry].end_page;
+	/* Don't allow partial free */
+	if (GET_PAGE((size_t)addr + length - 1) != end_page)
+	{
+		return -1;
+	}
+	free_map_entry(entry);
+	for (uint32_t i = start_page; i <= end_page; i++)
+	{
+		page_map_entry[i] = 0;
+		block_alloc_pages[block_alloc_start[GET_BLOCK_OF_PAGE(i)]]--; /* TODO: Optimization */
+	}
+	/* Free unused memory allocations */
+	uint16_t start_block = GET_BLOCK_OF_PAGE(start_page);
+	uint16_t end_block = GET_BLOCK_OF_PAGE(end_page);
+	for (uint16_t i = end_block; i >= start_block;)
+	{
+		uint16_t alloc_block = block_alloc_start[i];
+		if (block_alloc_pages[alloc_block] == 0)
+		{
+			VirtualFree(GET_BLOCK_ADDRESS(alloc_block), 0, MEM_RELEASE);
+			for (; i >= alloc_block; i--)
+				block_alloc_start[i] = 0;
+		}
+		else
+			i = alloc_block - 1;
+	}
+	return 0;
+}
+
+int sys_mprotect(void *addr, size_t len, int prot)
 {
 	/* TODO */
 }
 
-int mprotect(void *addr, size_t len, int prot)
+int sys_msync(void *addr, size_t len, int flags)
 {
 	/* TODO */
 }
 
-int msync(void *addr, size_t len, int flags)
+int sys_mlock(const void *addr, size_t len)
 {
 	/* TODO */
 }
 
-int mlock(const void *addr, size_t len)
-{
-	/* TODO */
-}
-
-int munlock(const void *addr, size_t len)
+int sys_munlock(const void *addr, size_t len)
 {
 	/* TODO */
 }
