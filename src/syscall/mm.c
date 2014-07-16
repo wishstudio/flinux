@@ -73,6 +73,9 @@ uint32_t block_alloc_pages[BLOCK_COUNT];
 /* Mapping info entry for a given page */
 uint16_t page_map_entry[PAGE_COUNT];
 
+/* Program break address, brk() will use this */
+void *mm_brk;
+
 void mm_init()
 {
 	/* Initialize mapping info freelist */
@@ -80,6 +83,10 @@ void mm_init()
 		map_entries[i].next = i + 1;
 	map_free_head = 1; /* Entry 0 is unused */
 	map_entries[MAX_MMAP_COUNT - 1].next = 0;
+}
+
+void mm_shutdown()
+{
 }
 
 static uint16_t new_map_entry()
@@ -301,4 +308,20 @@ int sys_mlock(const void *addr, size_t len)
 int sys_munlock(const void *addr, size_t len)
 {
 	/* TODO */
+}
+
+void *sys_brk(void *addr)
+{
+	log_debug("brk(%x)\n", addr);
+	log_debug("Last brk: %x\n", mm_brk);
+	addr = ALIGN_TO_PAGE(addr);
+	/* TODO: Handle brk shrink */
+	if (addr > mm_brk)
+	{
+		if (!sys_mmap(mm_brk, (uint32_t)addr - (uint32_t)mm_brk, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0))
+			return -1;
+		mm_brk = addr;
+	}
+	log_debug("New brk: %x\n", mm_brk);
+	return mm_brk;
 }
