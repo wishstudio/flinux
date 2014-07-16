@@ -17,6 +17,7 @@
     <ClInclude Include="src\common\types.h" />
     <ClInclude Include="src\common\errno.h" />
     <ClInclude Include="src\common\mman.h" />
+    <ClInclude Include="src\common\utsname.h" />
     <ClInclude Include="src\fs\fp.h" />
     <ClInclude Include="src\fs\tty.h" />
     <ClInclude Include="src\log.h" />
@@ -77,7 +78,6 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <SDLCheck>true</SDLCheck>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
     </ClCompile>
     <Link>
@@ -90,7 +90,6 @@
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <SDLCheck>true</SDLCheck>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
     </ClCompile>
     <Link>

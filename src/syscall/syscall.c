@@ -21,11 +21,11 @@ static syscall_fn* syscall_table[SYSCALL_COUNT] =
 
 static void dispatch_syscall(PCONTEXT context)
 {
+	log_debug("EIP: %x\n", context->Eip);
 #ifdef _DEBUG
 	if (syscall_table[context->Eax] == sys_unimplemented)
 		log_debug("FATAL: Unimplemented syscall: %d\n", context->Eax);
 #endif
-	log_debug("EIP: %x\n", context->Eip);
 	context->Eax = (*syscall_table[context->Eax])(context->Ebx, context->Ecx, context->Edx, context->Esi, context->Edi);
 }
 

@@ -61,6 +61,9 @@
     <ClInclude Include="src\fs\tty.h">
       <Filter>fs</Filter>
     </ClInclude>
+    <ClInclude Include="src\common\utsname.h">
+      <Filter>common</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
