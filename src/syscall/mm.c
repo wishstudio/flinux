@@ -119,6 +119,7 @@ void *sys_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t off
 {
 	/* TODO: We should mark NOACCESS for VirtualAlloc()-ed but currently unused pages */
 	log_debug("mmap(%x, %x, %x, %x, %u, %x)\n", addr, length, prot, flags, fd, offset);
+	/* TODO: Initialize mapped area to zero */
 	/* TODO: errno */
 	if (!IS_ALIGNED(offset, PAGE_SIZE))
 		return NULL;
