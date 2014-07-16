@@ -44,11 +44,11 @@ static LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
 			}
 		}
 		if (ep->ExceptionRecord->ExceptionInformation[0] == 0)
-			log_debug("Page fault(read): %x\n", ep->ExceptionRecord->ExceptionInformation[1]);
+			log_debug("Page fault(read): %x at %x\n", ep->ExceptionRecord->ExceptionInformation[1], ep->ContextRecord->Eip);
 		else if (ep->ExceptionRecord->ExceptionInformation[0] == 1)
-			log_debug("Page fault(write): %x\n", ep->ExceptionRecord->ExceptionInformation[1]);
+			log_debug("Page fault(write): %x at %x\n", ep->ExceptionRecord->ExceptionInformation[1], ep->ContextRecord->Eip);
 		else if (ep->ExceptionRecord->ExceptionInformation[0] == 2)
-			log_debug("Page fault(DEP): %x\n", ep->ExceptionRecord->ExceptionInformation[1]);
+			log_debug("Page fault(DEP): %x at %x\n", ep->ExceptionRecord->ExceptionInformation[1], ep->ContextRecord->Eip);
 	}
 	return EXCEPTION_CONTINUE_SEARCH;
 }
