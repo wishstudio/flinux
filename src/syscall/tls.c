@@ -302,7 +302,7 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 		case INST_TYPE_UNKNOWN: log_debug("Unknown opcode.\n"); return 0;
 		case INST_TYPE_MODRM:
 		{
-			/* Generate equivalent trampoline code */
+			/* Generate equivalent trampoline code by patch ModR/M */
 			int idx = 0;
 			#define GEN_BYTE(x)		trampoline[idx++] = (x)
 			#define GEN_WORD(x)		*(uint16_t *)&trampoline[(idx += 2) - 2] = (x)
