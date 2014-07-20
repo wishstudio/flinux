@@ -318,7 +318,7 @@ void *sys_brk(void *addr)
 	/* TODO: Handle brk shrink */
 	if (addr > mm_brk)
 	{
-		if (!sys_mmap(mm_brk, (uint32_t)addr - (uint32_t)mm_brk, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0))
+		if (!sys_mmap(mm_brk, (uint32_t)addr - (uint32_t)mm_brk, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, -1, 0))
 			return -1;
 		mm_brk = addr;
 	}
