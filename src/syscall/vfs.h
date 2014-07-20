@@ -10,6 +10,8 @@ void vfs_shutdown();
 size_t sys_read(int fd, char *buf, size_t count);
 size_t sys_write(int fd, const char *buf, size_t count);
 
+int sys_open(const char *pathname, int flags, int mode);
+
 int sys_stat(const char *pathname, struct stat *buf);
 int sys_lstat(const char *pathname, struct stat *buf);
 int sys_fstat(int fd, struct stat *buf);

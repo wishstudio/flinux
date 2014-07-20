@@ -38,6 +38,12 @@ size_t sys_write(int fd, const char *buf, size_t count)
 	return f->op_vtable->fn_write(f, buf, count);
 }
 
+int sys_open(const char *pathname, int flags, int mode)
+{
+	log_debug("open(%x: \"%s\", %d, %d)\n", pathname, pathname, flags, mode);
+	return -1;
+}
+
 void stat_from_stat64(struct stat *stat, struct stat64 *stat64)
 {
 	stat->st_dev = stat64->st_dev;
