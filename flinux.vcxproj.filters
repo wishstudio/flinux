@@ -55,9 +55,6 @@
     <ClInclude Include="src\common\stat.h">
       <Filter>common</Filter>
     </ClInclude>
-    <ClInclude Include="src\fs\fp.h">
-      <Filter>fs</Filter>
-    </ClInclude>
     <ClInclude Include="src\fs\tty.h">
       <Filter>fs</Filter>
     </ClInclude>
@@ -72,6 +69,12 @@
     </ClInclude>
     <ClInclude Include="src\syscall\x86_inst.h">
       <Filter>syscall</Filter>
+    </ClInclude>
+    <ClInclude Include="src\common\fcntl.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="src\fs\file.h">
+      <Filter>fs</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

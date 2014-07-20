@@ -1,15 +1,15 @@
 #ifndef _FS_TTY_H
 #define _FS_TTY_H
 
-#include "fp.h"
+#include "file.h"
 #include <Windows.h>
 
-struct tty_fp
+struct tty_file
 {
-	struct fp base_fp;
+	struct file base_file;
 	HANDLE file_handle;
 };
 
-struct fp *tty_alloc(HANDLE file_handle);
+struct file *tty_alloc(HANDLE file_handle);
 
 #endif

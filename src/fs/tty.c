@@ -2,27 +2,27 @@
 
 #include <stdlib.h>
 
-static size_t tty_read(struct fp *f, char *buf, size_t count)
+static size_t tty_read(struct file *f, char *buf, size_t count)
 {
-	struct tty_fp *tty = (struct tty_fp *) f;
+	struct tty_file *tty = (struct tty_file *) f;
 	size_t num_read;
 	if (!ReadFile(tty->file_handle, buf, count, &num_read, NULL))
 		return -1;
 	return num_read;
 }
 
-static size_t tty_write(struct fp *f, const char *buf, size_t count)
+static size_t tty_write(struct file *f, const char *buf, size_t count)
 {
-	struct tty_fp *tty = (struct tty_fp *) f;
+	struct tty_file *tty = (struct tty_file *) f;
 	size_t num_written;
 	if (!WriteFile(tty->file_handle, buf, count, &num_written, NULL))
 		return -1;
 	return num_written;
 }
 
-static int tty_stat(struct fp *f, struct stat64 *buf)
+static int tty_stat(struct file *f, struct stat64 *buf)
 {
-	struct tty_fp *tty = (struct tty_fp *) f;
+	struct tty_file *tty = (struct tty_file *) f;
 	buf->st_dev = mkdev(0, 1);
 	buf->st_ino = 0;
 	buf->st_mode = S_IFCHR + 0644;
@@ -42,7 +42,7 @@ static int tty_stat(struct fp *f, struct stat64 *buf)
 	return 0;
 }
 
-static int tty_ioctl(struct fp *f, unsigned int cmd, unsigned long arg)
+static int tty_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 {
 	return 0;
 }
@@ -54,12 +54,12 @@ static const struct file_ops tty_ops = {
 	.fn_ioctl = tty_ioctl,
 };
 
-struct fp *tty_alloc(HANDLE file_handle)
+struct file *tty_alloc(HANDLE file_handle)
 {
-	struct tty_fp *tty = (struct tty_fp *) malloc(sizeof(struct tty_fp));
-	tty->base_fp.op_vtable = &tty_ops;
-	tty->base_fp.offset = 0;
+	struct tty_file *tty = (struct tty_file *) malloc(sizeof(struct tty_file));
+	tty->base_file.op_vtable = &tty_ops;
+	tty->base_file.offset = 0;
 	tty->file_handle = file_handle;
 
-	return (struct fp *) tty;
+	return (struct file *) tty;
 }

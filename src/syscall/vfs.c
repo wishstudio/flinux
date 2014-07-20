@@ -7,7 +7,7 @@
 
 #define MAX_FD_COUNT	1024
 
-static struct fp *vfs_fds[MAX_FD_COUNT];
+static struct file *vfs_fds[MAX_FD_COUNT];
 
 void vfs_init()
 {
@@ -23,7 +23,7 @@ void vfs_shutdown()
 size_t sys_read(int fd, char *buf, size_t count)
 {
 	log_debug("read(%d, %x, %d)\n", fd, buf, count);
-	struct fp *f = vfs_fds[fd];
+	struct file *f = vfs_fds[fd];
 	if (!f)
 		return EBADF;
 	return f->op_vtable->fn_read(f, buf, count);
@@ -32,7 +32,7 @@ size_t sys_read(int fd, char *buf, size_t count)
 size_t sys_write(int fd, const char *buf, size_t count)
 {
 	log_debug("write(%d, %x, %d)\n", fd, buf, count);
-	struct fp *f = vfs_fds[fd];
+	struct file *f = vfs_fds[fd];
 	if (!f)
 		return EBADF;
 	return f->op_vtable->fn_write(f, buf, count);
@@ -100,7 +100,7 @@ int sys_lstat64(const char *pathname, struct stat64 *buf)
 int sys_fstat64(int fd, struct stat64 *buf)
 {
 	log_debug("fstat64(%d, %x)\n", fd, buf);
-	struct fp *f = vfs_fds[fd];
+	struct file *f = vfs_fds[fd];
 	if (!f)
 		return EBADF;
 	return f->op_vtable->fn_stat(f, buf);
@@ -109,7 +109,7 @@ int sys_fstat64(int fd, struct stat64 *buf)
 int sys_ioctl(int fd, unsigned int cmd, unsigned long arg)
 {
 	log_debug("ioctl(%d, %d, %x)\n", fd, cmd, arg);
-	struct fp *f = vfs_fds[fd];
+	struct file *f = vfs_fds[fd];
 	if (!f)
 		return EBADF;
 	return f->op_vtable->fn_ioctl(f, cmd, arg);
