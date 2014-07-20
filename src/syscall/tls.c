@@ -281,7 +281,7 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 		}
 		if (!found_gs_override)
 		{
-			log_debug("Instruction has no gs override.");
+			log_debug("Instruction has no gs override.\n");
 			return 0;
 		}
 		struct instruction_desc *desc;
