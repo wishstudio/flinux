@@ -64,6 +64,15 @@
     <ClInclude Include="src\common\utsname.h">
       <Filter>common</Filter>
     </ClInclude>
+    <ClInclude Include="src\common\ldt.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="src\syscall\tls.h">
+      <Filter>syscall</Filter>
+    </ClInclude>
+    <ClInclude Include="src\syscall\x86_inst.h">
+      <Filter>syscall</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
@@ -88,6 +97,9 @@
     </ClCompile>
     <ClCompile Include="src\fs\tty.c">
       <Filter>fs</Filter>
+    </ClCompile>
+    <ClCompile Include="src\syscall\tls.c">
+      <Filter>syscall</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

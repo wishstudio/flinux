@@ -13,6 +13,7 @@
   <ItemGroup>
     <ClInclude Include="src\binfmt\elf-em.h" />
     <ClInclude Include="src\binfmt\elf.h" />
+    <ClInclude Include="src\common\ldt.h" />
     <ClInclude Include="src\common\stat.h" />
     <ClInclude Include="src\common\types.h" />
     <ClInclude Include="src\common\errno.h" />
@@ -27,7 +28,9 @@
     <ClInclude Include="src\syscall\signal.h" />
     <ClInclude Include="src\syscall\syscall.h" />
     <ClInclude Include="src\syscall\syscall_table.h" />
+    <ClInclude Include="src\syscall\tls.h" />
     <ClInclude Include="src\syscall\vfs.h" />
+    <ClInclude Include="src\syscall\x86_inst.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\fs\tty.c" />
@@ -38,6 +41,7 @@
     <ClCompile Include="src\syscall\process.c" />
     <ClCompile Include="src\syscall\signal.c" />
     <ClCompile Include="src\syscall\syscall.c" />
+    <ClCompile Include="src\syscall\tls.c" />
     <ClCompile Include="src\syscall\vfs.c" />
   </ItemGroup>
   <PropertyGroup Label="Globals">

@@ -1,4 +1,5 @@
 #include "syscall.h"
+#include "tls.h"
 #include <log.h>
 
 #include <stdint.h>
@@ -42,6 +43,8 @@ static LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
 				dispatch_syscall(ep->ContextRecord);
 				return EXCEPTION_CONTINUE_EXECUTION;
 			}
+			else if (tls_gs_emulation(ep->ContextRecord, code))
+				return EXCEPTION_CONTINUE_EXECUTION;
 		}
 		if (ep->ExceptionRecord->ExceptionInformation[0] == 0)
 			log_debug("Page fault(read): %x at %x\n", ep->ExceptionRecord->ExceptionInformation[1], ep->ContextRecord->Eip);

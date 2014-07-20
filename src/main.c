@@ -97,6 +97,7 @@ int main(int argc, const char **argv[])
 	log_init();
 	mm_init();
 	vfs_init();
+	tls_init();
 	run_elf(filename);
 	return 0;
 }
