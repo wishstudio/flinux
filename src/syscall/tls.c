@@ -162,16 +162,17 @@ static int handle_mov_gs_reg(PCONTEXT context, uint8_t modrm)
 	return 1;
 }
 
+#define TRAMPOLINE_SIZE		4096
 static uint8_t *trampoline;
 
 void tls_init()
 {
-	trampoline = sys_mmap(NULL, 4096, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	trampoline = sys_mmap(NULL, TRAMPOLINE_SIZE, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 }
 
 void tls_shutdown()
 {
-	sys_munmap(trampoline, 4096);
+	sys_munmap(trampoline, TRAMPOLINE_SIZE);
 }
 
 #define MODRM_MOD(c)	(((c) >> 6) & 7)
@@ -180,6 +181,11 @@ void tls_shutdown()
 #define MODRM_CODE(c)	MODRM_R(c)
 int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 {
+	if (context->Eip >= trampoline && context->Eip < trampoline + TRAMPOLINE_SIZE)
+	{
+		log_debug("EIP Inside TLS trampoline!!!!! Emulation skipped.\n");
+		return 0;
+	}
 	if (code[0] == 0x8C)
 	{
 		/* 8C /r: MOV r/m16, Sreg */
