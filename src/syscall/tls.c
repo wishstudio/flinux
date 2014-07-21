@@ -109,7 +109,10 @@ int sys_set_thread_area(struct user_desc *u_info)
 	return 0;
 }
 
+#define LOW8(x) (*((uint8_t *)&(x)))
 #define LOW16(x) (*((uint16_t *)&(x)))
+#define LOW32(x) (*((uint32_t *)&(x)))
+#define LOW64(x) (*((uint64_t *)&(x)))
 static int handle_mov_reg_gs(PCONTEXT context, uint8_t modrm)
 {
 	/* 11 101 rrr */
@@ -296,6 +299,25 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 			desc = &one_byte_inst[code[prefix_end]];
 			modrm_offset = 1;
 		}
+
+		int idx = 0;
+		#define GEN_BYTE(x)		trampoline[idx++] = (x)
+		#define GEN_WORD(x)		*(uint16_t *)&trampoline[(idx += 2) - 2] = (x)
+		#define GEN_DWORD(x)	*(uint32_t *)&trampoline[(idx += 4) - 4] = (x)
+		#define COPY_PREFIX() \
+			/* Copy prefixes */ \
+			for (int i = 0; i < prefix_end; i++) \
+				if (code[i] == 0x65) /* GS segment override -> skip */ \
+					continue; \
+				else \
+					GEN_BYTE(code[i])
+		#define GEN_EPILOGUE(inst_len) \
+			GEN_BYTE(0x68); /* PUSH imm32 */ \
+			GEN_DWORD(context->Eip + prefix_end + (inst_len)); \
+			GEN_BYTE(0xC3); /* RET */ \
+			context->Eip = trampoline; \
+			log_debug("Building trampoline successfully at %x\n", trampoline)
+
 		switch (desc->type)
 		{
 		case INST_TYPE_NOP: return 0;
@@ -303,20 +325,12 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 		case INST_TYPE_MODRM:
 		{
 			/* Generate equivalent trampoline code by patch ModR/M */
-			int idx = 0;
-			#define GEN_BYTE(x)		trampoline[idx++] = (x)
-			#define GEN_WORD(x)		*(uint16_t *)&trampoline[(idx += 2) - 2] = (x)
-			#define GEN_DWORD(x)	*(uint32_t *)&trampoline[(idx += 4) - 4] = (x)
+			COPY_PREFIX();
 
-			/* Copy prefixes */
-			for (int i = 0; i < prefix_end; i++)
-				if (code[i] == 0x65) /* GS segment override -> skip */
-					continue;
-				else
-					GEN_BYTE(code[i]);
 			/* Copy opcode */
 			for (int i = prefix_end; i < prefix_end + modrm_offset; i++)
 				GEN_BYTE(code[i]);
+
 			/* Patch ModR/M */
 			uint8_t modrm = code[prefix_end + modrm_offset];
 			uint8_t mod = MODRM_MOD(modrm);
@@ -358,14 +372,25 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 				imm_bytes = operand_size_prefix? 2: 4;
 			for (int i = 0; i < imm_bytes; i++)
 				GEN_BYTE(code[prefix_end + modrm_offset + 1 + sib + addr_bytes + i]);
-			/* Genereate epilog for returning back */
-			GEN_BYTE(0x68); /* PUSH imm32 */
-			GEN_DWORD(context->Eip + prefix_end + modrm_offset + 1 + sib + addr_bytes + imm_bytes);
-			GEN_BYTE(0xC3); /* RET */
 
-			/* Set EIP to trampoline  */
-			context->Eip = trampoline;
-			log_debug("Building trampoline successfully at %x\n", trampoline);
+			GEN_EPILOGUE(modrm_offset + 1 + sib + addr_bytes + imm_bytes);
+			return 1;
+		}
+
+		case INST_TYPE_MOV_MOFFSET:
+		{
+			/* MOV AL, moffs8 */
+			/* MOV AX, moffs16 */
+			/* MOV EAX, moffs32 */
+			/* MOV moffs8, AL */
+			/* MOV moffs16, AX */
+			/* MOV moffs32, EAX */
+			/* TODO: Deal with address_size_prefix when we support it */
+			uint32_t addr = gs_addr + LOW32(code[prefix_end + 1]);
+			COPY_PREFIX();
+			GEN_BYTE(code[prefix_end]);
+			GEN_DWORD(addr);
+			GEN_EPILOGUE(5);
 			return 1;
 		}
 

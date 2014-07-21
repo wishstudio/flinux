@@ -2,6 +2,7 @@
 #define INST_TYPE_NOP			0 /* Instruction which are out of interest */
 #define INST_TYPE_UNKNOWN		1 /* Unknown/not implemented */
 #define INST_TYPE_MODRM			3 /* Instruction containing a memory address in ModR/M opcode */
+#define INST_TYPE_MOV_MOFFSET	4 /* MOV moffset series instructions */
 #define INST_TYPE_EXTENSION(x)	(32 + (x)) /* Instruction with opcode extension */
 #define SIZE_DEPENDS_ON_PREFIX	-1 /* Indicate imm_bytes is 2 or 4 depends on operand size prefix */
 struct instruction_desc
@@ -12,6 +13,7 @@ struct instruction_desc
 #define NOP()			{ .type = INST_TYPE_NOP },
 #define UNKNOWN()		{ .type = INST_TYPE_UNKNOWN },
 #define MODRM(i)		{ .type = INST_TYPE_MODRM, .imm_bytes = (i) },
+#define MOV_MOFFSET()	{ .type = INST_TYPE_MOV_MOFFSET },
 #define EXTENSION(x)	{ .type = INST_TYPE_EXTENSION(x) },
 
 /* AX */
@@ -316,10 +318,10 @@ static const struct instruction_desc one_byte_inst[256] =
 	/* 0x9D: POPF/POPFD */ NOP()
 	/* 0x9E: SAHF */ NOP()
 	/* 0x9F: LAHF */ NOP()
-	/* 0xA0: ??? */ UNKNOWN()
-	/* 0xA1: ??? */ UNKNOWN()
-	/* 0xA2: ??? */ UNKNOWN()
-	/* 0xA3: ??? */ UNKNOWN()
+	/* 0xA0: MOV AL, moffs8 */ MOV_MOFFSET()
+	/* 0xA1: MOV AX, moffs16; MOV EAX, moffs32 */ MOV_MOFFSET()
+	/* 0xA2: MOV moffs8, AL */ MOV_MOFFSET()
+	/* 0xA3: MOV moffs16, AX; MOV moffs32, EAX */ MOV_MOFFSET()
 	/* 0xA4: MOVSB */ NOP()
 	/* 0xA5: MOVSW/MOVSD */ NOP()
 	/* 0xA6: CMPSB */ NOP()
