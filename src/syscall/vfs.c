@@ -40,7 +40,7 @@ size_t sys_write(int fd, const char *buf, size_t count)
 
 int sys_open(const char *pathname, int flags, int mode)
 {
-	log_debug("open(%x: \"%s\", %d, %d)\n", pathname, pathname, flags, mode);
+	log_debug("open(%x: \"%s\", %x, %x)\n", pathname, pathname, flags, mode);
 	return -1;
 }
 

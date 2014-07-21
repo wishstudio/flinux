@@ -122,20 +122,15 @@ static DWORD prot_linux2win(int prot)
 		return PAGE_NOACCESS;
 }
 
-void *sys_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
+void *do_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
 {
-	/* TODO: We should mark NOACCESS for VirtualAlloc()-ed but currently unused pages */
-	log_debug("mmap(%x, %x, %x, %x, %u, %x)\n", addr, length, prot, flags, fd, offset);
-	/* TODO: Initialize mapped area to zero */
 	/* TODO: errno */
-	if (!IS_ALIGNED(offset, PAGE_SIZE))
-		return NULL;
 	if (length == 0)
 		return NULL;
 	length = ALIGN_TO_PAGE(length);
-	if ((size_t) addr < ADDRESS_SPACE_LOW || (size_t) addr >= ADDRESS_SPACE_HIGH
-		|| (size_t) addr + length < ADDRESS_SPACE_LOW || (size_t) addr + length >= ADDRESS_SPACE_HIGH
-		|| (size_t) addr + length < (size_t) addr)
+	if ((size_t)addr < ADDRESS_SPACE_LOW || (size_t)addr >= ADDRESS_SPACE_HIGH
+		|| (size_t)addr + length < ADDRESS_SPACE_LOW || (size_t)addr + length >= ADDRESS_SPACE_HIGH
+		|| (size_t)addr + length < (size_t)addr)
 		return NULL;
 	if (flags & MAP_FIXED)
 	{
@@ -223,6 +218,17 @@ void *sys_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t off
 	return NULL;
 }
 
+void *sys_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
+{
+	/* TODO: We should mark NOACCESS for VirtualAlloc()-ed but currently unused pages */
+	log_debug("mmap(%x, %x, %x, %x, %d, %x)\n", addr, length, prot, flags, fd, offset);
+	/* TODO: Initialize mapped area to zero */
+	/* TODO: errno */
+	if (!IS_ALIGNED(offset, PAGE_SIZE))
+		return NULL;
+	return do_mmap(addr, length, prot, flags, fd, offset / PAGE_SIZE);
+}
+
 void *sys_oldmmap(void *_args)
 {
 	log_debug("oldmmap(%x)\n", _args);
@@ -237,6 +243,12 @@ void *sys_oldmmap(void *_args)
 	};
 	struct oldmmap_args_t *args = _args;
 	return sys_mmap(args->addr, args->len, args->prot, args->flags, args->fd, args->offset);
+}
+
+void *sys_mmap2(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
+{
+	log_debug("mmap2(%x, %x, %x, %x, %d, %x)\n", addr, length, prot, flags, fd, offset);
+	return do_mmap(addr, length, prot, flags, fd, offset);
 }
 
 int sys_munmap(void *addr, size_t length)

@@ -9,7 +9,9 @@ extern void *mm_brk;
 void mm_init();
 void mm_shutdown();
 
-void* sys_mmap(void *addr, size_t len, int prot, int flags, int fd, off_t off);
+void *sys_mmap(void *addr, size_t len, int prot, int flags, int fd, off_t offset);
+void *sys_oldmmap(void *args);
+void *sys_mmap2(void *addr, size_t len, int prot, int flags, int fd, off_t offset);
 int sys_munmap(void *addr, size_t len);
 int sys_mprotect(void *addr, size_t len, int prot);
 int sys_msync(void *addr, size_t len, int flags);
