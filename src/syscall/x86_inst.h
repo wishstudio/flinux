@@ -14,6 +14,22 @@ struct instruction_desc
 #define MODRM(i)		{ .type = INST_TYPE_MODRM, .imm_bytes = (i) },
 #define EXTENSION(x)	{ .type = INST_TYPE_EXTENSION(x) },
 
+/* AX */
+#define AX()			NOP()
+/* CX */
+#define CX()			NOP()
+/* DX */
+#define DX()			NOP()
+/* BX */
+#define BX()			NOP()
+/* SP */
+#define SP()			NOP()
+/* BP */
+#define BP()			NOP()
+/* SI */
+#define SI()			NOP()
+/* DI */
+#define DI()			NOP()
 /* EAX */
 #define EAX()			NOP()
 /* ECX */
@@ -81,12 +97,20 @@ struct instruction_desc
 
 /* OP r/m8 */
 #define RM8()			MODRM(0)
+/* OP r/m8, 1 */
+#define RM8_1()			MODRM(0)
+/* OP r/m8, CL */
+#define RM8_CL()		MODRM(0)
 /* OP r/m16 */
 #define RM16()			MODRM(0)
 /* OP r/m32 */
 #define RM32()			MODRM(0)
 /* OP r/m16; or OP r/m32 (depends on operand size prefix) */
 #define RM16_RM32()		MODRM(0)
+/* OP r/m16, 1; or OP r/m32, 1 (depends on operand size prefix) */
+#define RM16_1_RM32_1()		MODRM(0)
+/* OP r/m16, CL; or OP r/m32, CL (depends on operand size prefix) */
+#define RM16_CL_RM32_CL()	MODRM(0)
 
 /* OP r/m8, r8 */
 #define RM8_R8()		MODRM(0)
@@ -155,12 +179,12 @@ static const struct instruction_desc one_byte_inst[256] =
 	/* 0x15: ADC */ AX_IMM16_EAX_IMM32()
 	/* 0x16: ??? */ UNKNOWN()
 	/* 0x17: ??? */ UNKNOWN()
-	/* 0x18: ??? */ UNKNOWN()
-	/* 0x19: ??? */ UNKNOWN()
-	/* 0x1A: ??? */ UNKNOWN()
-	/* 0x1B: ??? */ UNKNOWN()
-	/* 0x1C: ??? */ UNKNOWN()
-	/* 0x1D: ??? */ UNKNOWN()
+	/* 0x18: SBB */ RM8_R8()
+	/* 0x19: SBB */ RM16_R16_RM32_R32()
+	/* 0x1A: SBB */ R8_RM8()
+	/* 0x1B: SBB */ R16_RM16_R32_RM32()
+	/* 0x1C: SBB */ AL_IMM8()
+	/* 0x1D: SBB */ AX_IMM16_EAX_IMM32()
 	/* 0x1E: ??? */ UNKNOWN()
 	/* 0x1F: ??? */ UNKNOWN()
 	/* 0x20: AND */ RM8_R8()
@@ -171,20 +195,20 @@ static const struct instruction_desc one_byte_inst[256] =
 	/* 0x25: AND */ AX_IMM16_EAX_IMM32()
 	/* 0x26: ??? */ UNKNOWN()
 	/* 0x27: DAA */ NOP()
-	/* 0x28: ??? */ UNKNOWN()
-	/* 0x29: ??? */ UNKNOWN()
-	/* 0x2A: ??? */ UNKNOWN()
-	/* 0x2B: ??? */ UNKNOWN()
-	/* 0x2C: ??? */ UNKNOWN()
-	/* 0x2D: ??? */ UNKNOWN()
+	/* 0x28: SUB */ RM8_R8()
+	/* 0x29: SUB */ RM16_R16_RM32_R32()
+	/* 0x2A: SUB */ R8_RM8()
+	/* 0x2B: SUB */ R16_RM16_R32_RM32()
+	/* 0x2C: SUB */ AL_IMM8()
+	/* 0x2D: SUB */ AX_IMM16_EAX_IMM32()
 	/* 0x2E: ??? */ UNKNOWN()
 	/* 0x2F: DAS */ NOP()
-	/* 0x30: ??? */ UNKNOWN()
-	/* 0x31: ??? */ UNKNOWN()
-	/* 0x32: ??? */ UNKNOWN()
-	/* 0x33: ??? */ UNKNOWN()
-	/* 0x34: ??? */ UNKNOWN()
-	/* 0x35: ??? */ UNKNOWN()
+	/* 0x30: XOR */ RM8_R8()
+	/* 0x31: XOR */ RM16_R16_RM32_R32()
+	/* 0x32: XOR */ R8_RM8()
+	/* 0x33: XOR */ R16_RM16_R32_RM32()
+	/* 0x34: XOR */ AL_IMM8()
+	/* 0x35: XOR */ AX_IMM16_EAX_IMM32()
 	/* 0x36: ??? */ UNKNOWN()
 	/* 0x37: AAA */ NOP()
 	/* 0x38: CMP */ RM8_R8()
@@ -264,10 +288,10 @@ static const struct instruction_desc one_byte_inst[256] =
 	/* 0x81: [GRP1] */ RM16_IMM16_RM32_IMM32()
 	/* 0x82: ??? */ UNKNOWN()
 	/* 0x83: [GRP1] */ RM16_IMM8_RM32_IMM8()
-	/* 0x84: ??? */ UNKNOWN()
-	/* 0x85: ??? */ UNKNOWN()
-	/* 0x86: ??? */ UNKNOWN()
-	/* 0x87: ??? */ UNKNOWN()
+	/* 0x84: TEST */ RM8_R8()
+	/* 0x85: TEST */ RM16_R16_RM32_R32()
+	/* 0x86: XCHG */ RM8_R8()
+	/* 0x87: XCHG */ RM16_R16_RM32_R32() /* also R16_RM16_R32_RM32() which is equivalent */
 	/* 0x88: MOV */ RM8_R8()
 	/* 0x89: MOV */ RM16_R16_RM32_R32()
 	/* 0x8A: MOV */ R8_RM8()
@@ -276,21 +300,21 @@ static const struct instruction_desc one_byte_inst[256] =
 	/* 0x8D: LEA */ R16_RM16_R32_RM32() /* Actually r16, m; or r32, m */
 	/* 0x8E: MOV */ R16_RM16() /* Actually Sreg, r/m16 */
 	/* 0x8F: POP */ RM16_RM32()
-	/* 0x90: NOP */ NOP()
-	/* 0x91: ??? */ UNKNOWN()
-	/* 0x92: ??? */ UNKNOWN()
-	/* 0x93: ??? */ UNKNOWN()
-	/* 0x94: ??? */ UNKNOWN()
-	/* 0x95: ??? */ UNKNOWN()
-	/* 0x96: ??? */ UNKNOWN()
-	/* 0x97: ??? */ UNKNOWN()
+	/* 0x90: NOP/XCHG AX, AX */ NOP()
+	/* 0x91: XCHG AX, */ CX()
+	/* 0x92: XCHG AX, */ DX()
+	/* 0x93: XCHG AX, */ BX()
+	/* 0x94: XCHG AX, */ SP()
+	/* 0x95: XCHG AX, */ BP()
+	/* 0x96: XCHG AX, */ SI()
+	/* 0x97: XCHG AX, */ DI()
 	/* 0x98: CBW; CWDE */ NOP()
 	/* 0x99: CWD; CDQ */ NOP()
 	/* 0x9A: CALL FAR */ PTR16_16_PTR16_32()
-	/* 0x9B: ??? */ UNKNOWN()
+	/* 0x9B: FWAIT */ NOP()
 	/* 0x9C: PUSHF/PUSHFD */ NOP()
 	/* 0x9D: POPF/POPFD */ NOP()
-	/* 0x9E: ??? */ UNKNOWN()
+	/* 0x9E: SAHF */ NOP()
 	/* 0x9F: LAHF */ NOP()
 	/* 0xA0: ??? */ UNKNOWN()
 	/* 0xA1: ??? */ UNKNOWN()
@@ -300,14 +324,14 @@ static const struct instruction_desc one_byte_inst[256] =
 	/* 0xA5: MOVSW/MOVSD */ NOP()
 	/* 0xA6: CMPSB */ NOP()
 	/* 0xA7: CMPSW/CMPSD */ NOP()
-	/* 0xA8: ??? */ UNKNOWN()
-	/* 0xA9: ??? */ UNKNOWN()
-	/* 0xAA: ??? */ UNKNOWN()
-	/* 0xAB: ??? */ UNKNOWN()
+	/* 0xA8: TEST */ AL_IMM8()
+	/* 0xA9: TEST */ AX_IMM16_EAX_IMM32()
+	/* 0xAA: STOSB */ NOP()
+	/* 0xAB: STOSW/STOSD */ NOP()
 	/* 0xAC: LODSB */ NOP()
 	/* 0xAD: LODSW/LODSD */ NOP()
-	/* 0xAE: ??? */ UNKNOWN()
-	/* 0xAF: ??? */ UNKNOWN()
+	/* 0xAE: SCASB */ NOP()
+	/* 0xAF: SCASW/SCASD */ NOP()
 	/* 0xB0: ??? */ UNKNOWN()
 	/* 0xB1: ??? */ UNKNOWN()
 	/* 0xB2: ??? */ UNKNOWN()
@@ -324,30 +348,31 @@ static const struct instruction_desc one_byte_inst[256] =
 	/* 0xBD: ??? */ UNKNOWN()
 	/* 0xBE: ??? */ UNKNOWN()
 	/* 0xBF: ??? */ UNKNOWN()
-	/* 0xC0: ??? */ UNKNOWN()
-	/* 0xC1: ??? */ UNKNOWN()
-	/* 0xC2: ??? */ UNKNOWN()
-	/* 0xC3: ??? */ UNKNOWN()
+	/* [GRP2]: 0/ROL, 1/ROR, 2/RCL, 3/RCR, 4/SHL/SAL, 5/SHR, 7/SAR */
+	/* 0xC0: [GRP2] */ RM8_IMM8()
+	/* 0xC1: [GRP2] */ RM16_IMM8_RM32_IMM8()
+	/* 0xC2: RET */ IMM16()
+	/* 0xC3: RET */ NOP()
 	/* 0xC4: LES */ R16_M16_16_R32_M16_32()
 	/* 0xC5: LDS */ R16_M16_16_R32_M16_32()
 	/* 0xC6: ??? */ UNKNOWN()
 	/* 0xC7: ??? */ UNKNOWN()
 	/* 0xC8: ENTER */ IMM16_IMM8()
 	/* 0xC9: LEAVE */ NOP()
-	/* 0xCA: ??? */ UNKNOWN()
-	/* 0xCB: ??? */ UNKNOWN()
+	/* 0xCA: RET FAR */ IMM16()
+	/* 0xCB: RET FAR */ NOP()
 	/* 0xCC: INT 3 */ NOP()
 	/* 0xCD: INT */ IMM8()
 	/* 0xCE: INTO */ NOP()
 	/* 0xCF: IRET/IRETD */ NOP()
-	/* 0xD0: ??? */ UNKNOWN()
-	/* 0xD1: ??? */ UNKNOWN()
-	/* 0xD2: ??? */ UNKNOWN()
-	/* 0xD3: ??? */ UNKNOWN()
+	/* 0xD0: [GRP2] */ RM8_1()
+	/* 0xD1: [GRP2] */ RM16_1_RM32_1()
+	/* 0xD2: [GRP2] */ RM8_CL()
+	/* 0xD3: [GRP2] */ RM16_CL_RM32_CL()
 	/* 0xD4: AAM */ NOP()
 	/* 0xD5: AAD */ NOP()
 	/* 0xD6: ??? */ UNKNOWN()
-	/* 0xD7: ??? */ UNKNOWN()
+	/* 0xD7: XLAT */ NOP()
 	/* 0xD8: (x87 escape) */ UNKNOWN()
 	/* 0xD9: (x87 escape) */ UNKNOWN()
 	/* 0xDA: (x87 escape) */ UNKNOWN()
@@ -382,11 +407,11 @@ static const struct instruction_desc one_byte_inst[256] =
 	/* 0xF6: [GRP3] */ RM8()
 	/* 0xF7: [GRP3] */ RM16_RM32()
 	/* 0xF8: CLC */ NOP()
-	/* 0xF9: ??? */ UNKNOWN()
+	/* 0xF9: STC */ NOP()
 	/* 0xFA: CLI */ NOP()
-	/* 0xFB: ??? */ UNKNOWN()
+	/* 0xFB: STI */ NOP()
 	/* 0xFC: CLD */ NOP()
-	/* 0xFD: ??? */ UNKNOWN()
+	/* 0xFD: STD */ NOP()
 	/* [GRP4]: 0/INC, /DEC */
 	/* 0xFE: [GRP4] */ RM8()
 	/* 0xFF: [GRP5]
@@ -402,23 +427,30 @@ static const struct instruction_desc one_byte_inst[256] =
 static const struct instruction_desc two_byte_inst[256] =
 {
 	/* 0x00: [GRP6]
+	0: SLDT r/m16
+	1: STR r/m16
 	2: LLDT r/m16
-	3: LTR r/m16 */ EXTENSION(6)
+	3: LTR r/m16
+	4: VERR r/m16
+	5: VERW r/m16 */ EXTENSION(6)
 	/* 0x01: [GRP7]
+	0: SGDT m
+	1: SIDT m
 	2: LGDT m16&32; LGDT m16&64
 	3: LIDT m16&32; LIDT m16&64
+	4: SMSW r/m16; SMSW r32/m16
 	6: LMSW r/m16
 	7: INVLPG */ EXTENSION(7)
 	/* 0x02: LAR */ R16_RM16_R32_RM32() /* Actually r32, r32/m16 */
 	/* 0x03: LSL */ R16_RM16_R32_RM32() /* Actually r32, r32/m16*/
 	/* 0x04: ??? */ UNKNOWN()
-	/* 0x05: ??? */ UNKNOWN()
+	/* 0x05: SYSCALL */ NOP()
 	/* 0x06: CLTS */ NOP()
-	/* 0x07: ??? */ UNKNOWN()
+	/* 0x07: SYSRET */ NOP()
 	/* 0x08: INVD */ NOP()
-	/* 0x09: ??? */ UNKNOWN()
+	/* 0x09: WBINVD */ NOP()
 	/* 0x0A: ??? */ UNKNOWN()
-	/* 0x0B: ??? */ UNKNOWN()
+	/* 0x0B: UD2 */ UNKNOWN()
 	/* 0x0C: ??? */ UNKNOWN()
 	/* 0x0D: ??? */ UNKNOWN()
 	/* 0x0E: ??? */ UNKNOWN()
@@ -455,12 +487,12 @@ static const struct instruction_desc two_byte_inst[256] =
 	/* 0x2D: ??? */ UNKNOWN()
 	/* 0x2E: ??? */ UNKNOWN()
 	/* 0x2F: ??? */ UNKNOWN()
-	/* 0x30: ??? */ UNKNOWN()
-	/* 0x31: ??? */ UNKNOWN()
-	/* 0x32: ??? */ UNKNOWN()
-	/* 0x33: ??? */ UNKNOWN()
-	/* 0x34: ??? */ UNKNOWN()
-	/* 0x35: ??? */ UNKNOWN()
+	/* 0x30: WRMSR */ NOP()
+	/* 0x31: RDTSC */ NOP()
+	/* 0x32: RDMSR */ NOP()
+	/* 0x33: RDPMC */ NOP()
+	/* 0x34: SYSENTER */ NOP()
+	/* 0x35: SYSEXIT */ NOP()
 	/* 0x36: ??? */ UNKNOWN()
 	/* 0x37: ??? */ UNKNOWN()
 	/* 0x38: ??? */ UNKNOWN()
@@ -551,22 +583,22 @@ static const struct instruction_desc two_byte_inst[256] =
 	/* 0x8D: JGE/JNL */ REL16_REL32()
 	/* 0x8E: JLE/JNG */ REL16_REL32()
 	/* 0x8F: JG/JNLE */ REL16_REL32()
-	/* 0x90: ??? */ UNKNOWN()
-	/* 0x91: ??? */ UNKNOWN()
-	/* 0x92: ??? */ UNKNOWN()
-	/* 0x93: ??? */ UNKNOWN()
-	/* 0x94: ??? */ UNKNOWN()
-	/* 0x95: ??? */ UNKNOWN()
-	/* 0x96: ??? */ UNKNOWN()
-	/* 0x97: ??? */ UNKNOWN()
-	/* 0x98: ??? */ UNKNOWN()
-	/* 0x99: ??? */ UNKNOWN()
-	/* 0x9A: ??? */ UNKNOWN()
-	/* 0x9B: ??? */ UNKNOWN()
-	/* 0x9C: ??? */ UNKNOWN()
-	/* 0x9D: ??? */ UNKNOWN()
-	/* 0x9E: ??? */ UNKNOWN()
-	/* 0x9F: ??? */ UNKNOWN()
+	/* 0x90: SETO */ RM8()
+	/* 0x91: SETNO */ RM8()
+	/* 0x92: SETB/SETC/SETNAE */ RM8()
+	/* 0x93: SETAE/SETNB/SETNC */ RM8()
+	/* 0x94: SETE/SETZ */ RM8()
+	/* 0x95: SETNE/SETNZ */ RM8()
+	/* 0x96: SETBE/SETNA */ RM8()
+	/* 0x97: SETA/SETNBE */ RM8()
+	/* 0x98: SETS */ RM8()
+	/* 0x99: SETNS */ RM8()
+	/* 0x9A: SETP/SETPE */ RM8()
+	/* 0x9B: SETNP/SETPO */ RM8()
+	/* 0x9C: SETL/SETNGE */ RM8()
+	/* 0x9D: SETGE/SETNL */ RM8()
+	/* 0x9E: SETLE/SETNG */ RM8()
+	/* 0x9F: SETG/SETNLE */ RM8()
 	/* 0xA0: ??? */ UNKNOWN()
 	/* 0xA1: ??? */ UNKNOWN()
 	/* 0xA2: CPUID */
@@ -577,14 +609,18 @@ static const struct instruction_desc two_byte_inst[256] =
 	/* 0xA7: ??? */ UNKNOWN()
 	/* 0xA8: ??? */ UNKNOWN()
 	/* 0xA9: ??? */ UNKNOWN()
-	/* 0xAA: ??? */ UNKNOWN()
+	/* 0xAA: RSM */ NOP()
 	/* 0xAB: BTS */ RM16_R16_RM32_R32()
 	/* 0xAC: ??? */ UNKNOWN()
 	/* 0xAD: ??? */ UNKNOWN()
 	/* 0xAE:
-	5: LFENCE
-	6: MFENCE
-	7: CLFLUSH m8 */ EXTENSION(15)
+	3/5: LFENCE
+	3/6: MFENCE
+	3/7: SFENCE
+	mem/4: XSAVE mem
+	mem/5: XRSTOR mem
+	mem/6: XSAVEOPT mem
+	mem/7: CLFLUSH m8 */ EXTENSION(15)
 	/* 0xAF: IMUL */ R16_RM16_R32_RM32()
 	/* 0xB0: CMPXCHG */ RM8_R8()
 	/* 0xB1: CMPXCHG */ RM16_R16_RM32_R32()
@@ -603,8 +639,8 @@ static const struct instruction_desc two_byte_inst[256] =
 	/* 0xBD: BSR */ R16_RM16_R32_RM32()
 	/* 0xBE: MOVSX */ R16_RM8_R32_RM8()
 	/* 0xBF: MOVSX */ R32_RM16()
-	/* 0xC0: ??? */ UNKNOWN()
-	/* 0xC1: ??? */ UNKNOWN()
+	/* 0xC0: XADD */ RM8_R8()
+	/* 0xC1: XADD */ RM16_R16_RM32_R32()
 	/* 0xC2: ??? */ UNKNOWN()
 	/* 0xC3: ??? */ UNKNOWN()
 	/* 0xC4: ??? */ UNKNOWN()
