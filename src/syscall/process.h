@@ -17,4 +17,6 @@ int sys_oldolduname(struct oldold_utsname *buf);
 int sys_olduname(struct old_utsname *buf);
 int sys_uname(struct utsname *buf);
 
+int sys_time(int *r);
+
 #endif

@@ -3,6 +3,7 @@
 #include "../log.h"
 
 #include <Windows.h>
+#include <time.h>
 
 pid_t sys_getpid()
 {
@@ -83,4 +84,13 @@ int sys_uname(struct utsname *buf)
 	strcpy(buf->machine, "i386");
 	strcpy(buf->domainname, "GNU/Linux");
 	return 0;
+}
+
+int sys_time(int *c)
+{
+	log_debug("time(%x)\n", c);
+	time_t t = time(NULL);
+	if (c)
+		*c = (int)t;
+	return t;
 }
