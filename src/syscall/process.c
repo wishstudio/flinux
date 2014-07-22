@@ -41,6 +41,13 @@ void sys_exit(int status)
 	exit(status);
 }
 
+void sys_exit_group(int status)
+{
+	log_debug("exit_group(%d)\n", status);
+	/* TODO: Gracefully shutdown mm, vfs, etc. */
+	exit(status);
+}
+
 int sys_oldolduname(struct oldold_utsname *buf)
 {
 	struct utsname newbuf;

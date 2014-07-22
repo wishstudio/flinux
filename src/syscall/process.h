@@ -12,6 +12,7 @@ uid_t sys_geteuid();
 gid_t sys_getegid();
 
 void sys_exit(int status);
+void sys_exit_group(int status);
 int sys_oldolduname(struct oldold_utsname *buf);
 int sys_olduname(struct old_utsname *buf);
 int sys_uname(struct utsname *buf);
