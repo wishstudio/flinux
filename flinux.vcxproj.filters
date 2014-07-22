@@ -76,6 +76,9 @@
     <ClInclude Include="src\fs\file.h">
       <Filter>fs</Filter>
     </ClInclude>
+    <ClInclude Include="src\common\auxvec.h">
+      <Filter>common</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />

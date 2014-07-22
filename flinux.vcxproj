@@ -13,6 +13,7 @@
   <ItemGroup>
     <ClInclude Include="src\binfmt\elf-em.h" />
     <ClInclude Include="src\binfmt\elf.h" />
+    <ClInclude Include="src\common\auxvec.h" />
     <ClInclude Include="src\common\fcntl.h" />
     <ClInclude Include="src\common\ldt.h" />
     <ClInclude Include="src\common\stat.h" />

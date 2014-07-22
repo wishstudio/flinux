@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stdio.h>
+#include <malloc.h>
 #include <Windows.h>
 
 #include "binfmt/elf.h"
@@ -8,7 +9,7 @@
 #include "syscall/vfs.h"
 #include "log.h"
 
-void run_elf(const char *filename)
+void run_elf(const char *filename, int argc, char *argv[])
 {
 	HANDLE hFile = CreateFileA(filename, GENERIC_READ | GENERIC_WRITE | GENERIC_EXECUTE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 
@@ -60,14 +61,27 @@ void run_elf(const char *filename)
 
 	install_syscall_handler();
 
+	/* Generate initial stack */
+	int env_size = 0, aux_size = 0;
+	int stack_size = argc + 1 + env_size + 1 + aux_size * 2 + 1;
+	const char **stack = (const char **)alloca(stack_size * sizeof(void*));
+	int idx = 0;
+	/* argv */
+	for (int i = 0; i < argc; i++)
+		stack[idx++] = argv[i];
+	stack[idx++] = NULL;
+	/* environment variables */
+	stack[idx++] = NULL;
+	/* auxiliary vector */
+	stack[idx++] = NULL;
+
 	/* Call executable entrypoint */
 	uint32_t entrypoint = eh.e_entry;
 	log_debug("Entrypoint: %x\n", entrypoint);
 	__asm
 	{
-		push 0 // env
-		push 0 // argv
-		push 0 // argc
+		mov esp, stack
+		push argc
 		push entrypoint
 		xor eax, eax
 		xor ebx, ebx
@@ -76,7 +90,8 @@ void run_elf(const char *filename)
 		xor esi, esi
 		xor edi, edi
 		xor ebp, ebp
-		ret /* ROP into entrypoint */
+		mov gs, ax
+		ret
 	}
 
 fail:
@@ -98,6 +113,6 @@ int main(int argc, const char **argv[])
 	mm_init();
 	vfs_init();
 	tls_init();
-	run_elf(filename);
+	run_elf(filename, argc - 1, argv + 1);
 	return 0;
 }
