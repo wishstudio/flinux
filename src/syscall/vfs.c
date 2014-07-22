@@ -44,6 +44,21 @@ int sys_open(const char *pathname, int flags, int mode)
 	return -1;
 }
 
+int sys_dup2(int fd, int newfd)
+{
+	log_debug("dup2(%d, %d)\n", fd, newfd);
+	struct file *f = vfs_fds[fd];
+	if (!f)
+		return -1;
+	if (fd == newfd)
+		return newfd;
+	/* TODO: Close newfd before duplicate */
+	/* TODO: Do things atomically */
+	vfs_fds[newfd] = f;
+	f->ref++;
+	return newfd;
+}
+
 void stat_from_stat64(struct stat *stat, struct stat64 *stat64)
 {
 	stat->st_dev = stat64->st_dev;

@@ -12,6 +12,8 @@ size_t sys_write(int fd, const char *buf, size_t count);
 
 int sys_open(const char *pathname, int flags, int mode);
 
+int sys_dup2(int fd, int newfd);
+
 int sys_stat(const char *pathname, struct stat *buf);
 int sys_lstat(const char *pathname, struct stat *buf);
 int sys_fstat(int fd, struct stat *buf);
