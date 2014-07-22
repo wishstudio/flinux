@@ -33,8 +33,8 @@
 #define ADDRESS_SPACE_HIGH 0x80000000U
 /* Windows allocation granularity we have to follow */
 #define BLOCK_SIZE 0x00010000U
-/* Linux page size we want to mimic */
-#define PAGE_SIZE 0x00001000U
+/* Linux page size we want to mimic (moved to mm.h) */
+//#define PAGE_SIZE 0x00001000U
 
 #define BLOCK_COUNT 0x00010000U
 #define PAGE_COUNT 0x00100000U

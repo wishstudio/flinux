@@ -163,7 +163,7 @@ static int handle_mov_gs_reg(PCONTEXT context, uint8_t modrm)
 	return 1;
 }
 
-#define TRAMPOLINE_SIZE		4096
+#define TRAMPOLINE_SIZE		PAGE_SIZE
 static uint8_t *trampoline;
 
 void tls_init()

@@ -4,6 +4,8 @@
 #include <common/types.h>
 #include <common/mman.h>
 
+#define PAGE_SIZE 0x00001000U
+
 extern void *mm_brk;
 
 void mm_init();
