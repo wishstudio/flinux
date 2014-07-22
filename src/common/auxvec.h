@@ -1,5 +1,5 @@
-#ifndef COMMON_AUXVEC_H
-#define COMMON_AUXVEC_H
+#ifndef _COMMON_AUXVEC_H
+#define _COMMON_AUXVEC_H
 
 /* Symbolic values for the entries in the auxiliary table
    put on the initial stack */
