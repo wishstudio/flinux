@@ -1,13 +1,14 @@
-#include <stdint.h>
-#include <stdio.h>
-#include <malloc.h>
-#include <Windows.h>
-
 #include "binfmt/elf.h"
 #include "syscall/mm.h"
 #include "syscall/syscall.h"
 #include "syscall/vfs.h"
 #include "log.h"
+#include <common/auxvec.h>
+
+#include <stdint.h>
+#include <stdio.h>
+#include <malloc.h>
+#include <Windows.h>
 
 void run_elf(const char *filename, int argc, char *argv[])
 {
@@ -57,12 +58,13 @@ void run_elf(const char *filename, int argc, char *argv[])
 		}
 	}
 
-	free(pht);
+	/* We need header data in auxiliary vector */
+	//free(pht);
 
 	install_syscall_handler();
 
 	/* Generate initial stack */
-	int env_size = 0, aux_size = 0;
+	int env_size = 0, aux_size = 7;
 	int stack_size = argc + 1 + env_size + 1 + aux_size * 2 + 1;
 	const char **stack = (const char **)alloca(stack_size * sizeof(void*));
 	int idx = 0;
@@ -73,6 +75,20 @@ void run_elf(const char *filename, int argc, char *argv[])
 	/* environment variables */
 	stack[idx++] = NULL;
 	/* auxiliary vector */
+	stack[idx++] = (const char *)AT_PHDR;
+	stack[idx++] = (const char *)pht;
+	stack[idx++] = (const char *)AT_PHENT;
+	stack[idx++] = (const char *)eh.e_phentsize;
+	stack[idx++] = (const char *)AT_PHNUM;
+	stack[idx++] = (const char *)eh.e_phnum;
+	stack[idx++] = (const char *)AT_PAGESZ;
+	stack[idx++] = (const char *)PAGE_SIZE;
+	stack[idx++] = (const char *)AT_BASE;
+	stack[idx++] = (const char *)NULL;
+	stack[idx++] = (const char *)AT_FLAGS;
+	stack[idx++] = (const char *)0;
+	stack[idx++] = (const char *)AT_ENTRY;
+	stack[idx++] = (const char *)eh.e_entry;
 	stack[idx++] = NULL;
 
 	/* Call executable entrypoint */
