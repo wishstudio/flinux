@@ -368,7 +368,7 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 			}
 			else
 			{
-				GEN_BYTE((modrm & 0x3F) | 0xF0); /* Mod == 10: [...] + disp32 */
+				GEN_BYTE((modrm & 0x3F) | 0x80); /* Mod == 10: [...] + disp32 */
 				if (sib)
 					GEN_BYTE(code[prefix_end + modrm_offset + 1]);
 				GEN_DWORD(base_addr);
