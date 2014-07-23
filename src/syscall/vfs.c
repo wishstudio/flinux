@@ -97,18 +97,20 @@ int sys_open(const char *pathname, int flags, int mode)
 		return -1;
 	}
 	struct file_system *fs;
+	char *subpath;
 	for (fs = vfs_first; fs; fs = fs->next)
 	{
-		char *p1 = fs->mountpoint, *p2 = path;
-		while (*p1 && *p1 == *p2)
+		char *p = fs->mountpoint;
+		subpath = path;
+		while (*p && *p == *subpath)
 		{
-			p1++;
-			p2++;
+			p++;
+			subpath++;
 		}
-		if (*p1 == 0)
+		if (*p == 0)
 			break;
 	}
-	struct file *f = fs->open(path, flags, mode);
+	struct file *f = fs->open(subpath, flags, mode);
 	if (!f)
 		return -1;
 	int fd = -1;
