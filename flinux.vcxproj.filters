@@ -79,6 +79,9 @@
     <ClInclude Include="src\common\auxvec.h">
       <Filter>common</Filter>
     </ClInclude>
+    <ClInclude Include="src\fs\winfs.h">
+      <Filter>fs</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
@@ -106,6 +109,9 @@
     </ClCompile>
     <ClCompile Include="src\syscall\tls.c">
       <Filter>syscall</Filter>
+    </ClCompile>
+    <ClCompile Include="src\fs\winfs.c">
+      <Filter>fs</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

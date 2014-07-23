@@ -19,4 +19,11 @@ struct file
 	off_t offset;
 };
 
+struct file_system
+{
+	struct file_system *next;
+	char *mountpoint;
+	struct file *(*open)(const char *path, int flags, int mode);
+};
+
 #endif

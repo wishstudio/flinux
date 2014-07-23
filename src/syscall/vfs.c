@@ -24,18 +24,20 @@ size_t sys_read(int fd, char *buf, size_t count)
 {
 	log_debug("read(%d, %x, %d)\n", fd, buf, count);
 	struct file *f = vfs_fds[fd];
-	if (!f)
-		return EBADF;
-	return f->op_vtable->fn_read(f, buf, count);
+	if (f && f->op_vtable->fn_read)
+		return f->op_vtable->fn_read(f, buf, count);
+	else
+		return -1;
 }
 
 size_t sys_write(int fd, const char *buf, size_t count)
 {
 	log_debug("write(%d, %x, %d)\n", fd, buf, count);
 	struct file *f = vfs_fds[fd];
-	if (!f)
-		return EBADF;
-	return f->op_vtable->fn_write(f, buf, count);
+	if (f && f->op_vtable->fn_write)
+		return f->op_vtable->fn_write(f, buf, count);
+	else
+		return -1;
 }
 
 int sys_open(const char *pathname, int flags, int mode)
@@ -110,28 +112,34 @@ int sys_fstat(int fd, struct stat *buf)
 
 int sys_stat64(const char *pathname, struct stat64 *buf)
 {
+	log_debug("stat64(\"%s\", %x)\n", pathname, buf);
 	/* TODO */
+	return -1;
 }
 
 int sys_lstat64(const char *pathname, struct stat64 *buf)
 {
+	log_debug("lstat64(\"%s\", %x)\n", pathname, buf);
 	/* TODO */
+	return -1;
 }
 
 int sys_fstat64(int fd, struct stat64 *buf)
 {
 	log_debug("fstat64(%d, %x)\n", fd, buf);
 	struct file *f = vfs_fds[fd];
-	if (!f)
-		return EBADF;
-	return f->op_vtable->fn_stat(f, buf);
+	if (f && f->op_vtable->fn_stat)
+		return f->op_vtable->fn_stat(f, buf);
+	else
+		return -1;
 }
 
 int sys_ioctl(int fd, unsigned int cmd, unsigned long arg)
 {
 	log_debug("ioctl(%d, %d, %x)\n", fd, cmd, arg);
 	struct file *f = vfs_fds[fd];
-	if (!f)
-		return EBADF;
-	return f->op_vtable->fn_ioctl(f, cmd, arg);
+	if (f && f->op_vtable->fn_ioctl)
+		return f->op_vtable->fn_ioctl(f, cmd, arg);
+	else
+		return -1;
 }

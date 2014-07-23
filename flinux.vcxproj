@@ -23,6 +23,7 @@
     <ClInclude Include="src\common\utsname.h" />
     <ClInclude Include="src\fs\file.h" />
     <ClInclude Include="src\fs\tty.h" />
+    <ClInclude Include="src\fs\winfs.h" />
     <ClInclude Include="src\log.h" />
     <ClInclude Include="src\syscall\err.h" />
     <ClInclude Include="src\syscall\mm.h" />
@@ -36,6 +37,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\fs\tty.c" />
+    <ClCompile Include="src\fs\winfs.c" />
     <ClCompile Include="src\log.c" />
     <ClCompile Include="src\main.c" />
     <ClCompile Include="src\syscall\err.c" />
