@@ -1,6 +1,8 @@
 #include "vfs.h"
 #include "err.h"
+#include <common/fcntl.h>
 #include <fs/tty.h>
+#include <fs/winfs.h>
 #include <log.h>
 
 #include <Windows.h>
@@ -8,12 +10,20 @@
 #define MAX_FD_COUNT	1024
 
 static struct file *vfs_fds[MAX_FD_COUNT];
+static struct file_system *vfs_first;
+
+static void vfs_add(struct file_system *vfs)
+{
+	vfs->next = vfs_first;
+	vfs_first = vfs;
+}
 
 void vfs_init()
 {
 	vfs_fds[0] = tty_alloc(GetStdHandle(STD_INPUT_HANDLE));
 	vfs_fds[1] = tty_alloc(GetStdHandle(STD_OUTPUT_HANDLE));
 	vfs_fds[2] = tty_alloc(GetStdHandle(STD_ERROR_HANDLE));
+	vfs_add(winfs_alloc());
 }
 
 void vfs_shutdown()
@@ -40,10 +50,81 @@ size_t sys_write(int fd, const char *buf, size_t count)
 		return -1;
 }
 
+static int normalize_path(const char *current, const char *pathname, char *out)
+{
+	/* TODO: Avoid overflow */
+	char *p = out;
+	if (*pathname == '/')
+	{
+		*p++ = '/';
+		pathname++;
+	}
+	else
+	{
+		while (*current)
+			*p++ = *current++;
+	}
+	while (*pathname)
+	{
+		if (*pathname == '/')
+			pathname++;
+		else if (*pathname == '.' && *(pathname + 1) == '/')
+			pathname += 2;
+		else if (*pathname == '.' && *(pathname + 1) == '.' && *(pathname + 2) == '/')
+		{
+			while (p > out && *(p - 1) != '/')
+				p--;
+		}
+		else
+		{
+			while (*pathname && *pathname != '/')
+				*p++ = *pathname++;
+			if (*pathname == '/')
+				*p++ = *pathname++;
+		}
+	}
+	*p = 0;
+	return 0;
+}
+
 int sys_open(const char *pathname, int flags, int mode)
 {
+	/* TODO: Check flags */
 	log_debug("open(%x: \"%s\", %x, %x)\n", pathname, pathname, flags, mode);
-	return -1;
+	char path[MAX_PATH];
+	if (normalize_path("/", pathname, path) != 0)
+	{
+		return -1;
+	}
+	struct file_system *fs;
+	for (fs = vfs_first; fs; fs = fs->next)
+	{
+		char *p1 = fs->mountpoint, *p2 = path;
+		while (*p1 && *p1 == *p2)
+		{
+			p1++;
+			p2++;
+		}
+		if (*p1 == 0)
+			break;
+	}
+	struct file *f = fs->open(path, flags, mode);
+	if (!f)
+		return -1;
+	int fd = -1;
+	for (int i = 0; i < MAX_FD_COUNT; i++)
+		if (vfs_fds[i] == NULL)
+		{
+			fd = i;
+			break;
+		}
+	if (fd == -1)
+	{
+		/* TODO: Close file */
+		return -1;
+	}
+	vfs_fds[fd] = f;
+	return fd;
 }
 
 int sys_dup2(int fd, int newfd)
@@ -113,8 +194,12 @@ int sys_fstat(int fd, struct stat *buf)
 int sys_stat64(const char *pathname, struct stat64 *buf)
 {
 	log_debug("stat64(\"%s\", %x)\n", pathname, buf);
-	/* TODO */
-	return -1;
+	int fd = sys_open(pathname, O_RDONLY, 0);
+	if (fd < 0)
+		return -1;
+	int ret = sys_fstat64(fd, buf);
+	/* TODO: Call sys_close() */
+	return ret;
 }
 
 int sys_lstat64(const char *pathname, struct stat64 *buf)

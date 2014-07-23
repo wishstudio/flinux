@@ -84,10 +84,10 @@ struct file *winfs_open(const char *pathname, int flags, int mode)
 
 	if (flags & O_RDWR)
 		desiredAccess = GENERIC_READ | GENERIC_WRITE;
-	else if (flags & O_RDONLY)
-		desiredAccess = GENERIC_READ;
 	else if (flags & O_WRONLY)
 		desiredAccess = GENERIC_WRITE;
+	else
+		desiredAccess = GENERIC_READ;
 	shareMode = FILE_SHARE_READ;
 	creationDisposition;
 	if (flags & O_EXCL)
@@ -121,7 +121,7 @@ struct winfs
 	struct file_system base_fs;
 };
 
-struct file_system *win32_fs_alloc()
+struct file_system *winfs_alloc()
 {
 	struct winfs *fs = (struct winfs *)malloc(sizeof(struct winfs));
 	fs->base_fs.mountpoint = "/";
