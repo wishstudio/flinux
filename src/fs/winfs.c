@@ -1,6 +1,7 @@
 #include "winfs.h"
 #include <syscall/mm.h> /* For PAGE_SIZE */
 #include <common/fcntl.h>
+#include <log.h>
 
 #include <stdlib.h>
 #include <Windows.h>
