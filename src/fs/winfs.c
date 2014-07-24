@@ -103,7 +103,7 @@ struct file *winfs_open(const char *pathname, int flags, int mode)
 		creationDisposition = TRUNCATE_EXISTING;
 	else
 		creationDisposition = OPEN_EXISTING;
-	handle = CreateFileA(pathname, desiredAccess, shareMode, NULL, creationDisposition, FILE_ATTRIBUTE_NORMAL, NULL);
+	handle = CreateFileA(pathname, desiredAccess, shareMode, NULL, creationDisposition, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_BACKUP_SEMANTICS, NULL);
 	if (handle == INVALID_HANDLE_VALUE)
 	{
 		log_debug("CreateFileA() failed.");
@@ -113,6 +113,7 @@ struct file *winfs_open(const char *pathname, int flags, int mode)
 	file->base_file.op_vtable = &winfs_ops;
 	file->base_file.offset = 0;
 	file->base_file.ref = 1;
+	file->handle = handle;
 	return file;
 }
 

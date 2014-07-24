@@ -59,24 +59,25 @@ struct stat {
 
 struct stat64 {
 	unsigned long long st_dev;
-	unsigned long __pad0;
-	unsigned long __pad1;
+	unsigned long long st_ino;
 	unsigned int st_mode;
 	unsigned int st_nlink;
-	unsigned long st_uid;
-	unsigned long st_gid;
+	unsigned int st_uid;
+	unsigned int st_gid;
 	unsigned long long st_rdev;
-	unsigned long __pad2;
+	unsigned long long __pad1;
 	long long st_size;
-	unsigned long st_blksize;
-	unsigned long long st_blocks;
-	unsigned long st_atime;
+	int st_blksize;
+	int __pad2;
+	long long st_blocks;
+	int st_atime;
 	unsigned int st_atime_nsec;
-	unsigned long st_mtime;
+	int st_mtime;
 	unsigned int st_mtime_nsec;
-	unsigned long st_ctime;
+	int st_ctime;
 	unsigned int st_ctime_nsec;
-	unsigned long long st_ino;
+	unsigned int __unused4;
+	unsigned int __unused5;
 };
 
 #define major(dev)		((unsigned int) ((dev) >> 8))
