@@ -112,11 +112,8 @@ static int winfs_getdents(struct file *f, struct linux_dirent64 *dirent, int cou
 			 ULONG len = info->FileNameLength / 2;
 			 p->d_reclen = (sizeof(struct linux_dirent64) + len + 1 + 3) & ~3;
 			 for (ULONG i = 0; i < len; i++)
-				 if ((p->d_name[i] = info->FileName[i]) == 0)
-				 {
-					 len = i;
-					 break;
-				 }
+				 p->d_name[i] = info->FileName[i];
+			 p->d_name[len] = 0;
 			 size += p->d_reclen;
 		} while (info->NextEntryOffset);
 	}
