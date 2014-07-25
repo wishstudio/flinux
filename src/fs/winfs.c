@@ -68,7 +68,7 @@ static int winfs_stat(struct file *f, struct stat64 *buf)
 	BY_HANDLE_FILE_INFORMATION info;
 	if (!GetFileInformationByHandle(winfile->handle, &info))
 	{
-		log_debug("GetFileInformationByHandle() failed.");
+		log_debug("GetFileInformationByHandle() failed.\n");
 		return -1;
 	}
 	buf->st_dev = mkdev(8, 0); // (8, 0): /dev/sda
@@ -156,7 +156,9 @@ struct file *winfs_open(const char *pathname, int flags, int mode)
 	HANDLE handle;
 	struct winfs_file *file;
 
-	if (flags & O_RDWR)
+	if (flags & __O_STATONLY)
+		desiredAccess = 0;
+	else if (flags & O_RDWR)
 		desiredAccess = GENERIC_READ | GENERIC_WRITE;
 	else if (flags & O_WRONLY)
 		desiredAccess = GENERIC_WRITE;
@@ -180,7 +182,7 @@ struct file *winfs_open(const char *pathname, int flags, int mode)
 	handle = CreateFileA(pathname, desiredAccess, shareMode, NULL, creationDisposition, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_BACKUP_SEMANTICS, NULL);
 	if (handle == INVALID_HANDLE_VALUE)
 	{
-		log_debug("CreateFileA() failed.");
+		log_debug("CreateFileA() failed.\n");
 		return NULL;
 	}
 	file = (struct winfs_file *)malloc(sizeof(struct winfs_file));

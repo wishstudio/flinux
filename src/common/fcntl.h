@@ -5,6 +5,7 @@
 #define O_RDONLY        00000000
 #define O_WRONLY        00000001
 #define O_RDWR          00000002
+#define __O_STATONLY	00000004	/* Internal mode */
 #define O_CREAT         00000100
 #define O_EXCL          00000200
 #define O_NOCTTY        00000400
@@ -21,8 +22,8 @@
 #define O_CLOEXEC       02000000
 #define __O_SYNC        04000000
 #define O_SYNC			(__O_SYNC | O_DSYNC)
-#define O_PATH          10000000
-#define __O_TMPFILE     20000000
+#define O_PATH          010000000
+#define __O_TMPFILE     020000000
 #define O_TMPFILE		(__O_TMPFILE | O_DIRECTORY)
 #define O_TMPFILE_MASK	(__O_TMPFILE | O_DIRECTORY | O_CREAT)
 #define O_NDELAY        O_NONBLOCK
