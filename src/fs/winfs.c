@@ -35,13 +35,31 @@ static uint64_t filetime_to_unix_sec(FILETIME *filetime)
 	return nsec / NANOSECONDS_PER_SECOND;
 }
 
-int winfs_close(struct file *f)
+static int winfs_close(struct file *f)
 {
 	struct winfs_file *file = (struct winfs_file *)f;
 	if (CloseHandle(file->handle))
 		return 0;
 	else
 		return -1;
+}
+
+static size_t winfs_read(struct file *f, char *buf, size_t count)
+{
+	struct winfs_file *winfile = (struct winfs_file *) f;
+	size_t num_read;
+	if (!ReadFile(winfile->handle, buf, count, &num_read, NULL))
+		return -1;
+	return num_read;
+}
+
+static size_t winfs_write(struct file *f, const char *buf, size_t count)
+{
+	struct winfs_file *winfile = (struct winfs_file *) f;
+	size_t num_written;
+	if (!WriteFile(winfile->handle, buf, count, &num_written, NULL))
+		return -1;
+	return num_written;
 }
 
 static int winfs_stat(struct file *f, struct stat64 *buf)
@@ -124,6 +142,8 @@ static int winfs_getdents(struct file *f, struct linux_dirent64 *dirent, int cou
 static struct file_ops winfs_ops = 
 {
 	.fn_close = winfs_close,
+	.fn_read = winfs_read,
+	.fn_write = winfs_write,
 	.fn_stat = winfs_stat,
 	.fn_getdents = winfs_getdents,
 };
