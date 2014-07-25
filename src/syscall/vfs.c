@@ -136,6 +136,7 @@ int sys_close(int fd)
 	if (!f)
 		return -1;
 	f->op_vtable->fn_close(f);
+	return 0;
 }
 
 int sys_dup2(int fd, int newfd)
