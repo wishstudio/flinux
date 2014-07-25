@@ -35,6 +35,15 @@ static uint64_t filetime_to_unix_sec(FILETIME *filetime)
 	return nsec / NANOSECONDS_PER_SECOND;
 }
 
+int winfs_close(struct file *f)
+{
+	struct winfs_file *file = (struct winfs_file *)f;
+	if (CloseHandle(file->handle))
+		return 0;
+	else
+		return -1;
+}
+
 static int winfs_stat(struct file *f, struct stat64 *buf)
 {
 	struct winfs_file *winfile = (struct winfs_file *) f;
@@ -117,6 +126,7 @@ static int winfs_getdents(struct file *f, struct linux_dirent64 *dirent, int cou
 
 static struct file_ops winfs_ops = 
 {
+	.fn_close = winfs_close,
 	.fn_stat = winfs_stat,
 	.fn_getdents = winfs_getdents,
 };

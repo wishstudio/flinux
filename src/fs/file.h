@@ -7,6 +7,7 @@
 
 struct file_ops
 {
+	int (*fn_close)(struct file *f);
 	size_t (*fn_read)(struct file *f, char *buf, size_t count);
 	size_t (*fn_write)(struct file *f, const char *buf, size_t count);
 	int (*fn_stat)(struct file *f, struct stat64 *buf);

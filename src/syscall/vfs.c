@@ -129,6 +129,15 @@ int sys_open(const char *pathname, int flags, int mode)
 	return fd;
 }
 
+int sys_close(int fd)
+{
+	log_debug("close(%d)\n", fd);
+	struct file *f = vfs_fds[fd];
+	if (!f)
+		return -1;
+	f->op_vtable->fn_close(f);
+}
+
 int sys_dup2(int fd, int newfd)
 {
 	log_debug("dup2(%d, %d)\n", fd, newfd);
