@@ -217,8 +217,12 @@ int sys_stat64(const char *pathname, struct stat64 *buf)
 int sys_lstat64(const char *pathname, struct stat64 *buf)
 {
 	log_debug("lstat64(\"%s\", %x)\n", pathname, buf);
-	/* TODO */
-	return -1;
+	int fd = sys_open(pathname, O_RDONLY | O_NOFOLLOW, 0);
+	if (fd < 0)
+		return -1;
+	int ret = sys_fstat64(fd, buf);
+	/* TODO: Call sys_close() */
+	return ret;
 }
 
 int sys_fstat64(int fd, struct stat64 *buf)
