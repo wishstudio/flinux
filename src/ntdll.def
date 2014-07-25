@@ -1,0 +1,4 @@
+LIBRARY ntdll
+EXPORTS
+	NtQueryDirectoryFile@44
+	

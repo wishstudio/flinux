@@ -3,12 +3,14 @@
 
 #include <common/types.h>
 #include <common/stat.h>
+#include <common/dirent.h>
 
 struct file_ops
 {
 	size_t (*fn_read)(struct file *f, char *buf, size_t count);
 	size_t (*fn_write)(struct file *f, const char *buf, size_t count);
 	int (*fn_stat)(struct file *f, struct stat64 *buf);
+	int (*fn_getdents)(struct file *f, struct linux_dirent64 *dirent, int count);
 	int (*fn_ioctl)(struct file *f, unsigned int cmd, unsigned long arg);
 };
 

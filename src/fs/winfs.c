@@ -5,6 +5,7 @@
 
 #include <stdlib.h>
 #include <Windows.h>
+#include <ntdll.h>
 
 struct winfs_file
 {
@@ -69,9 +70,55 @@ static int winfs_stat(struct file *f, struct stat64 *buf)
 	return 0;
 }
 
+static int winfs_getdents(struct file *f, struct linux_dirent64 *dirent, int count)
+{
+	NTSTATUS status;
+	struct winfs_file *winfile = (struct winfs_file *) f;
+	IO_STATUS_BLOCK status_block;
+	#define BUFFER_SIZE	32768
+	char buffer[BUFFER_SIZE];
+	int size = 0;
+
+	for (;;)
+	{
+		int buffer_size = count / 3 * 2; /* In worst case, a UTF-16 character (2 bytes) requires 3 bytes to store */
+		if (buffer_size >= BUFFER_SIZE)
+			buffer_size = BUFFER_SIZE;
+		status = NtQueryDirectoryFile(winfile->handle, NULL, NULL, NULL, &status_block, buffer, buffer_size, FileIdFullDirectoryInformation, FALSE, NULL, FALSE);
+		if (status != STATUS_SUCCESS)
+			break;
+		if (status_block.Information == 0)
+			break;
+		int offset = 0;
+		FILE_ID_FULL_DIR_INFORMATION *info;
+		do
+		{
+			 info = (FILE_ID_FULL_DIR_INFORMATION *) &buffer[offset];
+			 info->FileId.QuadPart;
+			 offset += info->NextEntryOffset;
+			 struct linux_dirent64 *p = (struct linux_dirent64 *)((char *) dirent + size);
+			 p->d_ino = info->FileId.QuadPart;
+			 p->d_off = 0; /* TODO */
+			 p->d_type = (info->FileAttributes & FILE_ATTRIBUTE_DIRECTORY) ? DT_DIR : DT_REG;
+			 ULONG len = info->FileNameLength / 2;
+			 p->d_reclen = (sizeof(struct linux_dirent64) + len + 1 + 3) & ~3;
+			 for (ULONG i = 0; i < len; i++)
+				 if ((p->d_name[i] = info->FileName[i]) == 0)
+				 {
+					 len = i;
+					 break;
+				 }
+			 size += p->d_reclen;
+		} while (info->NextEntryOffset);
+	}
+	return size;
+	#undef BUFFER_SIZE
+}
+
 static struct file_ops winfs_ops = 
 {
 	.fn_stat = winfs_stat,
+	.fn_getdents = winfs_getdents,
 };
 
 struct file *winfs_open(const char *pathname, int flags, int mode)

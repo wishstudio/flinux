@@ -82,6 +82,10 @@
     <ClInclude Include="src\fs\winfs.h">
       <Filter>fs</Filter>
     </ClInclude>
+    <ClInclude Include="src\common\dirent.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ntdll.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
@@ -113,5 +117,8 @@
     <ClCompile Include="src\fs\winfs.c">
       <Filter>fs</Filter>
     </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="src\ntdll.def" />
   </ItemGroup>
 </Project>

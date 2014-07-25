@@ -144,6 +144,16 @@ int sys_dup2(int fd, int newfd)
 	return newfd;
 }
 
+int sys_getdents64(int fd, struct linux_dirent64 *dirent, unsigned int count)
+{
+	log_debug("getdents64(%d, %x, %d)\n", fd, dirent, count);
+	struct file *f = vfs_fds[fd];
+	if (f && f->op_vtable->fn_getdents)
+		return f->op_vtable->fn_getdents(f, dirent, count);
+	else
+		return -1;
+}
+
 void stat_from_stat64(struct stat *stat, struct stat64 *stat64)
 {
 	stat->st_dev = stat64->st_dev;

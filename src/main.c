@@ -22,7 +22,7 @@ void run_elf(const char *filename, int argc, char *argv[])
 		printf("Not an executable!");
 		goto fail;
 	}
-
+	
 	if (eh.e_machine != EM_386)
 	{
 		printf("Not an i386 executable.");

@@ -14,6 +14,7 @@
     <ClInclude Include="src\binfmt\elf-em.h" />
     <ClInclude Include="src\binfmt\elf.h" />
     <ClInclude Include="src\common\auxvec.h" />
+    <ClInclude Include="src\common\dirent.h" />
     <ClInclude Include="src\common\fcntl.h" />
     <ClInclude Include="src\common\ldt.h" />
     <ClInclude Include="src\common\stat.h" />
@@ -25,6 +26,7 @@
     <ClInclude Include="src\fs\tty.h" />
     <ClInclude Include="src\fs\winfs.h" />
     <ClInclude Include="src\log.h" />
+    <ClInclude Include="src\ntdll.h" />
     <ClInclude Include="src\syscall\err.h" />
     <ClInclude Include="src\syscall\mm.h" />
     <ClInclude Include="src\syscall\process.h" />
@@ -47,6 +49,16 @@
     <ClCompile Include="src\syscall\syscall.c" />
     <ClCompile Include="src\syscall\tls.c" />
     <ClCompile Include="src\syscall\vfs.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="src\ntdll.def">
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">dlltool -k --def %(FullPath) -l $(OutDir)%(Filename).lib</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Creating import library</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(OutDir)%(Filename).lib</Outputs>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">dlltool -k --def %(FullPath) -l $(OutDir)%(Filename).lib</Command>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Creating import library</Message>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(OutDir)%(Filename).lib</Outputs>
+    </CustomBuild>
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{A2C5DF3A-D377-47F0-AC4C-0B1011585778}</ProjectGuid>
@@ -104,6 +116,8 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
+      <ImageHasSafeExceptionHandlers>
+      </ImageHasSafeExceptionHandlers>
     </Link>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
