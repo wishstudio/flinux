@@ -11,6 +11,12 @@ pid_t sys_getpid()
 	return GetCurrentProcessId();
 }
 
+pid_t sys_getppid()
+{
+	log_debug("getppid(): %d\n", 0);
+	return 0;
+}
+
 uid_t sys_getuid()
 {
 	log_debug("getuid(): %d\n", 0);

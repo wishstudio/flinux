@@ -5,6 +5,7 @@
 #include <common/utsname.h>
 
 pid_t sys_getpid();
+pid_t sys_getppid();
 
 uid_t sys_getuid();
 gid_t sys_getgid();
