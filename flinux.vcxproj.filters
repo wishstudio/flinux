@@ -34,9 +34,6 @@
     <ClInclude Include="src\syscall\syscall_table.h">
       <Filter>syscall</Filter>
     </ClInclude>
-    <ClInclude Include="src\syscall\signal.h">
-      <Filter>syscall</Filter>
-    </ClInclude>
     <ClInclude Include="src\syscall\process.h">
       <Filter>syscall</Filter>
     </ClInclude>
@@ -86,6 +83,12 @@
       <Filter>common</Filter>
     </ClInclude>
     <ClInclude Include="src\ntdll.h" />
+    <ClInclude Include="src\common\signal.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="src\syscall\sig.h">
+      <Filter>syscall</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
@@ -97,9 +100,6 @@
       <Filter>syscall</Filter>
     </ClCompile>
     <ClCompile Include="src\syscall\err.c">
-      <Filter>syscall</Filter>
-    </ClCompile>
-    <ClCompile Include="src\syscall\signal.c">
       <Filter>syscall</Filter>
     </ClCompile>
     <ClCompile Include="src\syscall\process.c">
@@ -116,6 +116,9 @@
     </ClCompile>
     <ClCompile Include="src\fs\winfs.c">
       <Filter>fs</Filter>
+    </ClCompile>
+    <ClCompile Include="src\syscall\sig.c">
+      <Filter>syscall</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

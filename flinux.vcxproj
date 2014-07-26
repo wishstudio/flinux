@@ -17,6 +17,7 @@
     <ClInclude Include="src\common\dirent.h" />
     <ClInclude Include="src\common\fcntl.h" />
     <ClInclude Include="src\common\ldt.h" />
+    <ClInclude Include="src\common\signal.h" />
     <ClInclude Include="src\common\stat.h" />
     <ClInclude Include="src\common\types.h" />
     <ClInclude Include="src\common\errno.h" />
@@ -30,7 +31,7 @@
     <ClInclude Include="src\syscall\err.h" />
     <ClInclude Include="src\syscall\mm.h" />
     <ClInclude Include="src\syscall\process.h" />
-    <ClInclude Include="src\syscall\signal.h" />
+    <ClInclude Include="src\syscall\sig.h" />
     <ClInclude Include="src\syscall\syscall.h" />
     <ClInclude Include="src\syscall\syscall_table.h" />
     <ClInclude Include="src\syscall\tls.h" />
@@ -45,7 +46,7 @@
     <ClCompile Include="src\syscall\err.c" />
     <ClCompile Include="src\syscall\mm.c" />
     <ClCompile Include="src\syscall\process.c" />
-    <ClCompile Include="src\syscall\signal.c" />
+    <ClCompile Include="src\syscall\sig.c" />
     <ClCompile Include="src\syscall\syscall.c" />
     <ClCompile Include="src\syscall\tls.c" />
     <ClCompile Include="src\syscall\vfs.c" />
