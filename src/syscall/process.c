@@ -17,6 +17,18 @@ pid_t sys_getppid()
 	return 0;
 }
 
+gid_t sys_getpgrp()
+{
+	log_debug("getpgrp(): %d\n", 0);
+	return 0;
+}
+
+gid_t sys_getpgid(pid_t pid)
+{
+	log_debug("getpgid(%d): %d\n", pid, 0);
+	return 0;
+}
+
 uid_t sys_getuid()
 {
 	log_debug("getuid(): %d\n", 0);

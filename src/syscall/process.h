@@ -6,6 +6,8 @@
 
 pid_t sys_getpid();
 pid_t sys_getppid();
+gid_t sys_getpgrp();
+gid_t sys_getpgid(pid_t pid);
 
 uid_t sys_getuid();
 gid_t sys_getgid();
