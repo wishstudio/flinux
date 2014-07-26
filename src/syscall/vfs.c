@@ -272,3 +272,9 @@ char *sys_getcwd(char *buf, size_t size)
 	strcpy(buf, cwd);
 	return buf;
 }
+
+int sys_fcntl64(int fd, int cmd, ...)
+{
+	log_debug("fcntl64(%d, %d)\n", fd, cmd);
+	return 0;
+}

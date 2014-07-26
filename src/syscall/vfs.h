@@ -29,4 +29,6 @@ int sys_fstat64(int fd, struct stat64 *buf);
 int sys_ioctl(int fd, unsigned int cmd, unsigned long arg);
 char *sys_getcwd(char *buf, size_t size);
 
+int sys_fcntl64(int fd, int cmd, ...);
+
 #endif
