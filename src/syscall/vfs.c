@@ -8,9 +8,12 @@
 #include <Windows.h>
 
 #define MAX_FD_COUNT	1024
+#define PATH_MAX		4096
 
 static struct file *vfs_fds[MAX_FD_COUNT];
 static struct file_system *vfs_first;
+static char cwd[PATH_MAX];
+static size_t cwdlen;
 
 static void vfs_add(struct file_system *vfs)
 {
@@ -24,6 +27,12 @@ void vfs_init()
 	vfs_fds[1] = tty_alloc(GetStdHandle(STD_OUTPUT_HANDLE));
 	vfs_fds[2] = tty_alloc(GetStdHandle(STD_ERROR_HANDLE));
 	vfs_add(winfs_alloc());
+	/* Initialize CWD */
+	//static wchar_t wcwd[PATH_MAX];
+	//int len = GetCurrentDirectoryW(PATH_MAX, wcwd);
+	cwd[0] = '/';
+	cwd[1] = 0;
+	cwdlen = 2;
 }
 
 void vfs_shutdown()
@@ -253,4 +262,13 @@ int sys_ioctl(int fd, unsigned int cmd, unsigned long arg)
 		return f->op_vtable->fn_ioctl(f, cmd, arg);
 	else
 		return -1;
+}
+
+char *sys_getcwd(char *buf, size_t size)
+{
+	log_debug("getcwd(%x, %d): %s\n", buf, size, cwd);
+	if (size < cwdlen)
+		return NULL;
+	strcpy(buf, cwd);
+	return buf;
 }

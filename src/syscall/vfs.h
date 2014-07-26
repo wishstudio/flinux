@@ -27,5 +27,6 @@ int sys_lstat64(const char *pathname, struct stat64 *buf);
 int sys_fstat64(int fd, struct stat64 *buf);
 
 int sys_ioctl(int fd, unsigned int cmd, unsigned long arg);
+char *sys_getcwd(char *buf, size_t size);
 
 #endif
