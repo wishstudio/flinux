@@ -4,6 +4,7 @@
 
 #include <stdint.h>
 #include <Windows.h>
+#include <ntdll.h>
 
 /* Linux mmap() allows mapping into 4kB page boundaries, while Windows only
  * allows 64kB boundaries (called allocation granularity), although both
@@ -65,10 +66,10 @@ struct map_info
 } map_entries[MAX_MMAP_COUNT];
 uint16_t map_free_head;
 
-/* Start block of an VirtualAlloc() allocation region */
-uint16_t block_alloc_start[BLOCK_COUNT];
+/* Section object handle of a block */
+HANDLE block_section_handle[BLOCK_COUNT];
 /* Number of allocated pages inside a allocation region */
-uint32_t block_alloc_pages[BLOCK_COUNT];
+uint8_t block_page_count[BLOCK_COUNT];
 
 /* Mapping info entry for a given page */
 uint16_t page_map_entry[PAGE_COUNT];
@@ -132,88 +133,96 @@ void *do_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offs
 		|| (size_t)addr + length < ADDRESS_SPACE_LOW || (size_t)addr + length >= ADDRESS_SPACE_HIGH
 		|| (size_t)addr + length < (size_t)addr)
 		return NULL;
-	if (flags & MAP_FIXED)
+	if (flags & MAP_SHARED)
+		return NULL;
+	if (!(flags & MAP_ANONYMOUS))
+		return NULL;
+	if (!(flags & MAP_FIXED))
 	{
-		if (!IS_ALIGNED(addr, PAGE_SIZE))
+		size_t alloc_len = ALIGN_TO_BLOCK(length);
+
+		/* TODO: Use VirtualAlloc to find a continuous memory region */
+		if (!(addr = VirtualAlloc(NULL, alloc_len, MEM_RESERVE, prot_linux2win(prot))))
 			return NULL;
-		if (flags & MAP_SHARED)
-			return NULL;
-		if (flags & MAP_ANONYMOUS)
-		{
-			uint32_t start_page = GET_PAGE(addr);
-			uint32_t end_page = GET_PAGE((size_t)addr + length - 1);
-			uint16_t start_block = GET_BLOCK(addr);
-			uint16_t end_block = GET_BLOCK((size_t)addr + length - 1);
-
-			/* Determine VirtualAlloc() range */
-			uint16_t start_alloc_block, end_alloc_block;
-			if (block_alloc_start[start_block] == 0)
-				start_alloc_block = start_block;
-			else
-				start_alloc_block = start_block + 1;
-			if (block_alloc_start[end_block] == 0)
-				end_alloc_block = end_block;
-			else
-				end_alloc_block = end_block - 1;
-
-			/* Test whether all pages are free */
-			for (uint32_t i = start_page; i <= end_page; i++)
-				if (page_map_entry[i])
-					return NULL;
-
-			/* Allocate missing memory blocks */
-			if (start_alloc_block <= end_alloc_block)
-			{
-				if (!VirtualAlloc(GET_BLOCK_ADDRESS(start_alloc_block),
-					(end_alloc_block - start_alloc_block + 1) * BLOCK_SIZE,
-					MEM_COMMIT | MEM_RESERVE,
-					prot_linux2win(prot)))
-					return NULL;
-				for (uint16_t i = start_alloc_block; i <= end_alloc_block; i++)
-					block_alloc_start[i] = start_alloc_block;
-			}
-
-			/* Set up all kinds of flags */
-			uint16_t entry = new_map_entry();
-			map_entries[entry].start_page = start_page;
-			map_entries[entry].end_page = end_page;
-			for (uint32_t i = start_page; i <= end_page; i++)
-			{
-				page_map_entry[i] = entry;
-				block_alloc_pages[block_alloc_start[GET_BLOCK_OF_PAGE(i)]]++; /* TODO: Optimization */
-			}
-			return addr;
-		}
+		VirtualFree(addr, 0, MEM_RELEASE);
 	}
-	else /* not MAP_FIXED */
+	if (!IS_ALIGNED(addr, PAGE_SIZE))
+		return NULL;
+	if (flags & MAP_ANONYMOUS)
 	{
-		if (flags & MAP_SHARED)
-			return NULL;
-		if (flags & MAP_ANONYMOUS)
+		uint32_t start_page = GET_PAGE(addr);
+		uint32_t end_page = GET_PAGE((size_t)addr + length - 1);
+		uint16_t start_block = GET_BLOCK(addr);
+		uint16_t end_block = GET_BLOCK((size_t)addr + length - 1);
+
+		/* Test whether all pages are free */
+		for (uint32_t i = start_page; i <= end_page; i++)
+			if (page_map_entry[i])
+				return NULL;
+
+		/* Allocate and map missing section objects */
+		for (uint16_t i = start_block; i <= end_block; i++)
 		{
-			size_t alloc_len = ALIGN_TO_BLOCK(length);
-			if (!(addr = VirtualAlloc(NULL, alloc_len, MEM_COMMIT | MEM_RESERVE, prot_linux2win(prot))))
+			if (block_page_count[i] == 0)
 			{
+				OBJECT_ATTRIBUTES attr;
+				attr.Length = sizeof(OBJECT_ATTRIBUTES);
+				attr.RootDirectory = NULL;
+				attr.ObjectName = NULL;
+				attr.Attributes = OBJ_INHERIT;
+				attr.SecurityDescriptor = NULL;
+				attr.SecurityQualityOfService = NULL;
+				LARGE_INTEGER max_size;
+				max_size.QuadPart = BLOCK_SIZE;
+				NTSTATUS status;
+				HANDLE handle;
+
+				/* Allocate section */
+				status = NtCreateSection(&handle, SECTION_MAP_READ | SECTION_MAP_WRITE | SECTION_MAP_EXECUTE, &attr, &max_size, PAGE_EXECUTE_READWRITE, SEC_COMMIT, NULL);
+				if (status != STATUS_SUCCESS)
+				{
+					log_debug("NtCreateSection() failed. Status: %x\n", status);
+					goto ROLLBACK;
+				}
+
+				/* Map section */
+				PVOID base_addr = GET_BLOCK_ADDRESS(i);
+				SIZE_T view_size = BLOCK_SIZE;
+				status = NtMapViewOfSection(handle, NtCurrentProcess(), &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewShare, 0, prot_linux2win(prot));
+				if (status != STATUS_SUCCESS)
+				{
+					log_debug("NtMapViewOfSection() failed. Status: %x\n", status);
+					NtClose(handle);
+					goto ROLLBACK;
+				}
+				block_section_handle[i] = handle;
+				continue;
+
+			ROLLBACK:
+				/* Roll back */
+				for (uint16_t j = start_block; j < i; j++)
+				{
+					if (block_page_count[j] == 0)
+					{
+						NtUnmapViewOfSection(NtCurrentProcess(), GET_BLOCK_ADDRESS(j));
+						NtClose(block_section_handle[j]);
+						block_section_handle[j] = NULL;
+					}
+				}
 				return NULL;
 			}
-			uint32_t start_block = GET_BLOCK(addr);
-			uint32_t end_block = GET_BLOCK((size_t)addr + length - 1);
-			uint32_t start_page = GET_PAGE(addr);
-			uint32_t end_page = GET_PAGE((size_t)addr + length - 1);
-			for (uint16_t i = start_block; i <= end_block; i++)
-				block_alloc_start[i] = start_block;
-
-			/* Add map entry */
-			uint16_t entry = new_map_entry();
-			map_entries[entry].start_page = start_page;
-			map_entries[entry].end_page = end_page;
-			for (uint32_t i = start_page; i <= end_page; i++)
-			{
-				page_map_entry[i] = entry;
-				block_alloc_pages[block_alloc_start[GET_BLOCK_OF_PAGE(i)]]++; /* TODO: Optimization */
-			}
-			return addr;
 		}
+
+		/* Set up all kinds of flags */
+		uint16_t entry = new_map_entry();
+		map_entries[entry].start_page = start_page;
+		map_entries[entry].end_page = end_page;
+		for (uint32_t i = start_page; i <= end_page; i++)
+		{
+			page_map_entry[i] = entry;
+			block_page_count[GET_BLOCK_OF_PAGE(i)]++; /* TODO: Optimization */
+		}
+		return addr;
 	}
 	return NULL;
 }
@@ -282,22 +291,19 @@ int sys_munmap(void *addr, size_t length)
 	for (uint32_t i = start_page; i <= end_page; i++)
 	{
 		page_map_entry[i] = 0;
-		block_alloc_pages[block_alloc_start[GET_BLOCK_OF_PAGE(i)]]--; /* TODO: Optimization */
+		block_page_count[GET_BLOCK_OF_PAGE(i)]--; /* TODO: Optimization */
 	}
 	/* Free unused memory allocations */
 	uint16_t start_block = GET_BLOCK_OF_PAGE(start_page);
 	uint16_t end_block = GET_BLOCK_OF_PAGE(end_page);
-	for (uint16_t i = end_block; i >= start_block;)
+	for (uint16_t i = start_block; i <= end_block; i++)
 	{
-		uint16_t alloc_block = block_alloc_start[i];
-		if (block_alloc_pages[alloc_block] == 0)
+		if (block_page_count[i] == 0)
 		{
-			VirtualFree(GET_BLOCK_ADDRESS(alloc_block), 0, MEM_RELEASE);
-			for (; i >= alloc_block; i--)
-				block_alloc_start[i] = 0;
+			NtUnmapViewOfSection(NtCurrentProcess(), GET_BLOCK_ADDRESS(i));
+			NtClose(block_section_handle[i]);
+			block_section_handle[i] = NULL;
 		}
-		else
-			i = alloc_block - 1;
 	}
 	return 0;
 }
