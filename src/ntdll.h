@@ -56,7 +56,45 @@ typedef struct _IO_STATUS_BLOCK {
 	ULONG_PTR Information;
 } IO_STATUS_BLOCK, *PIO_STATUS_BLOCK;
 
-typedef VOID (NTAPI *PIO_APC_ROUTINE)(PVOID ApcContext, PIO_STATUS_BLOCK IoStatusBlock, ULONG Reserved);
+typedef VOID(NTAPI *PIO_APC_ROUTINE)(PVOID ApcContext, PIO_STATUS_BLOCK IoStatusBlock, ULONG Reserved);
+
+typedef struct _OBJECT_ATTRIBUTES {
+	ULONG           Length;
+	HANDLE          RootDirectory;
+	PUNICODE_STRING ObjectName;
+	ULONG           Attributes;
+	PVOID           SecurityDescriptor;
+	PVOID           SecurityQualityOfService;
+} OBJECT_ATTRIBUTES, *POBJECT_ATTRIBUTES;
+
+/* Object management */
+#define NtCurrentProcess()	((HANDLE)(LONG_PTR)-1)
+#define NtCurrentThread()	((HANDLE)(LONG_PTR)-2)
+
+typedef enum _OBJECT_INFORMATION_CLASS {
+	ObjectBasicInformation = 0,
+	ObjectTypeInformation = 2
+} OBJECT_INFORMATION_CLASS;
+
+typedef struct _OBJECT_BASIC_INFORMATION {
+	ULONG       Attributes;
+	ACCESS_MASK GrantedAccess;
+	ULONG       HandleCount;
+	ULONG       PointerCount;
+	ULONG       Reserved[10];
+} OBJECT_BASIC_INFORMATION, *POBJECT_BASIC_INFORMATION;
+
+NTSYSAPI NTSTATUS NTAPI NtQueryObject(
+	_In_opt_	HANDLE Handle,
+	_In_		OBJECT_INFORMATION_CLASS ObjectInformationClass,
+	_Out_opt_	PVOID ObjectInformation,
+	_In_		ULONG ObjectInformationLength,
+	_Out_opt_	PULONG ReturnLength
+	);
+
+NTSYSAPI NTSTATUS NTAPI NtClose(
+	_In_		HANDLE ObjectHandle
+	);
 
 /* File information class */
 typedef enum _FILE_INFORMATION_CLASS {
@@ -135,6 +173,58 @@ typedef struct _FILE_ID_FULL_DIR_INFORMATION {
 	WCHAR         FileName[1];
 } FILE_ID_FULL_DIR_INFORMATION, *PFILE_ID_FULL_DIR_INFORMATION;
 
-NTSTATUS NTAPI NtQueryDirectoryFile(HANDLE FileHandle, HANDLE Event, PIO_APC_ROUTINE ApcRoutine, PVOID AppContext, PIO_STATUS_BLOCK IoStatusBlock, PVOID FileInformation, ULONG Length, FILE_INFORMATION_CLASS FileInformationClass, BOOLEAN ReturnSingleEntry, PUNICODE_STRING FileName, BOOLEAN RestartScan);
+NTSYSAPI NTSTATUS NTAPI NtQueryDirectoryFile(
+	_In_		HANDLE FileHandle,
+	_In_opt_	HANDLE Event,
+	_In_opt_	PIO_APC_ROUTINE ApcRoutine,
+	_In_opt_	PVOID AppContext,
+	_Out_		PIO_STATUS_BLOCK IoStatusBlock,
+	_Out_		PVOID FileInformation,
+	_In_		ULONG Length,
+	_In_		FILE_INFORMATION_CLASS FileInformationClass,
+	_In_		BOOLEAN ReturnSingleEntry,
+	_In_opt_	PUNICODE_STRING FileName,
+	_In_		BOOLEAN RestartScan
+	);
+
+/* Section object */
+typedef enum _SECTION_INHERIT {
+	ViewShare = 1,
+	ViewUnmap = 2
+} SECTION_INHERIT, *PSECTION_INHERIT;
+
+NTSYSAPI NTSTATUS NTAPI NtCreateSection(
+	_Out_		PHANDLE SectionHandle,
+	_In_		ACCESS_MASK DesiredAccess,
+	_In_opt_	POBJECT_ATTRIBUTES ObjectAttributes,
+	_In_opt_	PLARGE_INTEGER MaximumSize,
+	_In_		ULONG SectionPageProtection,
+	_In_		ULONG AllocationAttributes,
+	_In_opt_	HANDLE FileHandle
+	);
+
+NTSYSAPI NTSTATUS NTAPI NtOpenSection(
+	_Out_		PHANDLE SectionHandle,
+	_In_		ACCESS_MASK DesiredAccess,
+	_In_		POBJECT_ATTRIBUTES ObjectAttributes
+	);
+
+NTSYSAPI NTSTATUS NTAPI NtMapViewOfSection(
+	_In_		HANDLE SectionHandle,
+	_In_		HANDLE ProcessHandle,
+	_Inout_		PVOID *BaseAddress,
+	_In_		ULONG_PTR ZeroBits,
+	_In_		SIZE_T CommitSize,
+	_Inout_opt_	PLARGE_INTEGER SectionOffset,
+	_Inout_		PSIZE_T ViewSize,
+	_In_		SECTION_INHERIT InheritDisposition,
+	_In_		ULONG AllocationType,
+	_In_		ULONG Win32Protect
+	);
+
+NTSYSAPI NTSTATUS NTAPI NtUnmapViewOfSection(
+	_In_		HANDLE ProcessHandle,
+	_In_opt_	PVOID BaseAddress
+	);
 
 #endif

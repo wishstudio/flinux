@@ -1,5 +1,5 @@
 SYSCALL(sys_exit)
-SYSCALL(sys_unimplemented)
+SYSCALL(sys_fork)
 SYSCALL(sys_read)
 SYSCALL(sys_write)
 SYSCALL(sys_open)

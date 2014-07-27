@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <malloc.h>
 #include <Windows.h>
+#include <ntdll.h>
 
 void run_elf(const char *filename, int argc, char *argv[])
 {

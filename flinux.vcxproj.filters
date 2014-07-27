@@ -89,6 +89,9 @@
     <ClInclude Include="src\syscall\sig.h">
       <Filter>syscall</Filter>
     </ClInclude>
+    <ClInclude Include="src\syscall\fork.h">
+      <Filter>syscall</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
@@ -118,6 +121,9 @@
       <Filter>fs</Filter>
     </ClCompile>
     <ClCompile Include="src\syscall\sig.c">
+      <Filter>syscall</Filter>
+    </ClCompile>
+    <ClCompile Include="src\syscall\fork.c">
       <Filter>syscall</Filter>
     </ClCompile>
   </ItemGroup>
