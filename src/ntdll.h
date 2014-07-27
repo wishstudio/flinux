@@ -58,6 +58,18 @@ typedef struct _IO_STATUS_BLOCK {
 
 typedef VOID(NTAPI *PIO_APC_ROUTINE)(PVOID ApcContext, PIO_STATUS_BLOCK IoStatusBlock, ULONG Reserved);
 
+#define NtCurrentProcess()	((HANDLE)(LONG_PTR)-1)
+#define NtCurrentThread()	((HANDLE)(LONG_PTR)-2)
+
+/* Object management */
+#define OBJ_INHERIT             0x00000002L
+#define OBJ_PERMANENT           0x00000010L
+#define OBJ_EXCLUSIVE           0x00000020L
+#define OBJ_CASE_INSENSITIVE    0x00000040L
+#define OBJ_OPENIF              0x00000080L
+#define OBJ_OPENLINK            0x00000100L
+#define OBJ_VALID_ATTRIBUTES    0x000001F2L
+
 typedef struct _OBJECT_ATTRIBUTES {
 	ULONG           Length;
 	HANDLE          RootDirectory;
@@ -66,10 +78,6 @@ typedef struct _OBJECT_ATTRIBUTES {
 	PVOID           SecurityDescriptor;
 	PVOID           SecurityQualityOfService;
 } OBJECT_ATTRIBUTES, *POBJECT_ATTRIBUTES;
-
-/* Object management */
-#define NtCurrentProcess()	((HANDLE)(LONG_PTR)-1)
-#define NtCurrentThread()	((HANDLE)(LONG_PTR)-2)
 
 typedef enum _OBJECT_INFORMATION_CLASS {
 	ObjectBasicInformation = 0,
