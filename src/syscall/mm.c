@@ -23,6 +23,43 @@
  *     MAP_FIXED with MAP_SHARED or MAP_PRIVATE on non 64kB aligned address.
  */
 
+/* Overall memory layout
+ *
+ * FFFFFFFF ------------------------------
+ * ...        Win32 kernel address space
+ * 80000000 ------------------------------
+ * ...                win32 dlls
+ * 75000000 ------------------------------
+ * ...
+ * ...          Application code/data
+ * ...
+ * 08000000 ------------------------------ Linux application base
+ * ...        Foreign Linux kernel data
+ * 04000000 ------------------------------
+ * ...            (Application data)
+ * 01400000 ------------------------------
+ * ...        Foreign Linux kernel code
+ * 00000000 ------------------------------
+ *
+ *
+ * Foreign Linux kernel data memory layout
+ *
+ * 08000000 ------------------------------
+ *                   kernel heap
+ * 05000000 ------------------------------
+ *              mm_heap_data structure
+ * 04800000 ------------------------------
+ *           mm_data structure(unmappable)
+ * 04000000 ------------------------------
+ */
+
+/* Base address of mm_data structure */
+#define MM_DATA_BASE		0x04000000
+/* Base address of mm_heap structure */
+#define MM_HEAP_BASE		0x04800000
+/* Base address of kernel heap */
+#define KERNEL_HEAP_BASE	0x05000000
+
 /* Hard limits */
 /* Maximum number of mmap()-ed areas */
 #define MAX_MMAP_COUNT 65535
@@ -52,7 +89,6 @@
 #define GET_BLOCK_ADDRESS(block) (void *)((block) * BLOCK_SIZE)
 #define GET_PAGE_ADDRESS(page) (void *)((page) * PAGE_SIZE)
 
-/* Information for all existing mappings */
 struct map_info
 {
 	union
@@ -63,27 +99,35 @@ struct map_info
 		};
 		uint16_t next;
 	};
-} map_entries[MAX_MMAP_COUNT];
-uint16_t map_free_head;
+};
 
-/* Section object handle of a block */
-HANDLE block_section_handle[BLOCK_COUNT];
-/* Number of allocated pages inside a allocation region */
-uint8_t block_page_count[BLOCK_COUNT];
+struct mm_data
+{
+	/* Program break address, brk() will use this */
+	void *brk;
 
-/* Mapping info entry for a given page */
-uint16_t page_map_entry[PAGE_COUNT];
+	/* Information for all existing mappings */
+	uint16_t map_free_head;
+	struct map_info map_entries[MAX_MMAP_COUNT];
 
-/* Program break address, brk() will use this */
-void *mm_brk;
+	/* Section object handle of a block */
+	HANDLE block_section_handle[BLOCK_COUNT];
+	/* Number of allocated pages inside a allocation region */
+	uint8_t block_page_count[BLOCK_COUNT];
+
+	/* Mapping info entry for a given page */
+	uint16_t page_map_entry[PAGE_COUNT];
+};
+static struct mm_data *const mm = MM_DATA_BASE;
 
 void mm_init()
 {
+	VirtualAlloc(MM_DATA_BASE, sizeof(struct mm_data), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 	/* Initialize mapping info freelist */
 	for (uint16_t i = 1; i + 1 < MAX_MMAP_COUNT; i++)
-		map_entries[i].next = i + 1;
-	map_free_head = 1; /* Entry 0 is unused */
-	map_entries[MAX_MMAP_COUNT - 1].next = 0;
+		mm->map_entries[i].next = i + 1;
+	mm->map_free_head = 1; /* Entry 0 is unused */
+	mm->map_entries[MAX_MMAP_COUNT - 1].next = 0;
 }
 
 void mm_shutdown()
@@ -92,15 +136,15 @@ void mm_shutdown()
 
 void mm_update_brk(void *brk)
 {
-	mm_brk = max(mm_brk, brk);
+	mm->brk = max(mm->brk, brk);
 }
 
 static uint16_t new_map_entry()
 {
-	if (map_free_head)
+	if (mm->map_free_head)
 	{
-		uint16_t entry = map_free_head;
-		map_free_head = map_entries[map_free_head].next;
+		uint16_t entry = mm->map_free_head;
+		mm->map_free_head = mm->map_entries[mm->map_free_head].next;
 		return entry;
 	}
 	return 0;
@@ -108,8 +152,8 @@ static uint16_t new_map_entry()
 
 static void free_map_entry(uint16_t entry)
 {
-	map_entries[entry].next = map_free_head;
-	map_free_head = entry;
+	mm->map_entries[entry].next = mm->map_free_head;
+	mm->map_free_head = entry;
 }
 
 static DWORD prot_linux2win(int prot)
@@ -162,13 +206,13 @@ void *do_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offs
 
 		/* Test whether all pages are free */
 		for (uint32_t i = start_page; i <= end_page; i++)
-			if (page_map_entry[i])
+			if (mm->page_map_entry[i])
 				return NULL;
 
 		/* Allocate and map missing section objects */
 		for (uint16_t i = start_block; i <= end_block; i++)
 		{
-			if (block_page_count[i] == 0)
+			if (mm->block_page_count[i] == 0)
 			{
 				OBJECT_ATTRIBUTES attr;
 				attr.Length = sizeof(OBJECT_ATTRIBUTES);
@@ -200,18 +244,18 @@ void *do_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offs
 					NtClose(handle);
 					goto ROLLBACK;
 				}
-				block_section_handle[i] = handle;
+				mm->block_section_handle[i] = handle;
 				continue;
 
 			ROLLBACK:
 				/* Roll back */
 				for (uint16_t j = start_block; j < i; j++)
 				{
-					if (block_page_count[j] == 0)
+					if (mm->block_page_count[j] == 0)
 					{
 						NtUnmapViewOfSection(NtCurrentProcess(), GET_BLOCK_ADDRESS(j));
-						NtClose(block_section_handle[j]);
-						block_section_handle[j] = NULL;
+						NtClose(mm->block_section_handle[j]);
+						mm->block_section_handle[j] = NULL;
 					}
 				}
 				return NULL;
@@ -220,12 +264,12 @@ void *do_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offs
 
 		/* Set up all kinds of flags */
 		uint16_t entry = new_map_entry();
-		map_entries[entry].start_page = start_page;
-		map_entries[entry].end_page = end_page;
+		mm->map_entries[entry].start_page = start_page;
+		mm->map_entries[entry].end_page = end_page;
 		for (uint32_t i = start_page; i <= end_page; i++)
 		{
-			page_map_entry[i] = entry;
-			block_page_count[GET_BLOCK_OF_PAGE(i)]++; /* TODO: Optimization */
+			mm->page_map_entry[i] = entry;
+			mm->block_page_count[GET_BLOCK_OF_PAGE(i)]++; /* TODO: Optimization */
 		}
 		return addr;
 	}
@@ -280,13 +324,13 @@ int sys_munmap(void *addr, size_t length)
 		return -1;
 	}
 
-	uint16_t entry = page_map_entry[GET_PAGE(addr)];
+	uint16_t entry = mm->page_map_entry[GET_PAGE(addr)];
 	if (entry == 0)
 	{
 		return 0;
 	}
-	uint32_t start_page = map_entries[entry].start_page;
-	uint32_t end_page = map_entries[entry].end_page;
+	uint32_t start_page = mm->map_entries[entry].start_page;
+	uint32_t end_page = mm->map_entries[entry].end_page;
 	/* Don't allow partial free */
 	if (GET_PAGE((size_t)addr + length - 1) != end_page)
 	{
@@ -295,19 +339,19 @@ int sys_munmap(void *addr, size_t length)
 	free_map_entry(entry);
 	for (uint32_t i = start_page; i <= end_page; i++)
 	{
-		page_map_entry[i] = 0;
-		block_page_count[GET_BLOCK_OF_PAGE(i)]--; /* TODO: Optimization */
+		mm->page_map_entry[i] = 0;
+		mm->block_page_count[GET_BLOCK_OF_PAGE(i)]--; /* TODO: Optimization */
 	}
 	/* Free unused memory allocations */
 	uint16_t start_block = GET_BLOCK_OF_PAGE(start_page);
 	uint16_t end_block = GET_BLOCK_OF_PAGE(end_page);
 	for (uint16_t i = start_block; i <= end_block; i++)
 	{
-		if (block_page_count[i] == 0)
+		if (mm->block_page_count[i] == 0)
 		{
 			NtUnmapViewOfSection(NtCurrentProcess(), GET_BLOCK_ADDRESS(i));
-			NtClose(block_section_handle[i]);
-			block_section_handle[i] = NULL;
+			NtClose(mm->block_section_handle[i]);
+			mm->block_section_handle[i] = NULL;
 		}
 	}
 	return 0;
@@ -336,15 +380,15 @@ int sys_munlock(const void *addr, size_t len)
 void *sys_brk(void *addr)
 {
 	log_debug("brk(%x)\n", addr);
-	log_debug("Last brk: %x\n", mm_brk);
+	log_debug("Last brk: %x\n", mm->brk);
 	addr = ALIGN_TO_PAGE(addr);
 	/* TODO: Handle brk shrink */
-	if (addr > mm_brk)
+	if (addr > mm->brk)
 	{
-		if (!sys_mmap(mm_brk, (uint32_t)addr - (uint32_t)mm_brk, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, -1, 0))
+		if (!sys_mmap(mm->brk, (uint32_t)addr - (uint32_t)mm->brk, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, -1, 0))
 			return -1;
-		mm_brk = addr;
+		mm->brk = addr;
 	}
-	log_debug("New brk: %x\n", mm_brk);
-	return mm_brk;
+	log_debug("New brk: %x\n", mm->brk);
+	return mm->brk;
 }
