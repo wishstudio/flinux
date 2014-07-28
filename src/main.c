@@ -53,7 +53,7 @@ void run_elf(const char *filename, int argc, char *argv[])
 			if (ph->p_flags & PF_X)
 				prot |= PROT_EXEC;
 			void *mem = sys_mmap((void *) addr, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_FIXED | MAP_ANONYMOUS, -1, 0);
-			mm_brk = max(mm_brk, (uint32_t)addr + size);
+			mm_update_brk((uint32_t)addr + size);
 			SetFilePointer(hFile, ph->p_offset, NULL, FILE_BEGIN);
 			ReadFile(hFile, (void *) ph->p_vaddr, ph->p_filesz, NULL, NULL);
 		}

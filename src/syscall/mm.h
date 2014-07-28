@@ -6,10 +6,9 @@
 
 #define PAGE_SIZE 0x00001000U
 
-extern void *mm_brk;
-
 void mm_init();
 void mm_shutdown();
+void mm_update_brk(void *brk);
 
 void *sys_mmap(void *addr, size_t len, int prot, int flags, int fd, off_t offset);
 void *sys_oldmmap(void *args);

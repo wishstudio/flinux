@@ -90,6 +90,11 @@ void mm_shutdown()
 {
 }
 
+void mm_update_brk(void *brk)
+{
+	mm_brk = max(mm_brk, brk);
+}
+
 static uint16_t new_map_entry()
 {
 	if (map_free_head)
