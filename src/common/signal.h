@@ -1,5 +1,4 @@
-#ifndef _COMMON_SIGNAL_H
-#define _COMMON_SIGNAL_H
+#pragma once
 
 #include "types.h"
 
@@ -78,5 +77,3 @@ struct sigaction
 #define	SIGUSR2		31	/* User-defined signal 2.  */
 
 #define	_NSIG		32
-
-#endif

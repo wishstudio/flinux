@@ -1,5 +1,4 @@
-#ifndef _LINUX_ELF_EM_H
-#define _LINUX_ELF_EM_H
+#pragma once
 
 /* These constants define the various ELF target machines */
 #define EM_NONE		0
@@ -52,6 +51,3 @@ Linux.  */
 #define EM_S390_OLD	0xA390
 /* Also Panasonic/MEI MN10300, AM33 */
 #define EM_CYGNUS_MN10300 0xbeef
-
-
-#endif /* _LINUX_ELF_EM_H */

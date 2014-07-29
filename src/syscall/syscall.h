@@ -1,6 +1,3 @@
-#ifndef _SYSCALL_SYSCALL_H
-#define _SYSCALL_SYSCALL_H
+#pragma once
 
 void install_syscall_handler();
-
-#endif

@@ -1,5 +1,4 @@
-#ifndef _UAPI_LINUX_ELF_H
-#define _UAPI_LINUX_ELF_H
+#pragma once
 
 #include <stdint.h>
 #include "elf-em.h"
@@ -413,5 +412,3 @@ typedef struct elf64_note {
 	Elf64_Word n_descsz;	/* Content size */
 	Elf64_Word n_type;	/* Content type */
 } Elf64_Nhdr;
-
-#endif /* _UAPI_LINUX_ELF_H */

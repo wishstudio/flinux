@@ -1,5 +1,4 @@
-#ifndef _COMMON_STAT_H
-#define _COMMON_STAT_H
+#pragma once
 
 #define S_IFMT		0170000
 #define S_IFSOCK	0140000
@@ -83,5 +82,3 @@ struct stat64 {
 #define major(dev)		((unsigned int) ((dev) >> 8))
 #define minor(dev)		((unsigned int) ((dev) & 0xFF))
 #define mkdev(ma, mi)	(((ma) << 8) | (mi))
-
-#endif

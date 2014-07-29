@@ -1,5 +1,4 @@
-#ifndef _COMMON_ERRNO_H
-#define _COMMON_ERRNO_H
+#pragma once
 
 #define	EPERM			1	/* Operation not permitted */
 #define	ENOENT			2	/* No such file or directory */
@@ -142,5 +141,3 @@
 #define ERFKILL			132	/* Operation not possible due to RF-kill */
 
 #define EHWPOISON		133	/* Memory page has hardware error */
-
-#endif

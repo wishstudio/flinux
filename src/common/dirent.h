@@ -1,5 +1,4 @@
-#ifndef _COMMON_DIRENT_H
-#define _COMMON_DIRENT_H
+#pragma once
 
 #include <stdint.h>
 
@@ -29,5 +28,3 @@ struct linux_dirent64
 #define DT_LNK		10
 #define DT_SOCK		12
 #define DT_WHT		14
-
-#endif

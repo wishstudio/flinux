@@ -1,5 +1,4 @@
-#ifndef _COMMON_UTSNAME_H
-#define _COMMON_UTSNAME_H
+#pragma once
 
 #define __OLD_UTS_LEN 8
 #define __NEW_UTS_LEN 64
@@ -31,5 +30,3 @@ struct utsname
 	char machine[65];
 	char domainname[65];
 };
-
-#endif

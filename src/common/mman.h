@@ -1,5 +1,4 @@
-#ifndef _COMMON_MMAN_H
-#define _COMMON_MMAN_H
+#pragma once
 
 #define PROT_NONE		0
 #define PROT_READ		1
@@ -20,5 +19,3 @@
 #define MS_ASYNC		1
 #define MS_SYNC			2
 #define MS_INVALIDATE	4
-
-#endif

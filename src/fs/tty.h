@@ -1,5 +1,4 @@
-#ifndef _FS_TTY_H
-#define _FS_TTY_H
+#pragma once
 
 #include "file.h"
 #include <Windows.h>
@@ -11,5 +10,3 @@ struct tty_file
 };
 
 struct file *tty_alloc(HANDLE file_handle);
-
-#endif

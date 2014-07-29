@@ -1,5 +1,4 @@
-#ifndef _COMMON_AUXVEC_H
-#define _COMMON_AUXVEC_H
+#pragma once
 
 /* Symbolic values for the entries in the auxiliary table
    put on the initial stack */
@@ -29,6 +28,3 @@
 #define AT_HWCAP2			26	/* extension of AT_HWCAP */
 
 #define AT_EXECFN			31	/* filename of program */
-
-
-#endif

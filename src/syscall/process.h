@@ -1,5 +1,4 @@
-#ifndef _SYSCALL_PROCESS_H
-#define _SYSCALL_PROCESS_H
+#pragma once
 
 #include <common/types.h>
 #include <common/utsname.h>
@@ -22,5 +21,3 @@ int sys_olduname(struct old_utsname *buf);
 int sys_uname(struct utsname *buf);
 
 int sys_time(int *r);
-
-#endif

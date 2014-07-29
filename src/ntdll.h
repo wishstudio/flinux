@@ -1,5 +1,4 @@
-#ifndef _NTDLL_H
-#define _NTDLL_H
+#pragma once
 
 #include <windef.h>
 #include <ntstatus.h>
@@ -234,5 +233,3 @@ NTSYSAPI NTSTATUS NTAPI NtUnmapViewOfSection(
 	_In_		HANDLE ProcessHandle,
 	_In_opt_	PVOID BaseAddress
 	);
-
-#endif

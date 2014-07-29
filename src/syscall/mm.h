@@ -1,5 +1,4 @@
-#ifndef _SYSCALL_MM_H
-#define _SYSCALL_MM_H
+#pragma once
 
 #include <common/types.h>
 #include <common/mman.h>
@@ -20,5 +19,3 @@ int sys_mlock(const void *addr, size_t len);
 int sys_munlock(const void *addr, size_t len);
 
 void *sys_brk(void *addr);
-
-#endif

@@ -1,5 +1,4 @@
-#ifndef _SYSCALL_VFS_H
-#define _SYSCALL_VFS_H
+#pragma once
 
 #include <stdint.h>
 #include <common/stat.h>
@@ -30,5 +29,3 @@ int sys_ioctl(int fd, unsigned int cmd, unsigned long arg);
 char *sys_getcwd(char *buf, size_t size);
 
 int sys_fcntl64(int fd, int cmd, ...);
-
-#endif

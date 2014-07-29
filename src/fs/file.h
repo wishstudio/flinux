@@ -1,5 +1,4 @@
-#ifndef _FS_FILE_H
-#define _FS_FILE_H
+#pragma once
 
 #include <common/types.h>
 #include <common/stat.h>
@@ -28,5 +27,3 @@ struct file_system
 	char *mountpoint;
 	struct file *(*open)(const char *path, int flags, int mode);
 };
-
-#endif

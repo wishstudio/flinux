@@ -1,5 +1,4 @@
-#ifndef _COMMON_LDT_H
-#define _COMMON_LDT_H
+#pragma once
 
 struct user_desc
 {
@@ -13,5 +12,3 @@ struct user_desc
 	unsigned int seg_not_present: 1;
 	unsigned int useable: 1;
 };
-
-#endif
