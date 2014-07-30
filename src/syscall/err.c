@@ -2,10 +2,10 @@
 #include "errno.h"
 #include "../log.h"
 
-#include <stdlib.h>
+#include <Windows.h>
 
 int sys_unimplemented()
 {
-	exit(1);
+	ExitProcess(1);
 	return EFAULT;
 }

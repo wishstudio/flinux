@@ -62,14 +62,14 @@ void sys_exit(int status)
 {
 	log_debug("exit(%d)\n", status);
 	/* TODO: Gracefully shutdown mm, vfs, etc. */
-	exit(status);
+	ExitProcess(status);
 }
 
 void sys_exit_group(int status)
 {
 	log_debug("exit_group(%d)\n", status);
 	/* TODO: Gracefully shutdown mm, vfs, etc. */
-	exit(status);
+	ExitProcess(status);
 }
 
 int sys_oldolduname(struct oldold_utsname *buf)
