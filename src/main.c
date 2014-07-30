@@ -33,7 +33,7 @@ void run_elf(const char *filename, int argc, char *argv[])
 
 	/* Load program header table */
 	uint32_t phsize = (uint32_t)eh.e_phentsize * (uint32_t)eh.e_phnum;
-	void *pht = malloc(phsize);
+	void *pht = kmalloc(phsize);
 	SetFilePointer(hFile, eh.e_phoff, NULL, FILE_BEGIN);
 	ReadFile(hFile, pht, phsize, NULL, NULL);
 
