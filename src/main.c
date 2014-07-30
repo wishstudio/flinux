@@ -12,7 +12,59 @@
 #include <Windows.h>
 #include <ntdll.h>
 
-void run_elf(const char *filename, int argc, char *argv[])
+__declspec(noreturn) static void run(Elf32_Ehdr *eh, void *pht, int argc, char *argv[])
+{
+	install_syscall_handler();
+
+	/* Generate initial stack */
+	int env_size = 0, aux_size = 7;
+	int stack_size = argc + 1 + env_size + 1 + aux_size * 2 + 1;
+	const char **stack = (const char **)alloca(stack_size * sizeof(void*));
+	int idx = 0;
+	/* argv */
+	for (int i = 0; i < argc; i++)
+		stack[idx++] = argv[i];
+	stack[idx++] = NULL;
+	/* environment variables */
+	stack[idx++] = NULL;
+	/* auxiliary vector */
+	stack[idx++] = (const char *)AT_PHDR;
+	stack[idx++] = (const char *)pht;
+	stack[idx++] = (const char *)AT_PHENT;
+	stack[idx++] = (const char *)eh->e_phentsize;
+	stack[idx++] = (const char *)AT_PHNUM;
+	stack[idx++] = (const char *)eh->e_phnum;
+	stack[idx++] = (const char *)AT_PAGESZ;
+	stack[idx++] = (const char *)PAGE_SIZE;
+	stack[idx++] = (const char *)AT_BASE;
+	stack[idx++] = (const char *)NULL;
+	stack[idx++] = (const char *)AT_FLAGS;
+	stack[idx++] = (const char *)0;
+	stack[idx++] = (const char *)AT_ENTRY;
+	stack[idx++] = (const char *)eh->e_entry;
+	stack[idx++] = NULL;
+
+	/* Call executable entrypoint */
+	uint32_t entrypoint = eh->e_entry;
+	log_debug("Entrypoint: %x\n", entrypoint);
+	__asm
+	{
+		mov esp, stack
+			push argc
+			push entrypoint
+			xor eax, eax
+			xor ebx, ebx
+			xor ecx, ecx
+			xor edx, edx
+			xor esi, esi
+			xor edi, edi
+			xor ebp, ebp
+			mov gs, ax
+			ret
+	}
+}
+
+static void run_elf(const char *filename, int argc, char *argv[])
 {
 	HANDLE hFile = CreateFileA(filename, GENERIC_READ | GENERIC_WRITE | GENERIC_EXECUTE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 
@@ -62,55 +114,7 @@ void run_elf(const char *filename, int argc, char *argv[])
 
 	/* We need header data in auxiliary vector */
 	//free(pht);
-
-	install_syscall_handler();
-
-	/* Generate initial stack */
-	int env_size = 0, aux_size = 7;
-	int stack_size = argc + 1 + env_size + 1 + aux_size * 2 + 1;
-	const char **stack = (const char **)alloca(stack_size * sizeof(void*));
-	int idx = 0;
-	/* argv */
-	for (int i = 0; i < argc; i++)
-		stack[idx++] = argv[i];
-	stack[idx++] = NULL;
-	/* environment variables */
-	stack[idx++] = NULL;
-	/* auxiliary vector */
-	stack[idx++] = (const char *)AT_PHDR;
-	stack[idx++] = (const char *)pht;
-	stack[idx++] = (const char *)AT_PHENT;
-	stack[idx++] = (const char *)eh.e_phentsize;
-	stack[idx++] = (const char *)AT_PHNUM;
-	stack[idx++] = (const char *)eh.e_phnum;
-	stack[idx++] = (const char *)AT_PAGESZ;
-	stack[idx++] = (const char *)PAGE_SIZE;
-	stack[idx++] = (const char *)AT_BASE;
-	stack[idx++] = (const char *)NULL;
-	stack[idx++] = (const char *)AT_FLAGS;
-	stack[idx++] = (const char *)0;
-	stack[idx++] = (const char *)AT_ENTRY;
-	stack[idx++] = (const char *)eh.e_entry;
-	stack[idx++] = NULL;
-
-	/* Call executable entrypoint */
-	uint32_t entrypoint = eh.e_entry;
-	log_debug("Entrypoint: %x\n", entrypoint);
-	__asm
-	{
-		mov esp, stack
-		push argc
-		push entrypoint
-		xor eax, eax
-		xor ebx, ebx
-		xor ecx, ecx
-		xor edx, edx
-		xor esi, esi
-		xor edi, edi
-		xor ebp, ebp
-		mov gs, ax
-		ret
-	}
+	run(&eh, pht, argc, argv);
 
 fail:
 	return;
