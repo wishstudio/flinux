@@ -113,9 +113,7 @@ static void run_elf(const char *filename, int argc, char *argv[])
 			ReadFile(hFile, (void *) ph->p_vaddr, ph->p_filesz, NULL, NULL);
 		}
 	}
-
-	/* We need header data in auxiliary vector */
-	//free(pht);
+	CloseHandle(hFile);
 	run(&eh, pht, argc, argv);
 
 fail:
