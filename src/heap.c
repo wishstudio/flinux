@@ -31,7 +31,7 @@ struct heap_data
 	struct pool pools[POOL_COUNT];
 };
 
-static struct heap_data *heap = MM_HEAP_BASE;
+static struct heap_data *const heap = MM_HEAP_BASE;
 
 void heap_init()
 {
