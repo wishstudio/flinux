@@ -1,6 +1,5 @@
 #include "tty.h"
-
-#include <stdlib.h>
+#include <heap.h>
 
 static size_t tty_read(struct file *f, char *buf, size_t count)
 {
@@ -56,7 +55,7 @@ static const struct file_ops tty_ops = {
 
 struct file *tty_alloc(HANDLE file_handle)
 {
-	struct tty_file *tty = (struct tty_file *) malloc(sizeof(struct tty_file));
+	struct tty_file *tty = (struct tty_file *) kmalloc(sizeof(struct tty_file));
 	tty->base_file.op_vtable = &tty_ops;
 	tty->base_file.ref = 1;
 	tty->base_file.offset = 0;

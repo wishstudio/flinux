@@ -2,8 +2,8 @@
 #include <syscall/mm.h> /* For PAGE_SIZE */
 #include <common/fcntl.h>
 #include <log.h>
+#include <heap.h>
 
-#include <stdlib.h>
 #include <Windows.h>
 #include <ntdll.h>
 
@@ -185,7 +185,7 @@ struct file *winfs_open(const char *pathname, int flags, int mode)
 		log_debug("CreateFileA() failed.\n");
 		return NULL;
 	}
-	file = (struct winfs_file *)malloc(sizeof(struct winfs_file));
+	file = (struct winfs_file *)kmalloc(sizeof(struct winfs_file));
 	file->base_file.op_vtable = &winfs_ops;
 	file->base_file.offset = 0;
 	file->base_file.ref = 1;
@@ -200,7 +200,7 @@ struct winfs
 
 struct file_system *winfs_alloc()
 {
-	struct winfs *fs = (struct winfs *)malloc(sizeof(struct winfs));
+	struct winfs *fs = (struct winfs *)kmalloc(sizeof(struct winfs));
 	fs->base_fs.mountpoint = "/";
 	fs->base_fs.open = winfs_open;
 	return fs;

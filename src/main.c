@@ -3,6 +3,7 @@
 #include "syscall/syscall.h"
 #include "syscall/vfs.h"
 #include "log.h"
+#include "heap.h"
 #include <common/auxvec.h>
 
 #include <stdint.h>
@@ -128,6 +129,7 @@ int main(int argc, const char **argv[])
 	}
 	log_init();
 	mm_init();
+	heap_init();
 	vfs_init();
 	tls_init();
 	run_elf(filename, argc - 1, argv + 1);

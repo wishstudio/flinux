@@ -35,7 +35,7 @@
  * ...
  * 08000000 ------------------------------ Linux application base
  * ...        Foreign Linux kernel data
- * 04000000 ------------------------------
+ * 07000000 ------------------------------
  * ...            (Application data)
  * 01400000 ------------------------------
  * ...        Foreign Linux kernel code
@@ -45,20 +45,11 @@
  * Foreign Linux kernel data memory layout
  *
  * 08000000 ------------------------------
- *                   kernel heap
- * 05000000 ------------------------------
  *              mm_heap_data structure
- * 04800000 ------------------------------
+ * 07800000 ------------------------------
  *           mm_data structure(unmappable)
- * 04000000 ------------------------------
+ * 07000000 ------------------------------
  */
-
-/* Base address of mm_data structure */
-#define MM_DATA_BASE		0x04000000
-/* Base address of mm_heap structure */
-#define MM_HEAP_BASE		0x04800000
-/* Base address of kernel heap */
-#define KERNEL_HEAP_BASE	0x05000000
 
 /* Hard limits */
 /* Maximum number of mmap()-ed areas */
@@ -69,8 +60,8 @@
 #define ADDRESS_SPACE_LOW 0x00000000U
 /* Higher bound of the virtual address space */
 #define ADDRESS_SPACE_HIGH 0x80000000U
-/* Windows allocation granularity we have to follow */
-#define BLOCK_SIZE 0x00010000U
+/* Windows allocation granularity we have to follow (moved to mm.h) */
+//#define BLOCK_SIZE 0x00010000U
 /* Linux page size we want to mimic (moved to mm.h) */
 //#define PAGE_SIZE 0x00001000U
 
@@ -172,7 +163,7 @@ static DWORD prot_linux2win(int prot)
 		return PAGE_NOACCESS;
 }
 
-void *do_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
+void *mm_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset_pages)
 {
 	/* TODO: errno */
 	if (length == 0)
@@ -276,40 +267,7 @@ void *do_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offs
 	return NULL;
 }
 
-void *sys_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
-{
-	/* TODO: We should mark NOACCESS for VirtualAlloc()-ed but currently unused pages */
-	log_debug("mmap(%x, %x, %x, %x, %d, %x)\n", addr, length, prot, flags, fd, offset);
-	/* TODO: Initialize mapped area to zero */
-	/* TODO: errno */
-	if (!IS_ALIGNED(offset, PAGE_SIZE))
-		return NULL;
-	return do_mmap(addr, length, prot, flags, fd, offset / PAGE_SIZE);
-}
-
-void *sys_oldmmap(void *_args)
-{
-	log_debug("oldmmap(%x)\n", _args);
-	struct oldmmap_args_t
-	{
-		void *addr;
-		unsigned long len;
-		unsigned long prot;
-		unsigned long flags;
-		unsigned long fd;
-		unsigned long offset;
-	};
-	struct oldmmap_args_t *args = _args;
-	return sys_mmap(args->addr, args->len, args->prot, args->flags, args->fd, args->offset);
-}
-
-void *sys_mmap2(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
-{
-	log_debug("mmap2(%x, %x, %x, %x, %d, %x)\n", addr, length, prot, flags, fd, offset);
-	return do_mmap(addr, length, prot, flags, fd, offset);
-}
-
-int sys_munmap(void *addr, size_t length)
+int mm_munmap(void *addr, size_t length)
 {
 	/* TODO: We should mark NOACCESS for munmap()-ed but not VirtualFree()-ed pages */
 	/* TODO: We currently only support unmap full pages */
@@ -355,6 +313,45 @@ int sys_munmap(void *addr, size_t length)
 		}
 	}
 	return 0;
+}
+
+void *sys_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
+{
+	/* TODO: We should mark NOACCESS for VirtualAlloc()-ed but currently unused pages */
+	log_debug("mmap(%x, %x, %x, %x, %d, %x)\n", addr, length, prot, flags, fd, offset);
+	/* TODO: Initialize mapped area to zero */
+	/* TODO: errno */
+	if (!IS_ALIGNED(offset, PAGE_SIZE))
+		return NULL;
+	return mm_mmap(addr, length, prot, flags, fd, offset / PAGE_SIZE);
+}
+
+void *sys_oldmmap(void *_args)
+{
+	log_debug("oldmmap(%x)\n", _args);
+	struct oldmmap_args_t
+	{
+		void *addr;
+		unsigned long len;
+		unsigned long prot;
+		unsigned long flags;
+		unsigned long fd;
+		unsigned long offset;
+	};
+	struct oldmmap_args_t *args = _args;
+	return sys_mmap(args->addr, args->len, args->prot, args->flags, args->fd, args->offset);
+}
+
+void *sys_mmap2(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
+{
+	log_debug("mmap2(%x, %x, %x, %x, %d, %x)\n", addr, length, prot, flags, fd, offset);
+	return mm_mmap(addr, length, prot, flags, fd, offset);
+}
+
+int sys_munmap(void *addr, size_t length)
+{
+	log_debug("munmap(%x, %x)\n", addr, length);
+	return mm_munmap(addr, length);
 }
 
 int sys_mprotect(void *addr, size_t len, int prot)

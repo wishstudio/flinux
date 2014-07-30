@@ -3,13 +3,25 @@
 #include <common/types.h>
 #include <common/mman.h>
 
+/* Windows allocation granularity */
+#define BLOCK_SIZE 0x00010000U
+
+/* Page size */
 #define PAGE_SIZE 0x00001000U
+
+/* Base address of mm_data structure */
+#define MM_DATA_BASE		0x07000000
+/* Base address of mm_heap structure */
+#define MM_HEAP_BASE		0x07800000
 
 void mm_init();
 void mm_shutdown();
 void mm_update_brk(void *brk);
 
-void *sys_mmap(void *addr, size_t len, int prot, int flags, int fd, off_t offset);
+void *mm_mmap(void *addr, size_t len, int prot, int flags, int fd, off_t offset_pages);
+int mm_munmap(void *addr, size_t len);
+
+void *sys_mmap(void *addr, size_t len, int prot, int flags, int fd, off_t offset_pages);
 void *sys_oldmmap(void *args);
 void *sys_mmap2(void *addr, size_t len, int prot, int flags, int fd, off_t offset);
 int sys_munmap(void *addr, size_t len);
