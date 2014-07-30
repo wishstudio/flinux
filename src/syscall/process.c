@@ -3,7 +3,6 @@
 #include "../log.h"
 
 #include <Windows.h>
-#include <time.h>
 
 pid_t sys_getpid()
 {
@@ -113,7 +112,13 @@ int sys_uname(struct utsname *buf)
 int sys_time(int *c)
 {
 	log_debug("time(%x)\n", c);
-	time_t t = time(NULL);
+	SYSTEMTIME systime;
+	GetSystemTime(&systime);
+	uint64_t t = (uint64_t)systime.wSecond + (uint64_t)systime.wMinute * 60
+		+ (uint64_t)systime.wHour * 3600 + (uint64_t) systime.wDay * 86400
+		+ ((uint64_t)systime.wYear - 70) * 31536000 + (((uint64_t)systime.wYear - 69) / 4) * 86400
+		- (((uint64_t)systime.wYear - 1) / 100) * 86400 + (((uint64_t)systime.wYear + 299) / 400) * 86400;
+
 	if (c)
 		*c = (int)t;
 	return t;
