@@ -8,9 +8,10 @@
 
 #include <stdint.h>
 #include <stdio.h>
-#include <malloc.h>
 #include <Windows.h>
 #include <ntdll.h>
+
+#define STACK_SIZE	8388608
 
 __declspec(noreturn) static void run(Elf32_Ehdr *eh, void *pht, int argc, char *argv[])
 {
@@ -18,8 +19,9 @@ __declspec(noreturn) static void run(Elf32_Ehdr *eh, void *pht, int argc, char *
 
 	/* Generate initial stack */
 	int env_size = 0, aux_size = 7;
-	int stack_size = argc + 1 + env_size + 1 + aux_size * 2 + 1;
-	const char **stack = (const char **)alloca(stack_size * sizeof(void*));
+	int initial_stack_size = argc + 1 + env_size + 1 + aux_size * 2 + 1;
+	char *stack_base = (char **)VirtualAlloc(NULL, STACK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+	const char **stack = (const char **)(stack_base + STACK_SIZE - initial_stack_size * sizeof(const char *));
 	int idx = 0;
 	/* argv */
 	for (int i = 0; i < argc; i++)
@@ -50,17 +52,17 @@ __declspec(noreturn) static void run(Elf32_Ehdr *eh, void *pht, int argc, char *
 	__asm
 	{
 		mov esp, stack
-			push argc
-			push entrypoint
-			xor eax, eax
-			xor ebx, ebx
-			xor ecx, ecx
-			xor edx, edx
-			xor esi, esi
-			xor edi, edi
-			xor ebp, ebp
-			mov gs, ax
-			ret
+		push argc
+		push entrypoint
+		xor eax, eax
+		xor ebx, ebx
+		xor ecx, ecx
+		xor edx, edx
+		xor esi, esi
+		xor edi, edi
+		xor ebp, ebp
+		mov gs, ax
+		ret
 	}
 }
 
