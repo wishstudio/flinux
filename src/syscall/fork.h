@@ -2,4 +2,8 @@
 
 #include <common/types.h>
 
-pid_t sys_fork();
+#include <Windows.h>
+
+void fork_init();
+
+pid_t sys_fork(int, int, int, int, int, PCONTEXT context);

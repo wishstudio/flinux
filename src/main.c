@@ -1,5 +1,7 @@
 #include "binfmt/elf.h"
+#include "syscall/fork.h"
 #include "syscall/mm.h"
+#include "syscall/process.h"
 #include "syscall/syscall.h"
 #include "syscall/vfs.h"
 #include "log.h"
@@ -11,8 +13,6 @@
 #include <Windows.h>
 #include <ntdll.h>
 
-#define STACK_SIZE	8388608
-
 __declspec(noreturn) static void run(Elf32_Ehdr *eh, void *pht, int argc, char *argv[])
 {
 	install_syscall_handler();
@@ -20,7 +20,7 @@ __declspec(noreturn) static void run(Elf32_Ehdr *eh, void *pht, int argc, char *
 	/* Generate initial stack */
 	int env_size = 0, aux_size = 7;
 	int initial_stack_size = argc + 1 + env_size + 1 + aux_size * 2 + 1;
-	char *stack_base = (char **)VirtualAlloc(NULL, STACK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+	char *stack_base = process_alloc_stack();
 	const char **stack = (const char **)(stack_base + STACK_SIZE - initial_stack_size * sizeof(const char *));
 	int idx = 0;
 	/* argv */
@@ -120,8 +120,12 @@ fail:
 	return;
 }
 
-int main(int argc, const char **argv[])
+int main(int argc, const char *argv[])
 {
+	log_init();
+	fork_init();
+	/* fork_init() will directly jump to restored thread context if we are a fork child */
+
 	const char *filename = NULL;
 	for (int i = 1; i < argc; i++)
 	{
@@ -131,7 +135,6 @@ int main(int argc, const char **argv[])
 		else if (!filename)
 			filename = argv[i];
 	}
-	log_init();
 	mm_init();
 	heap_init();
 	vfs_init();

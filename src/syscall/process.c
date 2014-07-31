@@ -4,6 +4,24 @@
 
 #include <Windows.h>
 
+static void *stack_base;
+
+void *process_alloc_stack()
+{
+	stack_base = VirtualAlloc(NULL, STACK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+	return stack_base;
+}
+
+void process_set_stack_base(void *base)
+{
+	stack_base = base;
+}
+
+void *process_get_stack_base()
+{
+	return stack_base;
+}
+
 pid_t sys_getpid()
 {
 	log_debug("getpid(): %d\n", GetCurrentProcessId());

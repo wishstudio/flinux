@@ -3,6 +3,12 @@
 #include <common/types.h>
 #include <common/utsname.h>
 
+#define STACK_SIZE	8388608
+
+void *process_alloc_stack();
+void process_set_stack_base(void *base);
+void *process_get_stack_base();
+
 pid_t sys_getpid();
 pid_t sys_getppid();
 int setpgid(pid_t pid, pid_t pgid);

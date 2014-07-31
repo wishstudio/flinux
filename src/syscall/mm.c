@@ -45,6 +45,8 @@
  * Foreign Linux kernel data memory layout
  *
  * 08000000 ------------------------------
+ *                fork_info structure
+ * 07FF0000 ------------------------------
  *              mm_heap_data structure
  * 07800000 ------------------------------
  *           mm_data structure(unmappable)
@@ -148,6 +150,7 @@ static uint16_t new_map_entry()
 static void free_map_entry(uint16_t entry)
 {
 	mm->map_entries[entry].next = mm->map_free_head;
+	mm->map_entries[entry].start_page = mm->map_entries[entry].end_page = 0;
 	mm->map_free_head = entry;
 }
 
@@ -241,6 +244,28 @@ int mm_handle_page_fault(void *addr)
 		VirtualProtect(GET_PAGE_ADDRESS(page), PAGE_SIZE, prot_linux2win(mm->page_prot[page]), NULL);
 	}
 	return 1;
+}
+
+void mm_fork(HANDLE process)
+{
+	/* Copy mm_data struct */
+	WriteProcessMemory(process, MM_DATA_BASE, mm, sizeof(struct mm_data), NULL);
+	/* Map sections */
+	for (uint32_t i = 0; i < BLOCK_COUNT; i++)
+		if (mm->block_section_handle[i])
+		{
+			PVOID base_addr = GET_BLOCK_ADDRESS(i);
+			SIZE_T view_size = BLOCK_SIZE;
+			NtMapViewOfSection(mm->block_section_handle[i], process, &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewShare, 0, PAGE_EXECUTE_READWRITE);
+		}
+	/* Disable write permission on pages */
+	for (uint32_t i = 0; i < MAX_MMAP_COUNT; i++)
+		if (mm->map_entries[i].start_page != 0)
+			for (uint32_t j = mm->map_entries[i].start_page; j <= mm->map_entries[i].end_page; j++)
+			{
+				VirtualProtectEx(process, GET_PAGE_ADDRESS(j), PAGE_SIZE, prot_linux2win(mm->page_prot[j] & ~PROT_WRITE), NULL);
+				VirtualProtect(GET_PAGE_ADDRESS(j), PAGE_SIZE, prot_linux2win(mm->page_prot[j] & ~PROT_WRITE), NULL);
+			}
 }
 
 void *mm_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset_pages)

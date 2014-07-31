@@ -8,7 +8,7 @@
 typedef int syscall_fn(int ebx, int ecx, int edx, int esi, int edi);
 
 #define SYSCALL_COUNT 338
-#define SYSCALL(name) extern int name(int ebx, int ecx, int edx, int esi, int edi);
+#define SYSCALL(name) extern int name(int ebx, int ecx, int edx, int esi, int edi, PCONTEXT context);
 #include "syscall_table.h"
 #undef SYSCALL
 
@@ -27,7 +27,7 @@ static void dispatch_syscall(PCONTEXT context)
 	if (syscall_table[context->Eax] == sys_unimplemented)
 		log_debug("FATAL: Unimplemented syscall: %d\n", context->Eax);
 #endif
-	context->Eax = (*syscall_table[context->Eax])(context->Ebx, context->Ecx, context->Edx, context->Esi, context->Edi);
+	context->Eax = (*syscall_table[context->Eax])(context->Ebx, context->Ecx, context->Edx, context->Esi, context->Edi, context);
 }
 
 static LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
