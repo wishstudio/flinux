@@ -4,6 +4,7 @@
 
 #include <stdint.h>
 #include <Windows.h>
+#include <Psapi.h>
 #include <ntdll.h>
 
 /* Linux mmap() allows mapping into 4kB page boundaries, while Windows only
@@ -172,6 +173,25 @@ static DWORD prot_linux2win(int prot)
 		return PAGE_NOACCESS;
 }
 
+static void dump_virtual_memory(HANDLE process)
+{
+	char *addr = 0;
+	do
+	{
+		MEMORY_BASIC_INFORMATION info;
+		VirtualQueryEx(process, addr, &info, sizeof(info));
+		if (info.State != MEM_FREE)
+		{
+			char filename[1024];
+			if (GetMappedFileNameA(process, addr, filename, sizeof(filename)))
+				log_debug("0x%08x - 0x%08x <--- %s\n", info.BaseAddress, (uint32_t)info.BaseAddress + info.RegionSize, filename);
+			else
+				log_debug("0x%08x - 0x%08x\n", info.BaseAddress, (uint32_t)info.BaseAddress + info.RegionSize);
+		}
+		addr += info.RegionSize;
+	} while ((uint32_t)addr < 0x7FFF0000);
+}
+
 static HANDLE duplicate_section(HANDLE source, void *source_addr)
 {
 	HANDLE dest;
@@ -272,6 +292,7 @@ int mm_fork(HANDLE process)
 			if (status != STATUS_SUCCESS)
 			{
 				log_debug("mm_fork(): Map failed: %x, status code: %x\n", base_addr, status);
+				dump_virtual_memory(process);
 				return 0;
 			}
 		}
