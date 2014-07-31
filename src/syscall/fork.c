@@ -94,5 +94,5 @@ fail:
 	TerminateProcess(info.hProcess, 0);
 	CloseHandle(info.hThread);
 	CloseHandle(info.hProcess);
-	return 0;
+	return -1;
 }
