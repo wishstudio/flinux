@@ -77,6 +77,7 @@
 #define GET_PAGE(addr) ((size_t) (addr) / PAGE_SIZE)
 #define GET_PAGE_IN_BLOCK(page) ((page) % PAGES_PER_BLOCK)
 #define GET_BLOCK_OF_PAGE(page) ((page) / PAGES_PER_BLOCK)
+#define GET_FIRST_PAGE_OF_BLOCK(block)	((block) * PAGES_PER_BLOCK)
 #define GET_BLOCK_ADDRESS(block) (void *)((block) * BLOCK_SIZE)
 #define GET_PAGE_ADDRESS(page) (void *)((page) * PAGE_SIZE)
 
@@ -108,6 +109,9 @@ struct mm_data
 
 	/* Mapping info entry for a given page */
 	uint16_t page_map_entry[PAGE_COUNT];
+
+	/* Protection flags for a given page */
+	uint8_t page_prot[PAGE_COUNT];
 };
 static struct mm_data *const mm = MM_DATA_BASE;
 
@@ -161,6 +165,82 @@ static DWORD prot_linux2win(int prot)
 		return PAGE_READONLY;
 	else
 		return PAGE_NOACCESS;
+}
+
+static HANDLE duplicate_section(HANDLE source, void *source_addr)
+{
+	HANDLE dest;
+	PVOID dest_addr = NULL;
+	OBJECT_ATTRIBUTES attr;
+	attr.Length = sizeof(OBJECT_ATTRIBUTES);
+	attr.RootDirectory = NULL;
+	attr.ObjectName = NULL;
+	attr.Attributes = OBJ_INHERIT;
+	attr.SecurityDescriptor = NULL;
+	attr.SecurityQualityOfService = NULL;
+	LARGE_INTEGER max_size;
+	max_size.QuadPart = BLOCK_SIZE;
+	SIZE_T view_size = BLOCK_SIZE;
+	NTSTATUS status;
+
+	status = NtCreateSection(&dest, SECTION_MAP_READ | SECTION_MAP_WRITE | SECTION_MAP_EXECUTE, &attr, &max_size, PAGE_EXECUTE_READWRITE, SEC_COMMIT, NULL);
+	if (status != STATUS_SUCCESS)
+		return NULL;
+	
+	NtMapViewOfSection(dest, NtCurrentProcess(), &dest_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, PAGE_READWRITE);
+	CopyMemory(dest_addr, source_addr, BLOCK_SIZE);
+	NtUnmapViewOfSection(NtCurrentProcess(), dest_addr);
+	return dest;
+}
+
+int mm_handle_page_fault(void *addr)
+{
+	if ((size_t)addr < ADDRESS_SPACE_LOW || (size_t)addr >= ADDRESS_SPACE_HIGH)
+	{
+		log_debug("Address %x outside of valid usermode address space.\n", addr);
+		return 0;
+	}
+	uint32_t page = GET_PAGE(addr);
+	if (mm->page_map_entry[page] == 0)
+	{
+		log_debug("Address %x (page %x) not mapped.\n", addr, page);
+		return 0;
+	}
+	/* Query information about the section object which the page within */
+	uint16_t block = GET_BLOCK(addr);
+	OBJECT_BASIC_INFORMATION info;
+	NTSTATUS status;
+	status = NtQueryObject(mm->block_section_handle[block], ObjectBasicInformation, &info, sizeof(OBJECT_BASIC_INFORMATION), NULL);
+	if (status != STATUS_SUCCESS)
+	{
+		log_debug("NtQueryObject() on section %x failed.\n", block);
+		return 0;
+	}
+	if (info.HandleCount > 1)
+	{
+		/* We are not the only one holding the section, duplicate it */
+		log_debug("Duplicating section %x...\n", block);
+		HANDLE section;
+		if (!(section = duplicate_section(mm->block_section_handle[block], GET_BLOCK_ADDRESS(block))))
+		{
+			log_debug("Duplicating section failed.");
+			return 0;
+		}
+		else
+			log_debug("Duplicating section succeeded. Remapping...");
+		NtClose(mm->block_section_handle[block]);
+		mm->block_section_handle[block] = section;
+		PVOID base_addr = GET_BLOCK_ADDRESS(block);
+		SIZE_T view_size = BLOCK_SIZE;
+		NtMapViewOfSection(section, NtCurrentProcess(), &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewShare, 0, PAGE_EXECUTE_READWRITE);
+	}
+	/* We're the only owner of the section now, change page protection flags */
+	for (uint16_t i = 0; i < PAGES_PER_BLOCK; i++)
+	{
+		uint16_t page = GET_FIRST_PAGE_OF_BLOCK(block) + i;
+		VirtualProtect(GET_PAGE_ADDRESS(page), PAGE_SIZE, prot_linux2win(mm->page_prot[page]), NULL);
+	}
+	return 1;
 }
 
 void *mm_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset_pages)
@@ -260,6 +340,7 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offs
 		for (uint32_t i = start_page; i <= end_page; i++)
 		{
 			mm->page_map_entry[i] = entry;
+			mm->page_prot[i] = prot;
 			mm->block_page_count[GET_BLOCK_OF_PAGE(i)]++; /* TODO: Optimization */
 		}
 		return addr;

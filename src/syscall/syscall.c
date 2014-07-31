@@ -45,6 +45,8 @@ static LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
 			}
 			else if (tls_gs_emulation(ep->ContextRecord, code))
 				return EXCEPTION_CONTINUE_EXECUTION;
+			else if (mm_handle_page_fault(ep->ExceptionRecord->ExceptionInformation[1]))
+				return EXCEPTION_CONTINUE_EXECUTION;
 		}
 		if (ep->ExceptionRecord->ExceptionInformation[0] == 0)
 			log_debug("Page fault(read): %x at %x\n", ep->ExceptionRecord->ExceptionInformation[1], ep->ContextRecord->Eip);

@@ -18,6 +18,8 @@ void mm_init();
 void mm_shutdown();
 void mm_update_brk(void *brk);
 
+int mm_handle_page_fault(void *addr);
+
 void *mm_mmap(void *addr, size_t len, int prot, int flags, int fd, off_t offset_pages);
 int mm_munmap(void *addr, size_t len);
 
