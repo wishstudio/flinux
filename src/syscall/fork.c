@@ -71,7 +71,8 @@ pid_t sys_fork(int _1, int _2, int _3, int _4, int _5, PCONTEXT context)
 		return -1;
 	}
 
-	mm_fork(info.hProcess);
+	if (!mm_fork(info.hProcess))
+		goto fail;
 
 	/* Set up fork_info in child process */
 	void *stack_base = process_get_stack_base();
@@ -88,4 +89,10 @@ pid_t sys_fork(int _1, int _2, int _3, int _4, int _5, PCONTEXT context)
 	CloseHandle(info.hThread);
 	CloseHandle(info.hProcess);
 	return info.dwProcessId;
+
+fail:
+	TerminateProcess(info.hProcess, 0);
+	CloseHandle(info.hThread);
+	CloseHandle(info.hProcess);
+	return 0;
 }

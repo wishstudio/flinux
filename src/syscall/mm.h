@@ -15,6 +15,8 @@
 #define MM_DATA_BASE		0x07000000
 /* Base address of mm_heap structure */
 #define MM_HEAP_BASE		0x07800000
+/* Base address of vfs_data structure */
+#define VFS_DATA_BASE		0x07900000
 /* Base address of fork_info structure */
 #define FORK_INFO_BASE		0x07FF0000
 
@@ -23,7 +25,7 @@ void mm_shutdown();
 void mm_update_brk(void *brk);
 
 int mm_handle_page_fault(void *addr);
-void mm_fork(HANDLE process);
+int mm_fork(HANDLE process);
 
 void *mm_mmap(void *addr, size_t len, int prot, int flags, int fd, off_t offset_pages);
 int mm_munmap(void *addr, size_t len);

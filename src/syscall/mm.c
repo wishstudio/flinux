@@ -47,6 +47,8 @@
  * 08000000 ------------------------------
  *                fork_info structure
  * 07FF0000 ------------------------------
+ *                vfs_data structure
+ * 07900000 ------------------------------
  *              mm_heap_data structure
  * 07800000 ------------------------------
  *           mm_data structure(unmappable)
@@ -235,7 +237,7 @@ int mm_handle_page_fault(void *addr)
 		mm->block_section_handle[block] = section;
 		PVOID base_addr = GET_BLOCK_ADDRESS(block);
 		SIZE_T view_size = BLOCK_SIZE;
-		NtMapViewOfSection(section, NtCurrentProcess(), &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewShare, 0, PAGE_EXECUTE_READWRITE);
+		NtMapViewOfSection(section, NtCurrentProcess(), &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, PAGE_EXECUTE_READWRITE);
 	}
 	/* We're the only owner of the section now, change page protection flags */
 	for (uint16_t i = 0; i < PAGES_PER_BLOCK; i++)
@@ -246,17 +248,32 @@ int mm_handle_page_fault(void *addr)
 	return 1;
 }
 
-void mm_fork(HANDLE process)
+int mm_fork(HANDLE process)
 {
 	/* Copy mm_data struct */
-	WriteProcessMemory(process, MM_DATA_BASE, mm, sizeof(struct mm_data), NULL);
+	if (!VirtualAllocEx(process, MM_DATA_BASE, sizeof(struct mm_data), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE))
+	{
+		log_debug("mm_fork(): Allocate mm_data structure failed, error code: %d\n", GetLastError());
+		return 0;
+	}
+	if (!WriteProcessMemory(process, MM_DATA_BASE, mm, sizeof(struct mm_data), NULL))
+	{
+		log_debug("mm_fork(): Write mm_data structure failed, error code: %d\n", GetLastError());
+		return 0;
+	}
 	/* Map sections */
 	for (uint32_t i = 0; i < BLOCK_COUNT; i++)
 		if (mm->block_section_handle[i])
 		{
 			PVOID base_addr = GET_BLOCK_ADDRESS(i);
 			SIZE_T view_size = BLOCK_SIZE;
-			NtMapViewOfSection(mm->block_section_handle[i], process, &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewShare, 0, PAGE_EXECUTE_READWRITE);
+			NTSTATUS status;
+			status = NtMapViewOfSection(mm->block_section_handle[i], process, &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, PAGE_EXECUTE_READWRITE);
+			if (status != STATUS_SUCCESS)
+			{
+				log_debug("mm_fork(): Map failed: %x, status code: %x\n", base_addr, status);
+				return 0;
+			}
 		}
 	/* Disable write permission on pages */
 	for (uint32_t i = 0; i < MAX_MMAP_COUNT; i++)
@@ -266,6 +283,7 @@ void mm_fork(HANDLE process)
 				VirtualProtectEx(process, GET_PAGE_ADDRESS(j), PAGE_SIZE, prot_linux2win(mm->page_prot[j] & ~PROT_WRITE), NULL);
 				VirtualProtect(GET_PAGE_ADDRESS(j), PAGE_SIZE, prot_linux2win(mm->page_prot[j] & ~PROT_WRITE), NULL);
 			}
+	return 1;
 }
 
 void *mm_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset_pages)
@@ -287,7 +305,7 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offs
 		size_t alloc_len = ALIGN_TO_BLOCK(length);
 
 		/* TODO: Use VirtualAlloc to find a continuous memory region */
-		if (!(addr = VirtualAlloc(NULL, alloc_len, MEM_RESERVE, prot_linux2win(prot))))
+		if (!(addr = VirtualAlloc(NULL, alloc_len, MEM_RESERVE , PAGE_NOACCESS)))
 			return NULL;
 		VirtualFree(addr, 0, MEM_RELEASE);
 	}
@@ -333,7 +351,7 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offs
 				/* Map section */
 				PVOID base_addr = GET_BLOCK_ADDRESS(i);
 				SIZE_T view_size = BLOCK_SIZE;
-				status = NtMapViewOfSection(handle, NtCurrentProcess(), &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewShare, 0, prot_linux2win(prot));
+				status = NtMapViewOfSection(handle, NtCurrentProcess(), &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, prot_linux2win(prot));
 				if (status != STATUS_SUCCESS)
 				{
 					log_debug("NtMapViewOfSection() failed. Status: %x\n", status);
