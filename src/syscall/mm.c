@@ -64,7 +64,7 @@
 /* Higher bound of the virtual address space */
 #define ADDRESS_SPACE_HIGH 0x80000000U
 /* The lowest allocation address we can make */
-#define ADDRESS_ALLOCATION_LOW 0x30000000U
+#define ADDRESS_ALLOCATION_LOW 0x03000000U
 /* The highest allocation address we can make */
 #define ADDRESS_ALLOCATION_HIGH 0x80000000U
 
