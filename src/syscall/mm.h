@@ -12,13 +12,13 @@
 #define PAGE_SIZE 0x00001000U
 
 /* Base address of mm_data structure */
-#define MM_DATA_BASE		0x07000000
+#define MM_DATA_BASE		0x02000000
 /* Base address of mm_heap structure */
-#define MM_HEAP_BASE		0x07800000
+#define MM_HEAP_BASE		0x02800000
 /* Base address of vfs_data structure */
-#define VFS_DATA_BASE		0x07900000
+#define VFS_DATA_BASE		0x02900000
 /* Base address of fork_info structure */
-#define FORK_INFO_BASE		0x07FF0000
+#define FORK_INFO_BASE		0x02FF0000
 
 void mm_init();
 void mm_shutdown();
