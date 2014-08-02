@@ -63,9 +63,9 @@
 #define ADDRESS_SPACE_LOW 0x00000000U
 /* Higher bound of the virtual address space */
 #define ADDRESS_SPACE_HIGH 0x80000000U
-/* The lowest allocation address we can make */
+/* The lowest non fixed allocation address we can make */
 #define ADDRESS_ALLOCATION_LOW 0x03000000U
-/* The highest allocation address we can make */
+/* The highest non fixed allocation address we can make */
 #define ADDRESS_ALLOCATION_HIGH 0x80000000U
 
 #define BLOCK_COUNT 0x00010000U
@@ -163,10 +163,11 @@ static uint32_t find_free_pages(uint32_t count)
 {
 	uint32_t last = GET_PAGE(ADDRESS_ALLOCATION_LOW);
 	for (struct map_entry *e = mm->map_list; e; e = e->next)
-		if (e->start_page - last >= count)
-			return last;
-		else
-			last = e->end_page;
+		if (e->start_page >= GET_PAGE(ADDRESS_ALLOCATION_LOW))
+			if (e->start_page - last >= count)
+				return last;
+			else
+				last = e->end_page + 1;
 	if (GET_PAGE(ADDRESS_ALLOCATION_HIGH) - last >= count)
 		return last;
 	else
@@ -256,6 +257,11 @@ int mm_handle_page_fault(void *addr)
 	if ((size_t)addr < ADDRESS_SPACE_LOW || (size_t)addr >= ADDRESS_SPACE_HIGH)
 	{
 		log_debug("Address %x outside of valid usermode address space.\n", addr);
+		return 0;
+	}
+	if (mm->page_prot[GET_PAGE(addr)] & PROT_WRITE == 0)
+	{
+		log_debug("Address %x (page %x) not writtable.\n", addr, GET_PAGE(addr));
 		return 0;
 	}
 	uint16_t block = GET_BLOCK(addr);
