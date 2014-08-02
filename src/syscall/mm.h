@@ -17,6 +17,8 @@
 #define MM_HEAP_BASE		0x02800000
 /* Base address of vfs_data structure */
 #define VFS_DATA_BASE		0x02900000
+/* Base address of tls trampoline buffer */
+#define TLS_TRAMPOLINE_BASE	0x02FE0000
 /* Base address of fork_info structure */
 #define FORK_INFO_BASE		0x02FF0000
 

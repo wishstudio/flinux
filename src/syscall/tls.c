@@ -164,11 +164,11 @@ static int handle_mov_gs_reg(PCONTEXT context, uint8_t modrm)
 }
 
 #define TRAMPOLINE_SIZE		PAGE_SIZE
-static uint8_t *trampoline;
+static uint8_t *const trampoline = TLS_TRAMPOLINE_BASE;
 
 void tls_init()
 {
-	trampoline = sys_mmap(NULL, TRAMPOLINE_SIZE, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	sys_mmap(TLS_TRAMPOLINE_BASE, TRAMPOLINE_SIZE, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_FIXED | MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 }
 
 void tls_shutdown()
