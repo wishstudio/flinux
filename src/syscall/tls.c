@@ -73,8 +73,25 @@ struct tls_entry
 	int limit;
 };
 
-static struct tls_entry tls_entries[MAX_TLS_ENTRIES];
-static uint32_t gs, gs_addr; /* i386 explicitly requires pre-fetching segment information */
+struct tls_data
+{
+	struct tls_entry entries[MAX_TLS_ENTRIES];
+	uint32_t gs, gs_addr; /* i386 explicitly requires pre-fetching segment information */
+	uint8_t trampoline[PAGE_SIZE];
+};
+
+static struct tls_data *const tls = TLS_DATA_BASE;
+
+void tls_init()
+{
+	sys_mmap(TLS_DATA_BASE, sizeof(struct tls_data), PROT_READ | PROT_WRITE | PROT_EXEC, MAP_FIXED | MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+}
+
+void tls_shutdown()
+{
+	sys_munmap(TLS_DATA_BASE, sizeof(struct tls_data));
+}
+
 /* Segment register format:
  * 15    3  2   0
  * [Index|TI|RPL]
@@ -89,7 +106,7 @@ int sys_set_thread_area(struct user_desc *u_info)
 	{
 		/* Find an empty entry */
 		for (int i = 0; i < MAX_TLS_ENTRIES; i++)
-			if (!tls_entries[i].allocated)
+			if (!tls->entries[i].allocated)
 			{
 				u_info->entry_number = VIRTUAL_GDT_BASE + i;
 				log_debug("allocated entry %d (%x)\n", i, u_info->entry_number);
@@ -104,9 +121,9 @@ int sys_set_thread_area(struct user_desc *u_info)
 	else if (u_info->entry_number < VIRTUAL_GDT_BASE) /* A simply consistency check */
 		return -1;
 	int entry = u_info->entry_number - VIRTUAL_GDT_BASE;
-	tls_entries[entry].allocated = 1;
-	tls_entries[entry].addr = u_info->base_addr;
-	tls_entries[entry].limit = u_info->limit;
+	tls->entries[entry].allocated = 1;
+	tls->entries[entry].addr = u_info->base_addr;
+	tls->entries[entry].limit = u_info->limit;
 	return 0;
 }
 
@@ -121,7 +138,7 @@ static int handle_mov_reg_gs(PCONTEXT context, uint8_t modrm)
 	{
 		return 0;
 	}
-	uint16_t val = gs;
+	uint16_t val = tls->gs;
 	switch (modrm & 7)
 	{
 	case 0: LOW16(context->Eax) = val; break;
@@ -156,24 +173,11 @@ static int handle_mov_gs_reg(PCONTEXT context, uint8_t modrm)
 	case 7: val = context->Edi; break;
 	}
 	uint16_t entry = (val >> 3) - VIRTUAL_GDT_BASE;
-	if (entry >= MAX_TLS_ENTRIES || !tls_entries[entry].allocated)
+	if (entry >= MAX_TLS_ENTRIES || !tls->entries[entry].allocated)
 		return 0;
-	gs = val;
-	gs_addr = tls_entries[entry].addr;
+	tls->gs = val;
+	tls->gs_addr = tls->entries[entry].addr;
 	return 1;
-}
-
-#define TRAMPOLINE_SIZE		PAGE_SIZE
-static uint8_t *const trampoline = TLS_TRAMPOLINE_BASE;
-
-void tls_init()
-{
-	sys_mmap(TLS_TRAMPOLINE_BASE, TRAMPOLINE_SIZE, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_FIXED | MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-}
-
-void tls_shutdown()
-{
-	sys_munmap(trampoline, TRAMPOLINE_SIZE);
 }
 
 #define MODRM_MOD(c)	(((c) >> 6) & 7)
@@ -182,7 +186,7 @@ void tls_shutdown()
 #define MODRM_CODE(c)	MODRM_R(c)
 int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 {
-	if (context->Eip >= trampoline && context->Eip < trampoline + TRAMPOLINE_SIZE)
+	if (context->Eip >= tls->trampoline && context->Eip < tls->trampoline + sizeof(tls->trampoline))
 	{
 		log_debug("EIP Inside TLS trampoline!!!!! Emulation skipped.\n");
 		return 0;
@@ -308,9 +312,9 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 		}
 
 		int idx = 0;
-		#define GEN_BYTE(x)		trampoline[idx++] = (x)
-		#define GEN_WORD(x)		*(uint16_t *)&trampoline[(idx += 2) - 2] = (x)
-		#define GEN_DWORD(x)	*(uint32_t *)&trampoline[(idx += 4) - 4] = (x)
+		#define GEN_BYTE(x)		tls->trampoline[idx++] = (x)
+		#define GEN_WORD(x)		*(uint16_t *)&tls->trampoline[(idx += 2) - 2] = (x)
+		#define GEN_DWORD(x)	*(uint32_t *)&tls->trampoline[(idx += 4) - 4] = (x)
 		#define COPY_PREFIX() \
 			/* Copy prefixes */ \
 			for (int i = 0; i < prefix_end; i++) \
@@ -322,8 +326,8 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 			GEN_BYTE(0x68); /* PUSH imm32 */ \
 			GEN_DWORD(context->Eip + prefix_end + (inst_len)); \
 			GEN_BYTE(0xC3); /* RET */ \
-			context->Eip = trampoline; \
-			log_debug("Building trampoline successfully at %x\n", trampoline)
+			context->Eip = tls->trampoline; \
+			log_debug("Building trampoline successfully at %x\n", tls->trampoline)
 
 		switch (desc->type)
 		{
@@ -360,7 +364,7 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 				base_addr = *(uint32_t *) &code[prefix_end + modrm_offset + 1 + sib];
 				addr_bytes = 4;
 			}
-			base_addr += gs_addr;
+			base_addr += tls->gs_addr;
 			if (mod == 0 && MODRM_M(modrm) == 5) /* special case: immediate disp32 */
 			{
 				GEN_BYTE(modrm);
@@ -393,7 +397,7 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 			/* MOV moffs16, AX */
 			/* MOV moffs32, EAX */
 			/* TODO: Deal with address_size_prefix when we support it */
-			uint32_t addr = gs_addr + LOW32(code[prefix_end + 1]);
+			uint32_t addr = tls->gs_addr + LOW32(code[prefix_end + 1]);
 			COPY_PREFIX();
 			GEN_BYTE(code[prefix_end]);
 			GEN_DWORD(addr);
