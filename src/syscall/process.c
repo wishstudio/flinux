@@ -1,25 +1,56 @@
 #include "process.h"
 #include "err.h"
-#include "../log.h"
+#include "mm.h"
+#include <log.h>
 
 #include <Windows.h>
 
-static void *stack_base;
-
-void *process_alloc_stack()
+struct child_info
 {
-	stack_base = VirtualAlloc(NULL, STACK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
-	return stack_base;
-}
+	pid_t pid;
+	HANDLE handle;
+};
 
-void process_set_stack_base(void *base)
+#define MAX_CHILD_COUNT 1024
+struct process_data
 {
-	stack_base = base;
+	void *stack_base;
+	int child_count;
+	pid_t child_pids[MAX_CHILD_COUNT];
+	/* Use a separated array for handles allows direct WaitForMultipleObjects() invocation */
+	HANDLE child_handles[MAX_CHILD_COUNT];
+};
+
+static struct process_data *const process = PROCESS_DATA_BASE;
+
+void process_init(void *stack_base)
+{
+	VirtualAlloc(PROCESS_DATA_BASE, sizeof(struct process_data), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+	process->child_count = 0;
+	/* TODO: Avoid VirtualAlloc() to reduce potential virtual address space collision */
+	if (stack_base)
+		process->stack_base = stack_base;
+	else
+		process->stack_base = VirtualAlloc(NULL, STACK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
 }
 
 void *process_get_stack_base()
 {
-	return stack_base;
+	return process->stack_base;
+}
+
+void process_add_child(pid_t pid, HANDLE handle)
+{
+	int i = process->child_count++;
+	process->child_pids[i] = pid;
+	process->child_handles[i] = handle;
+}
+
+pid_t sys_waitpid(pid_t pid, int *status, int options)
+{
+	log_debug("sys_waitpid(%d, %x, %d)\n", pid, status, options);
+	/* TODO */
+	return -1;
 }
 
 pid_t sys_getpid()

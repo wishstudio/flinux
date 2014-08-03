@@ -24,7 +24,7 @@ static struct fork_info * const fork = FORK_INFO_BASE;
 __declspec(noreturn) static void restore_fork_context()
 {
 	install_syscall_handler();
-	process_set_stack_base(fork->stack_base);
+	process_init(fork->stack_base);
 	__asm
 	{
 		mov ecx, [FORK_INFO_BASE + CONTEXT.Ecx]

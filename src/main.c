@@ -16,11 +16,12 @@
 __declspec(noreturn) static void run(Elf32_Ehdr *eh, void *pht, int argc, char *argv[])
 {
 	install_syscall_handler();
+	process_init(NULL);
 
 	/* Generate initial stack */
 	int env_size = 0, aux_size = 7;
 	int initial_stack_size = argc + 1 + env_size + 1 + aux_size * 2 + 1;
-	char *stack_base = process_alloc_stack();
+	char *stack_base = process_get_stack_base();
 	const char **stack = (const char **)(stack_base + STACK_SIZE - initial_stack_size * sizeof(const char *));
 	int idx = 0;
 	/* argv */

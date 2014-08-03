@@ -13,6 +13,8 @@
 
 /* Base address of mm_data structure */
 #define MM_DATA_BASE		0x02000000
+/* Base address of process_data structure */
+#define PROCESS_DATA_BASE	0x02700000
 /* Base address of mm_heap structure */
 #define MM_HEAP_BASE		0x02800000
 /* Base address of vfs_data structure */

@@ -3,11 +3,15 @@
 #include <common/types.h>
 #include <common/utsname.h>
 
+#include <Windows.h>
+
 #define STACK_SIZE	8388608
 
-void *process_alloc_stack();
-void process_set_stack_base(void *base);
+void process_init(void *stack_base);
 void *process_get_stack_base();
+void process_add_child(pid_t pid, HANDLE handle);
+
+pid_t sys_waitpid(pid_t pid, int *status, int options);
 
 pid_t sys_getpid();
 pid_t sys_getppid();
