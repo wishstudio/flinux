@@ -258,6 +258,7 @@ static HANDLE duplicate_section(HANDLE source, void *source_addr)
 
 int mm_handle_page_fault(void *addr)
 {
+	log_debug("Handling page fault at address %x (page %x)\n", addr, GET_PAGE(addr));
 	if ((size_t)addr < ADDRESS_SPACE_LOW || (size_t)addr >= ADDRESS_SPACE_HIGH)
 	{
 		log_debug("Address %x outside of valid usermode address space.\n", addr);

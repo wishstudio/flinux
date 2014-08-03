@@ -93,6 +93,12 @@
       <Filter>syscall</Filter>
     </ClInclude>
     <ClInclude Include="src\heap.h" />
+    <ClInclude Include="src\common\ptrace.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="src\common\sched.h">
+      <Filter>common</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />

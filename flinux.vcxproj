@@ -17,6 +17,8 @@
     <ClInclude Include="src\common\dirent.h" />
     <ClInclude Include="src\common\fcntl.h" />
     <ClInclude Include="src\common\ldt.h" />
+    <ClInclude Include="src\common\ptrace.h" />
+    <ClInclude Include="src\common\sched.h" />
     <ClInclude Include="src\common\signal.h" />
     <ClInclude Include="src\common\stat.h" />
     <ClInclude Include="src\common\types.h" />

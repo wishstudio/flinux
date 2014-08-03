@@ -11,7 +11,14 @@ static char buffer[BUFFER_SIZE];
 
 void log_init()
 {
-	hFile = CreateFile("flinux.log", GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	char filename[13] = "flinux-?.log";
+	for (char i = '0'; i <= '9'; i++)
+	{
+		filename[7] = i;
+		hFile = CreateFileA(filename, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+		if (hFile != INVALID_HANDLE_VALUE)
+			break;
+	}
 }
 
 void log_shutdown()

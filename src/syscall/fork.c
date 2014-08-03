@@ -3,6 +3,7 @@
 #include "process.h"
 #include "syscall.h"
 #include <log.h>
+#include <common/sched.h>
 
 /* Fork process
  *
@@ -56,9 +57,8 @@ void fork_init()
 	}
 }
 
-pid_t sys_fork(int _1, int _2, int _3, int _4, int _5, PCONTEXT context)
+static pid_t fork_process(PCONTEXT context)
 {
-	log_debug("fork()\n");
 	wchar_t filename[MAX_PATH];
 	GetModuleFileNameW(NULL, filename, sizeof(filename));
 
@@ -95,4 +95,45 @@ fail:
 	CloseHandle(info.hThread);
 	CloseHandle(info.hProcess);
 	return -1;
+}
+
+pid_t sys_fork(int _1, int _2, int _3, int _4, int _5, PCONTEXT context)
+{
+	log_debug("fork()\n");
+	return fork_process(context);
+}
+
+pid_t sys_clone(unsigned long flags, void *child_stack, void *ptid, void *ctid, struct pt_regs *_regs, PCONTEXT context)
+{
+	/* Currently supported flags (see sched.h):
+	   o CLONE_VM
+	   o CLONE_FS
+	   o CLONE_SIGHAND
+	   o CLONE_PTRACE
+	   o CLONE_VFORK
+	   o CLONE_PARENT
+	   o CLONE_THREAD
+	   o CLONE_NEWNS
+	   o CLONE_SYSVSEM
+	   o CLONE_SETTLS
+	   o CLONE_PARENT_SETTID
+	   o CLONE_CHILD_CLEARTID
+	   o CLONE_DETACHED
+	   o CLONE_UNTRACED
+	   o CLONE_CHILD_SETTID
+	   o CLONE_NEWUTS
+	   o CLONE_NEWIPC
+	   o CLONE_NEWUSER
+	   o CLONE_NEWPID
+	   o CLONE_NEWNET
+	   o CLONE_IO
+	 */
+	log_debug("sys_clone(flags=%x, child_stack=%x, ptid=%x, ctid=%x)\n", flags, child_stack, ptid, ctid);
+	if (flags & CLONE_THREAD)
+	{
+		log_debug("Threads not supported.\n");
+		return -1;
+	}
+	else
+		return fork_process(context);
 }
