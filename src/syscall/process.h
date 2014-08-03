@@ -5,7 +5,7 @@
 
 #include <Windows.h>
 
-#define STACK_SIZE	8388608
+#define STACK_SIZE	1048576
 
 void process_init(void *stack_base);
 void *process_get_stack_base();

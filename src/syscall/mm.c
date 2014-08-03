@@ -417,8 +417,9 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offs
 				status = NtMapViewOfSection(handle, NtCurrentProcess(), &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, prot_linux2win(prot));
 				if (status != STATUS_SUCCESS)
 				{
-					log_debug("NtMapViewOfSection() failed. Status: %x\n", status);
+					log_debug("NtMapViewOfSection() failed. Address: %x, Status: %x\n", base_addr, status);
 					NtClose(handle);
+					dump_virtual_memory(NtCurrentProcess());
 					goto ROLLBACK;
 				}
 				mm->block_section_handle[i] = handle;
