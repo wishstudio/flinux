@@ -340,13 +340,12 @@ int mm_fork(HANDLE process)
 			}
 		}
 	/* Disable write permission on pages */
-	for (uint32_t i = 0; i < MAX_MMAP_COUNT; i++)
-		if (mm->map_entries[i].start_page != 0)
-			for (uint32_t j = mm->map_entries[i].start_page; j <= mm->map_entries[i].end_page; j++)
-			{
-				VirtualProtectEx(process, GET_PAGE_ADDRESS(j), PAGE_SIZE, prot_linux2win(mm->page_prot[j] & ~PROT_WRITE), NULL);
-				VirtualProtect(GET_PAGE_ADDRESS(j), PAGE_SIZE, prot_linux2win(mm->page_prot[j] & ~PROT_WRITE), NULL);
-			}
+	for (struct map_entry *e = mm->map_list; e; e = e->next)
+		for (uint32_t j = e->start_page; j <= e->end_page; j++)
+		{
+			VirtualProtectEx(process, GET_PAGE_ADDRESS(j), PAGE_SIZE, prot_linux2win(mm->page_prot[j] & ~PROT_WRITE), NULL);
+			VirtualProtect(GET_PAGE_ADDRESS(j), PAGE_SIZE, prot_linux2win(mm->page_prot[j] & ~PROT_WRITE), NULL);
+		}
 	return 1;
 }
 
