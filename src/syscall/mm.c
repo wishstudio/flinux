@@ -284,18 +284,20 @@ int mm_handle_page_fault(void *addr)
 		log_debug("NtQueryObject() on section %x failed.\n", block);
 		return 0;
 	}
-	if (info.HandleCount > 1)
+	if (info.HandleCount == 1)
+		log_debug("We're the only owner, simply change protection flags.\n");
+	else
 	{
 		/* We are not the only one holding the section, duplicate it */
 		log_debug("Duplicating section %x...\n", block);
 		HANDLE section;
 		if (!(section = duplicate_section(mm->block_section_handle[block], GET_BLOCK_ADDRESS(block))))
 		{
-			log_debug("Duplicating section failed.");
+			log_debug("Duplicating section failed.\n");
 			return 0;
 		}
 		else
-			log_debug("Duplicating section succeeded. Remapping...");
+			log_debug("Duplicating section succeeded. Remapping...\n");
 		NtClose(mm->block_section_handle[block]);
 		mm->block_section_handle[block] = section;
 		PVOID base_addr = GET_BLOCK_ADDRESS(block);
@@ -306,7 +308,12 @@ int mm_handle_page_fault(void *addr)
 	for (uint16_t i = 0; i < PAGES_PER_BLOCK; i++)
 	{
 		uint16_t page = GET_FIRST_PAGE_OF_BLOCK(block) + i;
-		VirtualProtect(GET_PAGE_ADDRESS(page), PAGE_SIZE, prot_linux2win(mm->page_prot[page]), NULL);
+		DWORD oldProtect;
+		if (!VirtualProtect(GET_PAGE_ADDRESS(page), PAGE_SIZE, prot_linux2win(mm->page_prot[page]), &oldProtect))
+		{
+			log_debug("VirtualProtect(%x) failed.\n", GET_PAGE_ADDRESS(page));
+			return 0;
+		}
 	}
 	return 1;
 }
@@ -343,8 +350,17 @@ int mm_fork(HANDLE process)
 	for (struct map_entry *e = mm->map_list; e; e = e->next)
 		for (uint32_t j = e->start_page; j <= e->end_page; j++)
 		{
-			VirtualProtectEx(process, GET_PAGE_ADDRESS(j), PAGE_SIZE, prot_linux2win(mm->page_prot[j] & ~PROT_WRITE), NULL);
-			VirtualProtect(GET_PAGE_ADDRESS(j), PAGE_SIZE, prot_linux2win(mm->page_prot[j] & ~PROT_WRITE), NULL);
+			DWORD oldProtect;
+			if (!VirtualProtectEx(process, GET_PAGE_ADDRESS(j), PAGE_SIZE, prot_linux2win(mm->page_prot[j] & ~PROT_WRITE), &oldProtect))
+			{
+				log_debug("VirtualProtectEx(%x) on child failed.\n", GET_PAGE_ADDRESS(j));
+				return 0;
+			}
+			if (!VirtualProtect(GET_PAGE_ADDRESS(j), PAGE_SIZE, prot_linux2win(mm->page_prot[j] & ~PROT_WRITE), &oldProtect))
+			{
+				log_debug("VirtualProtect(%x) failed.\n", GET_PAGE_ADDRESS(j));
+				return 0;
+			}
 		}
 	return 1;
 }
