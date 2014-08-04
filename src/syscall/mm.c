@@ -298,11 +298,22 @@ int mm_handle_page_fault(void *addr)
 		}
 		else
 			log_debug("Duplicating section succeeded. Remapping...\n");
+		status = NtUnmapViewOfSection(NtCurrentProcess(), GET_BLOCK_ADDRESS(block));
+		if (status != STATUS_SUCCESS)
+		{
+			log_debug("Unmapping failed, status: %x\n", status);
+			return 0;
+		}
 		NtClose(mm->block_section_handle[block]);
 		mm->block_section_handle[block] = section;
 		PVOID base_addr = GET_BLOCK_ADDRESS(block);
 		SIZE_T view_size = BLOCK_SIZE;
-		NtMapViewOfSection(section, NtCurrentProcess(), &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, PAGE_EXECUTE_READWRITE);
+		status = NtMapViewOfSection(section, NtCurrentProcess(), &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, PAGE_EXECUTE_READWRITE);
+		if (status != STATUS_SUCCESS)
+		{
+			log_debug("Remapping failed, status: %x\n", status);
+			return 0;
+		}
 	}
 	/* We're the only owner of the section now, change page protection flags */
 	for (uint16_t i = 0; i < PAGES_PER_BLOCK; i++)
