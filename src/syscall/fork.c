@@ -18,6 +18,7 @@ struct fork_info
 {
 	CONTEXT context;
 	void *stack_base;
+	void *ctid;
 };
 
 static struct fork_info * const fork = FORK_INFO_BASE;
@@ -26,6 +27,8 @@ __declspec(noreturn) static void restore_fork_context()
 {
 	install_syscall_handler();
 	process_init(fork->stack_base);
+	if (fork->ctid)
+		*(pid_t *)fork->ctid = GetCurrentProcessId();
 	__asm
 	{
 		mov ecx, [FORK_INFO_BASE + CONTEXT.Ecx]
@@ -57,7 +60,7 @@ void fork_init()
 	}
 }
 
-static pid_t fork_process(PCONTEXT context)
+static pid_t fork_process(PCONTEXT context, unsigned long flags, void *ptid, void *ctid)
 {
 	wchar_t filename[MAX_PATH];
 	GetModuleFileNameW(NULL, filename, sizeof(filename));
@@ -79,6 +82,8 @@ static pid_t fork_process(PCONTEXT context)
 	VirtualAllocEx(info.hProcess, FORK_INFO_BASE, BLOCK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 	WriteProcessMemory(info.hProcess, FORK_INFO_BASE, context, sizeof(CONTEXT), NULL);
 	WriteProcessMemory(info.hProcess, FORK_INFO_BASE + sizeof(CONTEXT), &stack_base, sizeof(stack_base), NULL);
+	if (flags & CLONE_CHILD_SETTID)
+		WriteProcessMemory(info.hProcess, FORK_INFO_BASE + sizeof(CONTEXT) + sizeof(stack_base), &ctid, sizeof(void*), NULL);
 
 	/* Copy stack */
 	VirtualAllocEx(info.hProcess, stack_base, STACK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
@@ -100,10 +105,10 @@ fail:
 pid_t sys_fork(int _1, int _2, int _3, int _4, int _5, PCONTEXT context)
 {
 	log_debug("fork()\n");
-	return fork_process(context);
+	return fork_process(context, 0, NULL, NULL);
 }
 
-pid_t sys_clone(unsigned long flags, void *child_stack, void *ptid, void *ctid, struct pt_regs *_regs, PCONTEXT context)
+pid_t sys_clone(unsigned long flags, void *child_stack, void *ptid, int tls, void *ctid, PCONTEXT context)
 {
 	/* Currently supported flags (see sched.h):
 	   o CLONE_VM
@@ -135,5 +140,5 @@ pid_t sys_clone(unsigned long flags, void *child_stack, void *ptid, void *ctid, 
 		return -1;
 	}
 	else
-		return fork_process(context);
+		return fork_process(context, flags, ptid, ctid);
 }
