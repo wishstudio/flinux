@@ -302,11 +302,13 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 		int modrm_offset;
 		if (code[prefix_end] == 0x0F)
 		{
+			log_debug("Opcode: 0x0F%02x\n", code[prefix_end + 1]);
 			desc = &two_byte_inst[code[prefix_end + 1]];
 			modrm_offset = 2;
 		}
 		else
 		{
+			log_debug("Opcode: 0x%02x\n", code[prefix_end]);
 			desc = &one_byte_inst[code[prefix_end]];
 			modrm_offset = 1;
 		}
