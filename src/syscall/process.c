@@ -1,6 +1,7 @@
 #include "process.h"
 #include "err.h"
 #include "mm.h"
+#include <common/wait.h>
 #include <log.h>
 
 #include <Windows.h>
@@ -49,8 +50,41 @@ void process_add_child(pid_t pid, HANDLE handle)
 pid_t sys_waitpid(pid_t pid, int *status, int options)
 {
 	log_debug("sys_waitpid(%d, %x, %d)\n", pid, status, options);
-	/* TODO */
-	return -1;
+	if (options & WNOHANG)
+		log_debug("Unhandled option WNOHANG\n");
+	if (options & WUNTRACED)
+		log_debug("Unhandled option WUNTRACED\n");
+	if (options & WCONTINUED)
+		log_debug("Unhandled option WCONTINUED\n");
+	if (pid != -1)
+	{
+		log_debug("pid != -1 unhandled\n");
+		return -1;
+	}
+	if (process->child_count == 0)
+	{
+		log_debug("No childs.\n");
+		return -ECHILD;
+	}
+	DWORD result = WaitForMultipleObjects(process->child_count, process->child_handles, FALSE, INFINITE);
+	if (result < WAIT_OBJECT_0 || result >= WAIT_OBJECT_0 + process->child_count)
+	{
+		log_debug("WaitForMultipleObjects(): Unexpected return.\n");
+		return -1;
+	}
+	int id = result - WAIT_OBJECT_0;
+	DWORD exitCode;
+	GetExitCodeProcess(process->child_handles[id], &exitCode);
+	CloseHandle(process->child_handles[id]);
+	pid = process->child_pids[id];
+	for (int i = id; i + 1 < process->child_count; i++)
+	{
+		process->child_pids[i] = process->child_pids[i + 1];
+		process->child_handles[i] = process->child_handles[i + 1];
+	}
+	process->child_count--;
+	*status = W_EXITCODE(exitCode, 0);
+	return pid;
 }
 
 pid_t sys_getpid()

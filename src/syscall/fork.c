@@ -115,7 +115,8 @@ static pid_t fork_process(PCONTEXT context, unsigned long flags, void *ptid, voi
 	ResumeThread(info.hThread);
 
 	CloseHandle(info.hThread);
-	CloseHandle(info.hProcess);
+	/* Process handled will be used for wait() */
+	process_add_child(info.dwProcessId, info.hProcess);
 	return info.dwProcessId;
 
 fail:

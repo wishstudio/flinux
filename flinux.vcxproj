@@ -25,6 +25,7 @@
     <ClInclude Include="src\common\errno.h" />
     <ClInclude Include="src\common\mman.h" />
     <ClInclude Include="src\common\utsname.h" />
+    <ClInclude Include="src\common\wait.h" />
     <ClInclude Include="src\fs\file.h" />
     <ClInclude Include="src\fs\tty.h" />
     <ClInclude Include="src\fs\winfs.h" />
