@@ -251,6 +251,9 @@ static HANDLE duplicate_section(HANDLE source, void *source_addr)
 		return NULL;
 	
 	NtMapViewOfSection(dest, NtCurrentProcess(), &dest_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, PAGE_READWRITE);
+	/* Mark source block entirely readable. TODO: Find a better way */
+	DWORD oldProtect;
+	VirtualProtect(source_addr, BLOCK_SIZE, PAGE_EXECUTE_READWRITE, &oldProtect);
 	CopyMemory(dest_addr, source_addr, BLOCK_SIZE);
 	NtUnmapViewOfSection(NtCurrentProcess(), dest_addr);
 	return dest;
@@ -316,9 +319,9 @@ int mm_handle_page_fault(void *addr)
 		}
 	}
 	/* We're the only owner of the section now, change page protection flags */
-	for (uint16_t i = 0; i < PAGES_PER_BLOCK; i++)
+	for (uint32_t i = 0; i < PAGES_PER_BLOCK; i++)
 	{
-		uint16_t page = GET_FIRST_PAGE_OF_BLOCK(block) + i;
+		uint32_t page = GET_FIRST_PAGE_OF_BLOCK(block) + i;
 		DWORD oldProtect;
 		if (!VirtualProtect(GET_PAGE_ADDRESS(page), PAGE_SIZE, prot_linux2win(mm->page_prot[page]), &oldProtect))
 		{
