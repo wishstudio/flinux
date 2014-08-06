@@ -264,9 +264,9 @@ int mm_handle_page_fault(void *addr)
 		log_debug("Address %x outside of valid usermode address space.\n", addr);
 		return 0;
 	}
-	if (mm->page_prot[GET_PAGE(addr)] & PROT_WRITE == 0)
+	if ((mm->page_prot[GET_PAGE(addr)] & PROT_WRITE) == 0)
 	{
-		log_debug("Address %x (page %x) not writtable.\n", addr, GET_PAGE(addr));
+		log_debug("Address %x (page %x) not writable.\n", addr, GET_PAGE(addr));
 		return 0;
 	}
 	uint16_t block = GET_BLOCK(addr);
