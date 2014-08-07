@@ -13,6 +13,8 @@
 #define MAP_ANONYMOUS	0x20
 #define MAP_ANON		MAP_ANONYMOUS
 
+#define __MAP_HEAP		0x80	/* Internal mode */
+
 #define MAP_FAILED		((void *)-1)
 
 /* Flags for msync. */

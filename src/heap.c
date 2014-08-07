@@ -53,7 +53,7 @@ void heap_shutdown()
 
 static struct bucket *alloc_bucket(int objsize)
 {
-	struct bucket *b = mm_mmap(0, BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+	struct bucket *b = mm_mmap(0, BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE | __MAP_HEAP, -1, 0);
 	b->ref_cnt = 0;
 	b->next_bucket = NULL;
 

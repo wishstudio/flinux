@@ -23,6 +23,8 @@
 #define TLS_DATA_BASE		0x02FE0000
 /* Base address of fork_info structure */
 #define FORK_INFO_BASE		0x02FF0000
+/* Base address of kernel heap */
+#define HEAP_BASE			0x03000000
 
 void mm_init();
 void mm_shutdown();

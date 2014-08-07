@@ -34,7 +34,7 @@
  * ...
  * ...          Application code/data
  * ...
- * 03000000 ------------------------------
+ * 04000000 ------------------------------
  * ...        Foreign Linux kernel data
  * 02000000 ------------------------------
  * ...        Foreign Linux kernel code
@@ -43,6 +43,8 @@
  *
  * Foreign Linux kernel data memory layout
  *
+ * 04000000 ------------------------------
+ *                    kernel heap
  * 03000000 ------------------------------
  *                fork_info structure
  * 02FF0000 ------------------------------
@@ -68,7 +70,7 @@
 /* Higher bound of the virtual address space */
 #define ADDRESS_SPACE_HIGH 0x80000000U
 /* The lowest non fixed allocation address we can make */
-#define ADDRESS_ALLOCATION_LOW 0x03000000U
+#define ADDRESS_ALLOCATION_LOW 0x04000000U
 /* The highest non fixed allocation address we can make */
 #define ADDRESS_ALLOCATION_HIGH 0x80000000U
 
@@ -169,17 +171,17 @@ static int is_pages_free(uint32_t start_page, uint32_t end_page)
 	return 1;
 }
 
-/* Find 'count' consecutive free pages, return 0 if not found */
-static uint32_t find_free_pages(uint32_t count)
+/* Find 'count' consecutive free pages in range [low, high), return 0 if not found */
+static uint32_t find_free_pages(uint32_t count, uint32_t low, uint32_t high)
 {
-	uint32_t last = GET_PAGE(ADDRESS_ALLOCATION_LOW);
+	uint32_t last = GET_PAGE(low);
 	for (struct map_entry *e = mm->map_list; e; e = e->next)
-		if (e->start_page >= GET_PAGE(ADDRESS_ALLOCATION_LOW))
+		if (e->start_page >= GET_PAGE(low))
 			if (e->start_page - last >= count)
 				return last;
 			else
 				last = e->end_page + 1;
-	if (GET_PAGE(ADDRESS_ALLOCATION_HIGH) - last >= count)
+	if (GET_PAGE(high) - last >= count)
 		return last;
 	else
 		return 0;
@@ -402,7 +404,11 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offs
 		return NULL;
 	if (!(flags & MAP_FIXED))
 	{
-		uint32_t alloc_page = find_free_pages(GET_PAGE(ALIGN_TO_PAGE(length)));
+		uint32_t alloc_page;
+		if (flags & __MAP_HEAP)
+			alloc_page = find_free_pages(GET_PAGE(ALIGN_TO_PAGE(length)), HEAP_BASE, ADDRESS_ALLOCATION_LOW);
+		else
+			alloc_page = find_free_pages(GET_PAGE(ALIGN_TO_PAGE(length)), ADDRESS_ALLOCATION_LOW, ADDRESS_ALLOCATION_HIGH);
 		if (!alloc_page)
 			return NULL;
 
