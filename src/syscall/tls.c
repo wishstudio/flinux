@@ -87,6 +87,14 @@ void tls_init()
 	sys_mmap(TLS_DATA_BASE, sizeof(struct tls_data), PROT_READ | PROT_WRITE | PROT_EXEC, MAP_FIXED | MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 }
 
+void tls_reset()
+{
+	for (int i = 0; i < MAX_TLS_ENTRIES; i++)
+		tls->entries[i].allocated = 0;
+	tls->gs = 0;
+	tls->gs_addr = 0;
+}
+
 void tls_shutdown()
 {
 	sys_munmap(TLS_DATA_BASE, sizeof(struct tls_data));

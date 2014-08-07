@@ -116,6 +116,23 @@ struct mm_data
 };
 static struct mm_data *const mm = MM_DATA_BASE;
 
+static struct map_entry *new_map_entry()
+{
+	if (mm->map_free_list)
+	{
+		struct map_entry *entry = mm->map_free_list;
+		mm->map_free_list = mm->map_free_list->next;
+		return entry;
+	}
+	return NULL;
+}
+
+static void free_map_entry(struct map_entry *entry)
+{
+	entry->next = mm->map_free_list;
+	mm->map_free_list = entry;
+}
+
 void mm_init()
 {
 	VirtualAlloc(MM_DATA_BASE, sizeof(struct mm_data), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
@@ -125,6 +142,36 @@ void mm_init()
 	mm->map_list = NULL;
 	mm->map_free_list = &mm->map_entries[0];
 	mm->map_entries[MAX_MMAP_COUNT - 1].next = NULL;
+}
+
+void mm_reset()
+{
+	/* Release all user memory */
+	for (uint32_t i = GET_BLOCK(ADDRESS_ALLOCATION_LOW); i < GET_BLOCK(ADDRESS_ALLOCATION_HIGH); i++)
+		if (mm->block_section_handle[i])
+		{
+			NtUnmapViewOfSection(mm->block_section_handle[i], GET_BLOCK_ADDRESS(i));
+			NtClose(mm->block_section_handle[i]);
+			mm->block_section_handle[i] = 0;
+			mm->block_page_count[i] = 0;
+		}
+	for (struct map_entry *e = mm->map_list, *p = NULL; e;)
+	{
+		if (e->start_page >= GET_PAGE(ADDRESS_ALLOCATION_LOW) && e->end_page < GET_PAGE(ADDRESS_ALLOCATION_HIGH))
+		{
+			for (uint32_t i = e->start_page; i <= e->end_page; i++)
+				mm->page_prot[i] = 0;
+			if (p)
+				p->next = e->next;
+			else
+				mm->map_list = e->next;
+			struct map_entry *t = e;
+			e = e->next;
+			free_map_entry(t);
+		}
+		else
+			p = e, e = e->next;
+	}
 }
 
 void mm_shutdown()
@@ -141,23 +188,6 @@ void mm_shutdown()
 void mm_update_brk(void *brk)
 {
 	mm->brk = max(mm->brk, brk);
-}
-
-static struct map_entry *new_map_entry()
-{
-	if (mm->map_free_list)
-	{
-		struct map_entry *entry = mm->map_free_list;
-		mm->map_free_list = mm->map_free_list->next;
-		return entry;
-	}
-	return NULL;
-}
-
-static void free_map_entry(struct map_entry *entry)
-{
-	entry->next = mm->map_free_list;
-	mm->map_free_list = entry;
 }
 
 /* Determine if range [start_page, end_page] of pages are all free */

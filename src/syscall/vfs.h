@@ -5,6 +5,7 @@
 #include <common/dirent.h>
 
 void vfs_init();
+void vfs_reset();
 void vfs_shutdown();
 
 size_t sys_read(int fd, char *buf, size_t count);

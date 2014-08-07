@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 void tls_init();
+void tls_reset();
 void tls_shutdown();
 
 int set_thread_area(struct user_desc *u_info);

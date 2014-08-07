@@ -42,6 +42,11 @@ void vfs_init()
 	vfs->cwdlen = 2;
 }
 
+void vfs_reset()
+{
+	/* TODO: Handle CLOEXEC */
+}
+
 void vfs_shutdown()
 {
 	for (int i = 0; i < MAX_FD_COUNT; i++)

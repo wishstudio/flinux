@@ -27,6 +27,7 @@
 #define HEAP_BASE			0x03000000
 
 void mm_init();
+void mm_reset();
 void mm_shutdown();
 void mm_update_brk(void *brk);
 
