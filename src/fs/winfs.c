@@ -39,7 +39,10 @@ static int winfs_close(struct file *f)
 {
 	struct winfs_file *file = (struct winfs_file *)f;
 	if (CloseHandle(file->handle))
+	{
+		kfree(file, sizeof(struct winfs_file));
 		return 0;
+	}
 	else
 		return -1;
 }

@@ -1,6 +1,14 @@
 #include "tty.h"
 #include <heap.h>
 
+static int tty_close(struct file *f)
+{
+	struct tty_file *tty = (struct tty_file *) f;
+	CloseHandle(tty->file_handle);
+	kfree(tty, sizeof(struct tty_file));
+	return 0;
+}
+
 static size_t tty_read(struct file *f, char *buf, size_t count)
 {
 	struct tty_file *tty = (struct tty_file *) f;
@@ -47,6 +55,7 @@ static int tty_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 }
 
 static const struct file_ops tty_ops = {
+	.fn_close = tty_close,
 	.fn_read = tty_read,
 	.fn_write = tty_write,
 	.fn_stat = tty_stat,

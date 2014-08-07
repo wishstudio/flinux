@@ -118,7 +118,7 @@ void mm_init()
 {
 	VirtualAlloc(MM_DATA_BASE, sizeof(struct mm_data), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 	/* Initialize mapping info freelist */
-	for (uint16_t i = 0; i + 1 < MAX_MMAP_COUNT; i++)
+	for (uint32_t i = 0; i + 1 < MAX_MMAP_COUNT; i++)
 		mm->map_entries[i].next = &mm->map_entries[i + 1];
 	mm->map_list = NULL;
 	mm->map_free_list = &mm->map_entries[0];
@@ -127,6 +127,13 @@ void mm_init()
 
 void mm_shutdown()
 {
+	for (uint32_t i = 0; i < BLOCK_COUNT; i++)
+		if (mm->block_section_handle[i])
+		{
+			NtUnmapViewOfSection(mm->block_section_handle[i], GET_BLOCK_ADDRESS(i));
+			NtClose(mm->block_section_handle[i]);
+		}
+	VirtualFree(mm, 0, MEM_RELEASE);
 }
 
 void mm_update_brk(void *brk)
@@ -253,7 +260,7 @@ static HANDLE duplicate_section(HANDLE source, void *source_addr)
 	NtMapViewOfSection(dest, NtCurrentProcess(), &dest_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, PAGE_READWRITE);
 	/* Mark source block entirely readable. TODO: Find a better way */
 	DWORD oldProtect;
-	VirtualProtect(source_addr, BLOCK_SIZE, PAGE_EXECUTE_READWRITE, &oldProtect);
+	VirtualProtect(source_addr, BLOCK_SIZE, PAGE_EXECUTE_READ, &oldProtect);
 	CopyMemory(dest_addr, source_addr, BLOCK_SIZE);
 	NtUnmapViewOfSection(NtCurrentProcess(), dest_addr);
 	return dest;

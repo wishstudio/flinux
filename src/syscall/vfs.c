@@ -44,6 +44,13 @@ void vfs_init()
 
 void vfs_shutdown()
 {
+	for (int i = 0; i < MAX_FD_COUNT; i++)
+	{
+		struct file *f = vfs->fds[i];
+		if (f)
+			f->op_vtable->fn_close(f);
+	}
+	mm_munmap(VFS_DATA_BASE, sizeof(struct vfs_data));
 }
 
 size_t sys_read(int fd, char *buf, size_t count)

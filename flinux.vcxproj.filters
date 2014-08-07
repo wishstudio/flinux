@@ -102,6 +102,9 @@
     <ClInclude Include="src\common\wait.h">
       <Filter>common</Filter>
     </ClInclude>
+    <ClInclude Include="src\syscall\exec.h">
+      <Filter>syscall</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
@@ -137,6 +140,9 @@
       <Filter>syscall</Filter>
     </ClCompile>
     <ClCompile Include="src\heap.c" />
+    <ClCompile Include="src\syscall\exec.c">
+      <Filter>syscall</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="src\ntdll.def" />
