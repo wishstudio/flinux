@@ -80,11 +80,17 @@ static void run(Elf32_Ehdr *eh, void *pht, int argc, char *argv[], int env_size,
 	context->Ebp = 0;
 	context->Esi = 0;
 	context->Edi = 0;
+	context->Eip = entrypoint;
 }
 
 int do_execve(const char *filename, int argc, char *argv[], int env_size, char *envp[], PCONTEXT context)
 {
-	HANDLE hFile = CreateFileA(filename, GENERIC_READ | GENERIC_WRITE | GENERIC_EXECUTE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	HANDLE hFile = CreateFileA(filename, GENERIC_READ | GENERIC_WRITE | GENERIC_EXECUTE, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (hFile == INVALID_HANDLE_VALUE)
+	{
+		log_debug("Cannot open file, error code: %d.\n", GetLastError());
+		return -1;
+	}
 
 	/* Load ELF header */
 	Elf32_Ehdr eh;
@@ -134,11 +140,71 @@ int do_execve(const char *filename, int argc, char *argv[], int env_size, char *
 	return 0;
 }
 
-int sys_execve(const char *filename, char *const argv[], char *const envp[], int _4, int _5, PCONTEXT context)
+static char *const startup = (char *)STARTUP_DATA_BASE;
+
+int sys_execve(const char *filename, char *argv[], char *envp[], int _4, int _5, PCONTEXT context)
 {
-	log_debug("execve(%s)\n", filename);
-	log_debug("Reinitializing...");
+	/* TODO: Deal with argv/envp == NULL */
+	/* TODO: Don't destroy things on failure */
+	log_debug("execve(%s, %x, %x)\n", filename, argv, envp);
+	log_debug("Reinitializing...\n");
+
+	/* Copy argv[] and envp[] to startup data */
+	char *base = startup;
+	int argc, env_size;
+	for (argc = 0; argv[argc]; argc++)
+	{
+		base += strlen(argv[argc]) + 1;
+		log_debug("argv[%d] = \"%s\"\n", argc, argv[argc]);
+	}
+	log_debug("argc = %d\n", argc);
+	for (env_size = 0; envp[env_size]; env_size++)
+	{
+		base += strlen(envp[env_size]) + 1;
+		log_debug("envp[%d] = \"%s\"\n", env_size, envp[env_size]);
+	}
+	log_debug("env_size = %d\n", env_size);
+
+	/* TODO: Test if we have enough size to hold the startup data */
+	
+	char **new_argv = (char **)((uintptr_t)(base + sizeof(void*) - 1) & -sizeof(void*));
+	char **new_envp = new_argv + argc + 1;
+
+	base = startup;
+	for (int i = 0; i < argc; i++)
+	{
+		new_argv[i] = base;
+		int len = strlen(argv[i]);
+		memcpy(base, argv[i], len + 1);
+		base += len + 1;
+	}
+	new_argv[argc] = NULL;
+	for (int i = 0; i < env_size; i++)
+	{
+		new_envp[i] = base;
+		int len = strlen(envp[i]);
+		memcpy(base, envp[i], len + 1);
+		base += len + 1;
+	}
+	new_envp[env_size] = NULL;
+
+	/* TODO: This is really ugly, we should move it into a specific UTF8->UTF16 conversion routine when we supports unicode */
+	/* Normalize filename */
+	char fb[1024];
+	strcpy(fb, filename);
+	char *f = fb;
+	while (*f == ' ' || *f == '\t' || *f == '\r' || *f == '\n')
+		f++;
+	int len = strlen(f);
+	while (f[len - 1] == ' ' || f[len - 1] == '\t' || f[len - 1] == '\r' || f[len - 1] == '\n')
+		f[--len] = 0;
+
 	vfs_reset();
 	mm_reset();
-	return -1;
+	if (do_execve(f, argc, new_argv, env_size, new_envp, context) != 0)
+	{
+		log_debug("execve() failed.\n");
+		ExitProcess(0); /* TODO: Recover */
+	}
+	return 0;
 }

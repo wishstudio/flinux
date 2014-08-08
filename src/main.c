@@ -44,7 +44,7 @@ void main()
 	int in_quote = 0;
 	const char *j = startup;
 	for (char *i = startup; i <= startup + len; i++)
-		if (!in_quote && (*i == ' ' || *i == '\t' || *i == '\n' || *i == 0))
+		if (!in_quote && (*i == ' ' || *i == '\t' || *i == '\r' || *i == '\n' || *i == 0))
 		{
 			*i = 0;
 			if (i > j)

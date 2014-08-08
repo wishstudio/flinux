@@ -152,7 +152,7 @@ void mm_reset()
 	for (uint32_t i = GET_BLOCK(ADDRESS_ALLOCATION_LOW); i < GET_BLOCK(ADDRESS_ALLOCATION_HIGH); i++)
 		if (mm->block_section_handle[i])
 		{
-			NtUnmapViewOfSection(mm->block_section_handle[i], GET_BLOCK_ADDRESS(i));
+			NtUnmapViewOfSection(NtCurrentProcess(), GET_BLOCK_ADDRESS(i));
 			NtClose(mm->block_section_handle[i]);
 			mm->block_section_handle[i] = 0;
 			mm->block_page_count[i] = 0;
@@ -181,7 +181,7 @@ void mm_shutdown()
 	for (uint32_t i = 0; i < BLOCK_COUNT; i++)
 		if (mm->block_section_handle[i])
 		{
-			NtUnmapViewOfSection(mm->block_section_handle[i], GET_BLOCK_ADDRESS(i));
+			NtUnmapViewOfSection(NtCurrentProcess(), GET_BLOCK_ADDRESS(i));
 			NtClose(mm->block_section_handle[i]);
 		}
 	VirtualFree(mm, 0, MEM_RELEASE);
