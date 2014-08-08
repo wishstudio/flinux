@@ -160,6 +160,7 @@ void kfree(void *mem, int size)
 				previous->next_bucket = current->next_bucket;
 			mm_munmap(current, BLOCK_SIZE);
 		}
+		return;
 	}
 	log_debug("kfree(): Invalid memory pointer or size: (%x, %d)\n", mem, size);
 }
