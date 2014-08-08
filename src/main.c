@@ -12,9 +12,11 @@
 #include <Windows.h>
 #include <ntdll.h>
 
+#pragma comment(linker,"/entry:main")
+
 static char *const startup = (char *)STARTUP_DATA_BASE;
 
-int main()
+void main()
 {
 	log_init();
 	fork_init();
@@ -72,5 +74,5 @@ int main()
 	}
 	do_execve(filename, argc - 1, argv + 1, envp);
 	printf("Execution failed.\n");
-	return 0;
+	ExitProcess(0);
 }
