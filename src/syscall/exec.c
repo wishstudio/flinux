@@ -1,24 +1,44 @@
 #include "exec.h"
 #include "mm.h"
 #include "process.h"
+#include "vfs.h"
 #include <binfmt/elf.h>
 #include <common/auxvec.h>
 #include <common/errno.h>
 #include <log.h>
+#include <heap.h>
 
 #include <Windows.h>
 
-__declspec(noreturn) static void run(Elf32_Ehdr *eh, void *pht, int argc, char *argv[])
+__declspec(noreturn) static void goto_entrypoint(const char *stack, void *entrypoint)
 {
-	install_syscall_handler();
-	process_init(NULL);
+	__asm
+	{
+		mov eax, entrypoint
+		mov esp, stack
+		push eax
+		xor eax, eax
+		xor ebx, ebx
+		xor ecx, ecx
+		xor edx, edx
+		xor esi, esi
+		xor edi, edi
+		xor ebp, ebp
+		mov gs, ax
+		ret
+	}
+}
 
+static void run(Elf32_Ehdr *eh, void *pht, int argc, char *argv[], char *envp[], PCONTEXT context)
+{
 	/* Generate initial stack */
 	int env_size = 0, aux_size = 7;
 	int initial_stack_size = argc + 1 + env_size + 1 + aux_size * 2 + 1;
 	char *stack_base = process_get_stack_base();
-	const char **stack = (const char **)(stack_base + STACK_SIZE - initial_stack_size * sizeof(const char *));
+	const char **stack = (const char **)(stack_base + STACK_SIZE - initial_stack_size * sizeof(const char *) - sizeof(argc));
 	int idx = 0;
+	/* argc */
+	stack[idx++] = argc;
 	/* argv */
 	for (int i = 0; i < argc; i++)
 		stack[idx++] = argv[i];
@@ -45,24 +65,22 @@ __declspec(noreturn) static void run(Elf32_Ehdr *eh, void *pht, int argc, char *
 	/* Call executable entrypoint */
 	uint32_t entrypoint = eh->e_entry;
 	log_debug("Entrypoint: %x\n", entrypoint);
-	__asm
-	{
-		mov esp, stack
-		push argc
-		push entrypoint
-		xor eax, eax
-		xor ebx, ebx
-		xor ecx, ecx
-		xor edx, edx
-		xor esi, esi
-		xor edi, edi
-		xor ebp, ebp
-		mov gs, ax
-		ret
-	}
+	/* If we're starting from main(), just jump to entrypoint */
+	if (!context)
+		goto_entrypoint(stack, entrypoint);
+	/* Otherwise, we're at execve() in syscall handler context */
+	/* TODO: Add a trampoline to free original stack */
+	context->Eax = 0;
+	context->Ecx = 0;
+	context->Edx = 0;
+	context->Ebx = 0;
+	context->Esp = stack;
+	context->Ebp = 0;
+	context->Esi = 0;
+	context->Edi = 0;
 }
 
-void do_execve(const char *filename, int argc, char *const argv[], char *const envp[])
+int do_execve(const char *filename, int argc, char *const argv[], char *const envp[], PCONTEXT context)
 {
 	HANDLE hFile = CreateFileA(filename, GENERIC_READ | GENERIC_WRITE | GENERIC_EXECUTE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 
@@ -72,13 +90,13 @@ void do_execve(const char *filename, int argc, char *const argv[], char *const e
 	if (eh.e_type != ET_EXEC)
 	{
 		log_debug("Not an executable!\n");
-		return;
+		return -1;
 	}
 
 	if (eh.e_machine != EM_386)
 	{
 		log_debug("Not an i386 executable.\n");
-		return;
+		return -1;
 	}
 
 	/* Load program header table */
@@ -110,16 +128,15 @@ void do_execve(const char *filename, int argc, char *const argv[], char *const e
 		}
 	}
 	CloseHandle(hFile);
-	run(&eh, pht, argc, argv);
+	run(&eh, pht, argc, argv, envp, context);
+	return 0;
 }
 
-int sys_execve(const char *filename, char *const argv[], char *const envp[])
+int sys_execve(const char *filename, char *const argv[], char *const envp[], int _4, int _5, PCONTEXT context)
 {
 	log_debug("execve(%s)\n", filename);
 	log_debug("Reinitializing...");
-	mm_init();
-	heap_init();
-	vfs_init();
-	tls_init();
+	vfs_reset();
+	mm_reset();
 	return -1;
 }

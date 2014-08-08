@@ -25,6 +25,7 @@ void main()
 	heap_init();
 	vfs_init();
 	tls_init();
+	process_init(NULL);
 
 	/* Parse command line */
 	const char *cmdline = GetCommandLineA();
@@ -71,7 +72,8 @@ void main()
 		else if (!filename)
 			filename = argv[i];
 	}
-	do_execve(filename, argc - 1, argv + 1, envp);
+	install_syscall_handler();
+	do_execve(filename, argc - 1, argv + 1, envp, NULL);
 	kprintf("Execution failed.\n");
 	ExitProcess(0);
 }
