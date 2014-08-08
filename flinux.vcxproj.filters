@@ -105,6 +105,7 @@
     <ClInclude Include="src\syscall\exec.h">
       <Filter>syscall</Filter>
     </ClInclude>
+    <ClInclude Include="src\str.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
@@ -143,6 +144,7 @@
     <ClCompile Include="src\syscall\exec.c">
       <Filter>syscall</Filter>
     </ClCompile>
+    <ClCompile Include="src\str.c" />
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="src\ntdll.def" />

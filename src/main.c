@@ -5,6 +5,7 @@
 #include "syscall/vfs.h"
 #include "log.h"
 #include "heap.h"
+#include "str.h"
 #include <common/auxvec.h>
 
 #include <stdint.h>
@@ -32,7 +33,7 @@ void main()
 	int len = strlen(cmdline);
 	if (len > BLOCK_SIZE) /* TODO: Test if there is sufficient space for argv[] array */
 	{
-		printf("Command line too long.\n");
+		kprintf("Command line too long.\n");
 		return 1;
 	}
 
@@ -73,6 +74,6 @@ void main()
 			filename = argv[i];
 	}
 	do_execve(filename, argc - 1, argv + 1, envp);
-	printf("Execution failed.\n");
+	kprintf("Execution failed.\n");
 	ExitProcess(0);
 }
