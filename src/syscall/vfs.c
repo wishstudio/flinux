@@ -283,6 +283,12 @@ int sys_ioctl(int fd, unsigned int cmd, unsigned long arg)
 		return -1;
 }
 
+int sys_chdir(const char *pathname)
+{
+	log_debug("chdir(%s)\n", pathname);
+	return -1;
+}
+
 char *sys_getcwd(char *buf, size_t size)
 {
 	log_debug("getcwd(%x, %d): %s\n", buf, size, vfs->cwd);
