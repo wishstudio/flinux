@@ -12,7 +12,6 @@
 #include <Windows.h>
 #include <ntdll.h>
 
-
 int main(int argc, const char *argv[])
 {
 	log_init();
@@ -33,7 +32,7 @@ int main(int argc, const char *argv[])
 	vfs_init();
 	tls_init();
 	char *env[1] = { NULL };
-	if (!do_execve(filename, argc - 1, argv + 1, env))
-		printf("Execute failed.\n");
+	do_execve(filename, argc - 1, argv + 1, env);
+	printf("Execution failed.\n");
 	return 0;
 }

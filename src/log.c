@@ -30,7 +30,7 @@ void log_debug(const char *format, ...)
 {
 	va_list ap;
 	va_start(ap, format);
-	int size = vsprintf_s(buffer, BUFFER_SIZE, format, ap);
+	int size = wvsprintfA(buffer, format, ap);
 	WriteFile(hFile, buffer, size, NULL, NULL);
 	FlushFileBuffers(hFile);
 }

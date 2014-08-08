@@ -48,8 +48,10 @@
  * 03000000 ------------------------------
  *                fork_info structure
  * 02FF0000 ------------------------------
- *                tls_data structure
+ *             startup (argv, env) data
  * 02FE0000 ------------------------------
+ *                tls_data structure
+ * 02FD0000 ------------------------------
  *                vfs_data structure
  * 02900000 ------------------------------
  *              mm_heap_data structure

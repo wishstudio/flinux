@@ -4,6 +4,7 @@
 #include <binfmt/elf.h>
 #include <common/auxvec.h>
 #include <common/errno.h>
+#include <log.h>
 
 #include <Windows.h>
 
@@ -61,7 +62,7 @@ __declspec(noreturn) static void run(Elf32_Ehdr *eh, void *pht, int argc, char *
 	}
 }
 
-int do_execve(const char *filename, int argc, char *const argv[], char *const envp[])
+void do_execve(const char *filename, int argc, char *const argv[], char *const envp[])
 {
 	HANDLE hFile = CreateFileA(filename, GENERIC_READ | GENERIC_WRITE | GENERIC_EXECUTE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 
@@ -71,13 +72,13 @@ int do_execve(const char *filename, int argc, char *const argv[], char *const en
 	if (eh.e_type != ET_EXEC)
 	{
 		log_debug("Not an executable!\n");
-		goto fail;
+		return;
 	}
 
 	if (eh.e_machine != EM_386)
 	{
 		log_debug("Not an i386 executable.\n");
-		goto fail;
+		return;
 	}
 
 	/* Load program header table */
@@ -110,9 +111,6 @@ int do_execve(const char *filename, int argc, char *const argv[], char *const en
 	}
 	CloseHandle(hFile);
 	run(&eh, pht, argc, argv);
-
-fail:
-	return;
 }
 
 int sys_execve(const char *filename, char *const argv[], char *const envp[])

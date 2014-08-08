@@ -20,7 +20,9 @@
 /* Base address of vfs_data structure */
 #define VFS_DATA_BASE		0x02900000
 /* Base address of tls_data structure */
-#define TLS_DATA_BASE		0x02FE0000
+#define TLS_DATA_BASE		0x02FD0000
+/* Base address of executable startup data */
+#define STARTUP_DATA_BASE	0x02FE0000
 /* Base address of fork_info structure */
 #define FORK_INFO_BASE		0x02FF0000
 /* Base address of kernel heap */
