@@ -48,17 +48,17 @@ __declspec(noreturn) static void run(Elf32_Ehdr *eh, void *pht, int argc, char *
 	__asm
 	{
 		mov esp, stack
-			push argc
-			push entrypoint
-			xor eax, eax
-			xor ebx, ebx
-			xor ecx, ecx
-			xor edx, edx
-			xor esi, esi
-			xor edi, edi
-			xor ebp, ebp
-			mov gs, ax
-			ret
+		push argc
+		push entrypoint
+		xor eax, eax
+		xor ebx, ebx
+		xor ecx, ecx
+		xor edx, edx
+		xor esi, esi
+		xor edi, edi
+		xor ebp, ebp
+		mov gs, ax
+		ret
 	}
 }
 

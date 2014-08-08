@@ -1,17 +1,15 @@
+#include "syscall/exec.h"
 #include "syscall/fork.h"
 #include "syscall/mm.h"
 #include "syscall/process.h"
-#include "syscall/syscall.h"
+#include "syscall/tls.h"
 #include "syscall/vfs.h"
 #include "log.h"
 #include "heap.h"
 #include "str.h"
 #include <common/auxvec.h>
 
-#include <stdint.h>
-#include <stdio.h>
 #include <Windows.h>
-#include <ntdll.h>
 
 #pragma comment(linker,"/entry:main")
 
@@ -34,7 +32,7 @@ void main()
 	if (len > BLOCK_SIZE) /* TODO: Test if there is sufficient space for argv[] array */
 	{
 		kprintf("Command line too long.\n");
-		return 1;
+		ExitProcess(1);
 	}
 
 	mm_mmap(STARTUP_DATA_BASE, BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
