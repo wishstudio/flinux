@@ -73,7 +73,7 @@ void main()
 			filename = argv[i];
 	}
 	install_syscall_handler();
-	do_execve(filename, argc - 1, argv + 1, envp, NULL);
+	do_execve(filename, argc - 1, argv + 1, 0, envp, NULL);
 	kprintf("Execution failed.\n");
 	ExitProcess(0);
 }

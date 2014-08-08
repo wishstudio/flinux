@@ -29,10 +29,10 @@ __declspec(noreturn) static void goto_entrypoint(const char *stack, void *entryp
 	}
 }
 
-static void run(Elf32_Ehdr *eh, void *pht, int argc, char *argv[], char *envp[], PCONTEXT context)
+static void run(Elf32_Ehdr *eh, void *pht, int argc, char *argv[], int env_size, char *envp[], PCONTEXT context)
 {
 	/* Generate initial stack */
-	int env_size = 0, aux_size = 7;
+	int aux_size = 7;
 	int initial_stack_size = argc + 1 + env_size + 1 + aux_size * 2 + 1;
 	char *stack_base = process_get_stack_base();
 	const char **stack = (const char **)(stack_base + STACK_SIZE - initial_stack_size * sizeof(const char *) - sizeof(argc));
@@ -44,6 +44,8 @@ static void run(Elf32_Ehdr *eh, void *pht, int argc, char *argv[], char *envp[],
 		stack[idx++] = argv[i];
 	stack[idx++] = NULL;
 	/* environment variables */
+	for (int i = 0; i < env_size; i++)
+		stack[idx++] = envp[i];
 	stack[idx++] = NULL;
 	/* auxiliary vector */
 	stack[idx++] = (const char *)AT_PHDR;
@@ -80,7 +82,7 @@ static void run(Elf32_Ehdr *eh, void *pht, int argc, char *argv[], char *envp[],
 	context->Edi = 0;
 }
 
-int do_execve(const char *filename, int argc, char *const argv[], char *const envp[], PCONTEXT context)
+int do_execve(const char *filename, int argc, char *argv[], int env_size, char *envp[], PCONTEXT context)
 {
 	HANDLE hFile = CreateFileA(filename, GENERIC_READ | GENERIC_WRITE | GENERIC_EXECUTE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 
@@ -101,7 +103,7 @@ int do_execve(const char *filename, int argc, char *const argv[], char *const en
 
 	/* Load program header table */
 	uint32_t phsize = (uint32_t)eh.e_phentsize * (uint32_t)eh.e_phnum;
-	void *pht = kmalloc(phsize);
+	void *pht = kmalloc(phsize); /* TODO: Free it at execve */
 	SetFilePointer(hFile, eh.e_phoff, NULL, FILE_BEGIN);
 	ReadFile(hFile, pht, phsize, NULL, NULL);
 
@@ -128,7 +130,7 @@ int do_execve(const char *filename, int argc, char *const argv[], char *const en
 		}
 	}
 	CloseHandle(hFile);
-	run(&eh, pht, argc, argv, envp, context);
+	run(&eh, pht, argc, argv, env_size, envp, context);
 	return 0;
 }
 
