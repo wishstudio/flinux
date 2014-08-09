@@ -1,6 +1,8 @@
 LIBRARY ntdll
 EXPORTS
 	NtQueryObject@20
+	NtQueryEaFile@36
+	NtSetEaFile@16
 	NtClose@4
 	NtQueryDirectoryFile@44
 	NtCreateSection@28

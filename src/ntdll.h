@@ -180,6 +180,20 @@ typedef struct _FILE_ID_FULL_DIR_INFORMATION {
 	WCHAR         FileName[1];
 } FILE_ID_FULL_DIR_INFORMATION, *PFILE_ID_FULL_DIR_INFORMATION;
 
+typedef struct _FILE_FULL_EA_INFORMATION {
+	ULONG  NextEntryOffset;
+	UCHAR  Flags;
+	UCHAR  EaNameLength;
+	USHORT EaValueLength;
+	CHAR   EaName[1];
+} FILE_FULL_EA_INFORMATION, *PFILE_FULL_EA_INFORMATION;
+
+typedef struct _FILE_GET_EA_INFORMATION {
+	ULONG NextEntryOffset;
+	UCHAR EaNameLength;
+	CHAR  EaName[1];
+} FILE_GET_EA_INFORMATION, *PFILE_GET_EA_INFORMATION;
+
 NTSYSAPI NTSTATUS NTAPI NtQueryDirectoryFile(
 	_In_		HANDLE FileHandle,
 	_In_opt_	HANDLE Event,
@@ -192,6 +206,25 @@ NTSYSAPI NTSTATUS NTAPI NtQueryDirectoryFile(
 	_In_		BOOLEAN ReturnSingleEntry,
 	_In_opt_	PUNICODE_STRING FileName,
 	_In_		BOOLEAN RestartScan
+	);
+
+NTSYSAPI NTSTATUS NTAPI NtQueryEaFile(
+	_In_		HANDLE FileHandle,
+	_Out_		PIO_STATUS_BLOCK IoStatusBlock,
+	_Out_		PVOID Buffer,
+	_In_		ULONG Length,
+	_In_		BOOLEAN ReturnSingleEntry,
+	_In_opt_	PVOID EaList,
+	_In_		ULONG EaListLength,
+	_In_opt_	PULONG EaIndex,
+	_In_		BOOLEAN RestartScan
+	);
+
+NTSYSAPI NTSTATUS NTAPI NtSetEaFile(
+	_In_		HANDLE FileHandle,
+	_Out_		PIO_STATUS_BLOCK IoStatusBlock,
+	_In_		PVOID Buffer,
+	_In_		ULONG Length
 	);
 
 /* Section object */
