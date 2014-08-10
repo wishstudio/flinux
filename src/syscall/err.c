@@ -1,11 +1,11 @@
 #include "err.h"
 #include "errno.h"
-#include "../log.h"
+#include <log.h>
 
 #include <Windows.h>
 
-int sys_unimplemented()
+__declspec(noreturn) int sys_unimplemented(int _1, int _2, int _3, int _4, int _5, PCONTEXT context)
 {
+	log_debug("FATAL: Unimplemented syscall: %d\n", context->Eax);
 	ExitProcess(1);
-	return EFAULT;
 }
