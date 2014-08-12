@@ -166,7 +166,7 @@ struct file *winfs_open(const char *pathname, int flags, int mode)
 		desiredAccess = GENERIC_WRITE;
 	else
 		desiredAccess = GENERIC_READ;
-	shareMode = FILE_SHARE_READ;
+	shareMode = FILE_SHARE_READ | FILE_SHARE_DELETE;
 	creationDisposition;
 	if (flags & O_EXCL)
 		creationDisposition = CREATE_NEW;
