@@ -244,7 +244,7 @@ int sys_fstat(int fd, struct stat *buf)
 int sys_stat64(const char *pathname, struct stat64 *buf)
 {
 	log_debug("stat64(\"%s\", %x)\n", pathname, buf);
-	int fd = sys_open(pathname, __O_STATONLY, 0);
+	int fd = sys_open(pathname, O_PATH, 0);
 	if (fd < 0)
 		return fd;
 	int ret = sys_fstat64(fd, buf);
@@ -255,7 +255,7 @@ int sys_stat64(const char *pathname, struct stat64 *buf)
 int sys_lstat64(const char *pathname, struct stat64 *buf)
 {
 	log_debug("lstat64(\"%s\", %x)\n", pathname, buf);
-	int fd = sys_open(pathname, __O_STATONLY | O_NOFOLLOW, 0);
+	int fd = sys_open(pathname, O_PATH | O_NOFOLLOW, 0);
 	if (fd < 0)
 		return fd;
 	int ret = sys_fstat64(fd, buf);

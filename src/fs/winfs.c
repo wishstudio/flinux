@@ -158,7 +158,7 @@ struct file *winfs_open(const char *pathname, int flags, int mode)
 	HANDLE handle;
 	struct winfs_file *file;
 
-	if (flags & __O_STATONLY)
+	if (flags & O_PATH)
 		desiredAccess = 0;
 	else if (flags & O_RDWR)
 		desiredAccess = GENERIC_READ | GENERIC_WRITE;
