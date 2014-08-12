@@ -3,6 +3,7 @@
 #include <common/fcntl.h>
 #include <log.h>
 #include <heap.h>
+#include <str.h>
 
 #include <Windows.h>
 #include <ntdll.h>
@@ -111,7 +112,7 @@ static int winfs_getdents(struct file *f, struct linux_dirent64 *dirent, int cou
 
 	for (;;)
 	{
-		int buffer_size = count / 3 * 2; /* In worst case, a UTF-16 character (2 bytes) requires 3 bytes to store */
+		int buffer_size = (count - size) / 2; /* In worst case, a UTF-16 character (2 bytes) requires 4 bytes to store */
 		if (buffer_size >= BUFFER_SIZE)
 			buffer_size = BUFFER_SIZE;
 		status = NtQueryDirectoryFile(winfile->handle, NULL, NULL, NULL, &status_block, buffer, buffer_size, FileIdFullDirectoryInformation, FALSE, NULL, FALSE);
@@ -130,11 +131,9 @@ static int winfs_getdents(struct file *f, struct linux_dirent64 *dirent, int cou
 			 p->d_ino = info->FileId.QuadPart;
 			 p->d_off = 0; /* TODO */
 			 p->d_type = (info->FileAttributes & FILE_ATTRIBUTE_DIRECTORY) ? DT_DIR : DT_REG;
-			 ULONG len = info->FileNameLength / 2;
-			 p->d_reclen = (sizeof(struct linux_dirent64) + len + 1 + 3) & ~3;
-			 for (ULONG i = 0; i < len; i++)
-				 p->d_name[i] = info->FileName[i];
+			 int len = utf16_to_utf8(info->FileName, info->FileNameLength / 2, p->d_name, count - size);
 			 p->d_name[len] = 0;
+			 p->d_reclen = (sizeof(struct linux_dirent64) + len + 1 + 3) & ~3;
 			 size += p->d_reclen;
 		} while (info->NextEntryOffset);
 	}

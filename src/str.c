@@ -85,21 +85,21 @@ int utf16_to_utf8(const uint16_t *data, int srclen, char *outdata, int dstlen)
 				outdata[outlen++] = codepoint;
 			else if (codepoint <= 0x07FF && outlen + 2 <= dstlen)
 			{
-				outdata[outlen++] = 0x80000000 | (codepoint & 0x3F);
-				outdata[outlen++] = 0xC0000000 | (codepoint >> 6);
+				outdata[outlen++] = 0xC0 | (codepoint >> 6);
+				outdata[outlen++] = 0x80 | (codepoint & 0x3F);
 			}
 			else if (codepoint <= 0xFFFF && outlen + 3 <= dstlen)
 			{
-				outdata[outlen++] = 0x80000000 | (codepoint & 0x3F);
-				outdata[outlen++] = 0x80000000 | ((codepoint >> 6) & 0x3F);
-				outdata[outlen++] = 0xE0000000 | (codepoint >> 12);
+				outdata[outlen++] = 0xE0 | (codepoint >> 12);
+				outdata[outlen++] = 0x80 | ((codepoint >> 6) & 0x3F);
+				outdata[outlen++] = 0x80 | (codepoint & 0x3F);
 			}
 			else if (outlen + 4 <= dstlen) /* <= 0x10FFFF */
 			{
-				outdata[outlen++] = 0x80000000 | (codepoint & 0x3F);
-				outdata[outlen++] = 0x80000000 | ((codepoint >> 6) & 0x3F);
-				outdata[outlen++] = 0x80000000 | ((codepoint >> 12) & 0x3F);
-				outdata[outlen++] = 0xF0000000 | (codepoint >> 18);
+				outdata[outlen++] = 0xF0 | (codepoint >> 18);
+				outdata[outlen++] = 0x80 | ((codepoint >> 12) & 0x3F);
+				outdata[outlen++] = 0x80 | ((codepoint >> 6) & 0x3F);
+				outdata[outlen++] = 0x80 | (codepoint & 0x3F);
 			}
 		}
 		else if (codepoint <= 0x7F)
