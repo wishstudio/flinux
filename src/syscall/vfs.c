@@ -1,11 +1,10 @@
-#include "vfs.h"
-#include "err.h"
-#include "mm.h"
+#include <common/errno.h>
 #include <common/fcntl.h>
 #include <fs/tty.h>
 #include <fs/winfs.h>
+#include <syscall/mm.h>
+#include <syscall/vfs.h>
 #include <log.h>
-
 #include <Windows.h>
 
 #define MAX_FD_COUNT	1024
@@ -65,7 +64,7 @@ size_t sys_read(int fd, char *buf, size_t count)
 	if (f && f->op_vtable->fn_read)
 		return f->op_vtable->fn_read(f, buf, count);
 	else
-		return -1;
+		return -EBADF;
 }
 
 size_t sys_write(int fd, const char *buf, size_t count)
@@ -75,7 +74,7 @@ size_t sys_write(int fd, const char *buf, size_t count)
 	if (f && f->op_vtable->fn_write)
 		return f->op_vtable->fn_write(f, buf, count);
 	else
-		return -1;
+		return -EBADF;
 }
 
 static int normalize_path(const char *current, const char *pathname, char *out)
@@ -120,9 +119,10 @@ int sys_open(const char *pathname, int flags, int mode)
 	/* TODO: Check flags */
 	log_debug("open(%x: \"%s\", %x, %x)\n", pathname, pathname, flags, mode);
 	char path[MAX_PATH];
-	if (normalize_path("/", pathname, path) != 0)
+	int r = normalize_path("/", pathname, path);
+	if (r < 0)
 	{
-		return -1;
+		return r;
 	}
 	struct file_system *fs;
 	char *subpath;
@@ -140,7 +140,7 @@ int sys_open(const char *pathname, int flags, int mode)
 	}
 	struct file *f = fs->open(subpath, flags, mode);
 	if (!f)
-		return -1;
+		return -1; /* TODO: errno */
 	int fd = -1;
 	for (int i = 0; i < MAX_FD_COUNT; i++)
 		if (vfs->fds[i] == NULL)
@@ -150,8 +150,8 @@ int sys_open(const char *pathname, int flags, int mode)
 		}
 	if (fd == -1)
 	{
-		/* TODO: Close file */
-		return -1;
+		f->op_vtable->fn_close(f);
+		return -EMFILE;
 	}
 	vfs->fds[fd] = f;
 	return fd;
@@ -162,7 +162,7 @@ int sys_close(int fd)
 	log_debug("close(%d)\n", fd);
 	struct file *f = vfs->fds[fd];
 	if (!f)
-		return -1;
+		return -EBADF;
 	f->op_vtable->fn_close(f);
 	return 0;
 }
@@ -172,7 +172,7 @@ int sys_dup2(int fd, int newfd)
 	log_debug("dup2(%d, %d)\n", fd, newfd);
 	struct file *f = vfs->fds[fd];
 	if (!f)
-		return -1;
+		return -EBADF;
 	if (fd == newfd)
 		return newfd;
 	/* TODO: Close newfd before duplicate */
@@ -189,7 +189,7 @@ int sys_getdents64(int fd, struct linux_dirent64 *dirent, unsigned int count)
 	if (f && f->op_vtable->fn_getdents)
 		return f->op_vtable->fn_getdents(f, dirent, count);
 	else
-		return -1;
+		return -EBADF;
 }
 
 void stat_from_stat64(struct stat *stat, struct stat64 *stat64)
@@ -246,7 +246,7 @@ int sys_stat64(const char *pathname, struct stat64 *buf)
 	log_debug("stat64(\"%s\", %x)\n", pathname, buf);
 	int fd = sys_open(pathname, __O_STATONLY, 0);
 	if (fd < 0)
-		return -1;
+		return fd;
 	int ret = sys_fstat64(fd, buf);
 	/* TODO: Call sys_close() */
 	return ret;
@@ -257,7 +257,7 @@ int sys_lstat64(const char *pathname, struct stat64 *buf)
 	log_debug("lstat64(\"%s\", %x)\n", pathname, buf);
 	int fd = sys_open(pathname, __O_STATONLY | O_NOFOLLOW, 0);
 	if (fd < 0)
-		return -1;
+		return fd;
 	int ret = sys_fstat64(fd, buf);
 	/* TODO: Call sys_close() */
 	return ret;
@@ -270,7 +270,7 @@ int sys_fstat64(int fd, struct stat64 *buf)
 	if (f && f->op_vtable->fn_stat)
 		return f->op_vtable->fn_stat(f, buf);
 	else
-		return -1;
+		return -EBADF;
 }
 
 int sys_ioctl(int fd, unsigned int cmd, unsigned long arg)
@@ -280,20 +280,20 @@ int sys_ioctl(int fd, unsigned int cmd, unsigned long arg)
 	if (f && f->op_vtable->fn_ioctl)
 		return f->op_vtable->fn_ioctl(f, cmd, arg);
 	else
-		return -1;
+		return -EBADF;
 }
 
 int sys_chdir(const char *pathname)
 {
 	log_debug("chdir(%s)\n", pathname);
-	return -1;
+	return -EIO;
 }
 
 char *sys_getcwd(char *buf, size_t size)
 {
 	log_debug("getcwd(%x, %d): %s\n", buf, size, vfs->cwd);
 	if (size < vfs->cwdlen)
-		return NULL;
+		return -ERANGE;
 	strcpy(buf, vfs->cwd);
 	return buf;
 }
