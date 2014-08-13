@@ -456,7 +456,7 @@ int sys_stat64(const char *pathname, struct stat64 *buf)
 	if (fd < 0)
 		return fd;
 	int ret = sys_fstat64(fd, buf);
-	/* TODO: Call sys_close() */
+	sys_close(fd);
 	return ret;
 }
 
@@ -467,7 +467,7 @@ int sys_lstat64(const char *pathname, struct stat64 *buf)
 	if (fd < 0)
 		return fd;
 	int ret = sys_fstat64(fd, buf);
-	/* TODO: Call sys_close() */
+	sys_close(fd);
 	return ret;
 }
 
