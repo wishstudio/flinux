@@ -41,6 +41,36 @@ static uint64_t filetime_to_unix_sec(FILETIME *filetime)
 	return nsec / NANOSECONDS_PER_SECOND;
 }
 
+/*
+Test if a handle is a symlink, also return its target if requested.
+For optimal performance, caller should ensure the handle is a regular file with system attribute.
+When the function is called the file pointer must be at the beginning of the file,
+and the caller is reponsible for restoring the file pointer.
+*/
+static int winfs_read_symlink(HANDLE hFile, char *target, int buflen)
+{
+	char header[WINFS_SYMLINK_HEADER_LEN];
+	size_t num_read;
+	if (!ReadFile(hFile, header, WINFS_SYMLINK_HEADER_LEN, &num_read, NULL) || num_read < WINFS_SYMLINK_HEADER_LEN)
+		return 0;
+	if (memcmp(header, WINFS_SYMLINK_HEADER, WINFS_SYMLINK_HEADER_LEN))
+		return 0;
+	if (target == NULL || buflen == 0)
+	{
+		LARGE_INTEGER size;
+		if (!GetFileSizeEx(hFile, &size) || size.QuadPart - WINFS_SYMLINK_HEADER_LEN >= PATH_MAX)
+			return 0;
+		return (int)size.QuadPart - WINFS_SYMLINK_HEADER_LEN;
+	}
+	else
+	{
+		if (!ReadFile(hFile, target, buflen, &num_read, NULL))
+			return 0;
+		target[num_read] = 0;
+		return num_read;
+	}
+}
+
 static int winfs_close(struct file *f)
 {
 	struct winfs_file *file = (struct winfs_file *)f;
@@ -192,35 +222,6 @@ static int winfs_symlink(const char *target, const char *linkpath)
 	}
 	CloseHandle(handle);
 	return 0;
-}
-
-/* Test if a handle is a symlink, also return its target if requested.
- * For optimal performance, caller should ensure the handle is a regular file with system attribute.
- * When the function is called the file pointer must be at the beginning of the file,
- * and the caller is reponsible for restoring the file pointer.
- */
-static int winfs_read_symlink(HANDLE hFile, char *target, int buflen)
-{
-	char header[WINFS_SYMLINK_HEADER_LEN];
-	size_t num_read;
-	if (!ReadFile(hFile, header, WINFS_SYMLINK_HEADER_LEN, &num_read, NULL) || num_read < WINFS_SYMLINK_HEADER_LEN)
-		return 0;
-	if (memcmp(header, WINFS_SYMLINK_HEADER, WINFS_SYMLINK_HEADER_LEN))
-		return 0;
-	if (target == NULL || buflen == 0)
-	{
-		LARGE_INTEGER size;
-		if (!GetFileSizeEx(hFile, &size) || size.QuadPart - WINFS_SYMLINK_HEADER_LEN >= PATH_MAX)
-			return 0;
-		return (int)size.QuadPart - WINFS_SYMLINK_HEADER_LEN;
-	}
-	else
-	{
-		if (!ReadFile(hFile, target, buflen, &num_read, NULL))
-			return 0;
-		target[num_read] = 0;
-		return num_read;
-	}
 }
 
 static int winfs_readlink(const char *pathname, char *target, int buflen)
