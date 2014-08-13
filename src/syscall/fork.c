@@ -1,9 +1,9 @@
-#include "fork.h"
-#include "mm.h"
-#include "process.h"
-#include "syscall.h"
-#include <log.h>
 #include <common/sched.h>
+#include <syscall/fork.h>
+#include <syscall/mm.h>
+#include <syscall/process.h>
+#include <syscall/syscall.h>
+#include <log.h>
 
 /* Fork process
  *

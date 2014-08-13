@@ -1,13 +1,13 @@
-#include "syscall/exec.h"
-#include "syscall/fork.h"
-#include "syscall/mm.h"
-#include "syscall/process.h"
-#include "syscall/tls.h"
-#include "syscall/vfs.h"
-#include "log.h"
-#include "heap.h"
-#include "str.h"
 #include <common/auxvec.h>
+#include <syscall/exec.h>
+#include <syscall/fork.h>
+#include <syscall/mm.h>
+#include <syscall/process.h>
+#include <syscall/tls.h>
+#include <syscall/vfs.h>
+#include <log.h>
+#include <heap.h>
+#include <str.h>
 
 #include <Windows.h>
 

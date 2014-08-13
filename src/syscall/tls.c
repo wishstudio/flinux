@@ -1,5 +1,5 @@
-#include "tls.h"
-#include "mm.h"
+#include <syscall/mm.h>
+#include <syscall/tls.h>
 #include <log.h>
 
 /* Linux thread local storage (TLS) support emulation

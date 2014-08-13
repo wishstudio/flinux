@@ -1,6 +1,6 @@
-#include "mm.h"
-#include "errno.h"
-#include "../log.h"
+#include <common/errno.h>
+#include <syscall/mm.h>
+#include <log.h>
 
 #include <stdint.h>
 #include <Windows.h>

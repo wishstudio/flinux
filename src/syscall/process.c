@@ -1,7 +1,7 @@
-#include "process.h"
-#include "err.h"
-#include "mm.h"
+#include <common/errno.h>
 #include <common/wait.h>
+#include <syscall/mm.h>
+#include <syscall/process.h>
 #include <log.h>
 
 #include <Windows.h>

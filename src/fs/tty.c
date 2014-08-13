@@ -1,4 +1,4 @@
-#include "tty.h"
+#include <fs/tty.h>
 #include <heap.h>
 
 static int tty_close(struct file *f)

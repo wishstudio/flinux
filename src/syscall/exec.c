@@ -1,10 +1,10 @@
-#include "exec.h"
-#include "mm.h"
-#include "process.h"
-#include "vfs.h"
 #include <binfmt/elf.h>
 #include <common/auxvec.h>
 #include <common/errno.h>
+#include <syscall/exec.h>
+#include <syscall/mm.h>
+#include <syscall/process.h>
+#include <syscall/vfs.h>
 #include <log.h>
 #include <heap.h>
 

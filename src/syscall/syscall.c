@@ -1,5 +1,5 @@
-#include "syscall.h"
-#include "tls.h"
+#include <syscall/syscall.h>
+#include <syscall/tls.h>
 #include <log.h>
 
 #include <stdint.h>

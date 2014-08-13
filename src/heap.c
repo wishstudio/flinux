@@ -1,6 +1,6 @@
-#include "heap.h"
-#include "syscall/mm.h"
-#include "log.h"
+#include <syscall/mm.h>
+#include <heap.h>
+#include <log.h>
 
 #include <stdlib.h>
 
