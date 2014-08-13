@@ -210,7 +210,7 @@ static int winfs_read_symlink(HANDLE hFile, char *target, int buflen)
 	if (target == NULL || buflen == 0)
 	{
 		LARGE_INTEGER size;
-		if (!GetFileSizeEx(hFile, &size) || size.QuadPart > PATH_MAX)
+		if (!GetFileSizeEx(hFile, &size) || size.QuadPart - WINFS_SYMLINK_HEADER_LEN >= PATH_MAX)
 			return 0;
 		return (int)size.QuadPart - WINFS_SYMLINK_HEADER_LEN;
 	}
@@ -307,7 +307,7 @@ static int winfs_open(const char *pathname, int flags, int mode, struct file **f
 		if (!(desiredAccess & GENERIC_READ))
 		{
 			/* We need to get a readable handle */
-			log_debug("Reopening file...\n");
+			log_debug("But the handle does not have READ access, try reopening file...\n");
 			HANDLE read_handle = ReOpenFile(handle, desiredAccess | GENERIC_READ, shareMode, FILE_FLAG_BACKUP_SEMANTICS);
 			if (read_handle == INVALID_HANDLE_VALUE)
 			{
@@ -320,13 +320,24 @@ static int winfs_open(const char *pathname, int flags, int mode, struct file **f
 		}
 		if (winfs_read_symlink(handle, target, buflen) > 0)
 		{
-			CloseHandle(handle);
-			return 1;
+			if (!(flags & O_NOFOLLOW))
+			{
+				CloseHandle(handle);
+				return 1;
+			}
+			if (!(flags & O_PATH))
+			{
+				CloseHandle(handle);
+				log_debug("Specified O_NOFOLLOW but not O_PATH, returning ELOOP.\n");
+				return -ELOOP;
+			}
 		}
+		log_debug("Opening file directly.\n");
 		LARGE_INTEGER p;
 		p.QuadPart = 0;
 		if (!SetFilePointerEx(handle, p, NULL, FILE_BEGIN))
 		{
+			log_debug("SetFilePointerEx() failed, error code: %d.\n", GetLastError());
 			CloseHandle(handle);
 			return -EIO;
 		}

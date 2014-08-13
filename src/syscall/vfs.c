@@ -210,7 +210,7 @@ int sys_open(const char *pathname, int flags, int mode)
 	   o O_LARGEFILE
 	   o O_NOATIME
 	   o O_NOCTTY
-	   o O_NOFOLLOW
+	   * O_NOFOLLOW
 	   o O_NONBLOCK
 	   * O_PATH
 	   * O_RDONLY
@@ -224,8 +224,7 @@ int sys_open(const char *pathname, int flags, int mode)
 	if ((flags & O_APPEND) || (flags & O_CLOEXEC) || (flags & O_DIRECT)
 		|| (flags & O_DIRECTORY) || (flags & O_DSYNC) || (flags & O_EXCL)
 		|| (flags & O_LARGEFILE) || (flags & O_NOATIME) || (flags & O_NOCTTY)
-		|| (flags & O_NOFOLLOW) || (flags & O_NONBLOCK) || (flags & O_SYNC)
-		|| (flags & O_TMPFILE))
+		|| (flags & O_NONBLOCK) || (flags & O_SYNC) || (flags & O_TMPFILE))
 	{
 		log_debug("Unsupported flag combination.\n");
 		//return -EINVAL;
@@ -280,7 +279,10 @@ int sys_open(const char *pathname, int flags, int mode)
 				return ret;
 		}
 		else
+		{
+			log_debug("Open file error.\n");
 			return ret;
+		}
 	}
 	int fd = -1;
 	for (int i = 0; i < MAX_FD_COUNT; i++)
