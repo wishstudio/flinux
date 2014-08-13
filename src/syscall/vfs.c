@@ -130,6 +130,8 @@ static int normalize_path(const char *current, const char *pathname, char *out)
 			while (*current)
 				*p++ = *current++;
 		}
+		if (p[-1] != '/')
+			*p++ = '/';
 	}
 	while (*pathname)
 	{
@@ -508,15 +510,6 @@ int sys_chdir(const char *pathname)
 		return fd;
 	sys_close(fd);
 	normalize_path(vfs->cwd, pathname, vfs->cwd);
-	/* Add a tail "/" */
-	int l = strlen(vfs->cwd);
-	if (vfs->cwd[l - 1] != '/')
-	{
-		vfs->cwd[l] = '/';
-		vfs->cwd[l + 1] = 0;
-	}
-	else
-		vfs->cwd[l] = 0;
 	return 0;
 }
 
