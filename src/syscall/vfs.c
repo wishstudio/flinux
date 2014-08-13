@@ -7,8 +7,8 @@
 #include <log.h>
 #include <Windows.h>
 
-#define MAX_FD_COUNT	1024
-#define PATH_MAX		4096
+#define MAX_FD_COUNT		1024
+#define MAX_SYMLINK_LEVEL	8
 
 struct vfs_data
 {
@@ -77,6 +77,8 @@ size_t sys_write(int fd, const char *buf, size_t count)
 		return -EBADF;
 }
 
+/* Normalize a unix path: remove redundant "/", "." and ".." */
+/* We allow aliasing `current` and `out` */
 static int normalize_path(const char *current, const char *pathname, char *out)
 {
 	/* TODO: Avoid overflow */
@@ -88,8 +90,13 @@ static int normalize_path(const char *current, const char *pathname, char *out)
 	}
 	else
 	{
-		while (*current)
-			*p++ = *current++;
+		if (current == out)
+			p += strlen(current);
+		else
+		{
+			while (*current)
+				*p++ = *current++;
+		}
 	}
 	while (*pathname)
 	{
@@ -110,37 +117,153 @@ static int normalize_path(const char *current, const char *pathname, char *out)
 				*p++ = *pathname++;
 		}
 	}
-	*p = 0;
+	/* Remove redundant "/" mark at tail, unless the whole path is just "/" */
+	if (p - 1 > out && p[-1] == '/')
+		p[-1] = 0;
+	else
+		*p = 0;
 	return 0;
 }
 
 int sys_open(const char *pathname, int flags, int mode)
 {
-	/* TODO: Check flags */
 	log_debug("open(%x: \"%s\", %x, %x)\n", pathname, pathname, flags, mode);
-	char path[MAX_PATH];
-	int r = normalize_path("/", pathname, path);
+	/* Supported flags:
+	   o O_APPEND
+	   o O_ASYNC
+	   o O_CLOEXEC
+	   o O_DIRECT
+	   o O_DIRECTORY
+	   o O_DSYNC
+	   o O_EXCL
+	   o O_LARGEFILE
+	   o O_NOATIME
+	   o O_NOCTTY
+	   o O_NOFOLLOW
+	   o O_NONBLOCK
+	   * O_PATH
+	   * O_RDONLY
+	   * O_RDWR
+	   o O_SYNC
+	   o O_TMPFILE
+	   * O_TRUNC
+	   * O_WRONLY
+	   All filesystem not supporting these flags should explicitly check "flags" parameter
+	 */
+	if ((flags & O_APPEND) || (flags & O_CLOEXEC) || (flags & O_DIRECT)
+		|| (flags & O_DIRECTORY) || (flags & O_DSYNC) || (flags & O_EXCL)
+		|| (flags & O_LARGEFILE) || (flags & O_NOATIME) || (flags & O_NOCTTY)
+		|| (flags & O_NOFOLLOW) || (flags & O_NONBLOCK) || (flags & O_SYNC)
+		|| (flags & O_TMPFILE))
+	{
+		log_debug("Unsupported flag combination.\n");
+		//return -EINVAL;
+	}
+	if (mode != 0)
+	{
+		log_debug("mode != 0\n");
+		return -EINVAL;
+	}
+	/* Resolve path */
+	char path[MAX_PATH], target[MAX_PATH];
+	struct file *f = NULL;
+	int r = normalize_path(vfs->cwd, pathname, path);
 	if (r < 0)
-	{
 		return r;
-	}
-	struct file_system *fs;
-	char *subpath;
-	for (fs = vfs->fs_first; fs; fs = fs->next)
+	for (int symlink_level = 0;; symlink_level++)
 	{
-		char *p = fs->mountpoint;
-		subpath = path;
-		while (*p && *p == *subpath)
+		if (symlink_level == MAX_SYMLINK_LEVEL)
 		{
-			p++;
-			subpath++;
+			return -ELOOP;
 		}
-		if (*p == 0)
+		/* Find filesystem */
+		struct file_system *fs;
+		char *subpath;
+		for (fs = vfs->fs_first; fs; fs = fs->next)
+		{
+			char *p = fs->mountpoint;
+			subpath = path;
+			while (*p && *p == *subpath)
+			{
+				p++;
+				subpath++;
+			}
+			if (*p == 0)
+				break;
+		}
+		if (!fs)
+		{
+			return -ENOENT;
+		}
+		/* We need to perform file opening and symlink checking atomically at this case.
+
+		   If we test symlink first and try opening file later, another process may
+		   replace the file with a symlink after the symlink check failed, resulting
+		   in opening a symlink file as a regular file.
+
+		   But for path components this is fine as if a symlink check fails for
+		   a component, the whole open(2) operation immediately fails.
+		 */
+		/* Try opening the file directly */
+		log_debug("Try opening %s\n", path);
+		int ret = fs->open(subpath, flags, mode, &f, target, MAX_PATH);
+		if (ret == 0)
+		{
+			/* We're done opening the file */
+			log_debug("Open file succeed.\n");
 			break;
+		}
+		else if (ret == 1)
+		{
+			/* The file is a symlink, continue symlink resolving */
+			log_debug("It is a symlink, target: %s\n", target);
+			/* Remove basename */
+			char *p = path + strlen(path) - 1;
+			while (*p != '/')
+				p--;
+			p[1] = 0;
+			/* Combine file path with symlink target */
+			int r = normalize_path(path, target, path);
+			if (r < 0)
+				return r;
+		}
+		else
+		{
+			/* Open file failed, test if a component of the path is a symlink */
+			log_debug("Open file failed, testing whether a component is a symlink...\n");
+			/* Test from right to left */
+			/* Note: Currently we assume the symlink only appears in subpath */
+			int found = 0;
+			for (char *p = subpath + strlen(subpath) - 1; p > subpath; p--)
+			{
+				if (*p == '/')
+				{
+					*p = 0;
+					log_debug("Testing %s\n", path);
+					if (fs->is_symlink(subpath, target, MAX_PATH))
+					{
+						log_debug("It is a symlink, target: %s\n", target);
+						found = 1;
+						/* Combine symlink target with remaining path */
+						char *q = p + 1;
+						char *t = target + strlen(target);
+						if (*t != '/')
+							*t++ = '/';
+						while (*q)
+							*t++ = *q++;
+						/* Combine heading file path with remaining path */
+						int r = normalize_path(path, target, path);
+						if (r < 0)
+							return r;
+						break;
+					}
+					*p = '/';
+				}
+			}
+			if (!found)
+				return ret;
+		}
 	}
-	struct file *f = fs->open(subpath, flags, mode);
-	if (!f)
-		return -1; /* TODO: errno */
 	int fd = -1;
 	for (int i = 0; i < MAX_FD_COUNT; i++)
 		if (vfs->fds[i] == NULL)

@@ -4,6 +4,8 @@
 #include <common/stat.h>
 #include <common/dirent.h>
 
+#define PATH_MAX		4096
+
 void vfs_init();
 void vfs_reset();
 void vfs_shutdown();

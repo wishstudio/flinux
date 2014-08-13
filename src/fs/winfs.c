@@ -1,12 +1,17 @@
-#include "winfs.h"
-#include <syscall/mm.h> /* For PAGE_SIZE */
+#include <common/errno.h>
 #include <common/fcntl.h>
+#include <fs/winfs.h>
+#include <syscall/mm.h> /* For PAGE_SIZE */
+#include <syscall/vfs.h> /* For PATH_MAX */
 #include <log.h>
 #include <heap.h>
 #include <str.h>
 
 #include <Windows.h>
 #include <ntdll.h>
+
+#define WINFS_SYMLINK_HEADER		"!<symlink>\377\376"
+#define WINFS_SYMLINK_HEADER_LEN	(sizeof(WINFS_SYMLINK_HEADER) - 1)
 
 struct winfs_file
 {
@@ -150,16 +155,72 @@ static struct file_ops winfs_ops =
 	.fn_getdents = winfs_getdents,
 };
 
-struct file *winfs_open(const char *pathname, int flags, int mode)
+/* Test if a handle is a symlink, also return its target if requested.
+ * For optimal performance, caller should ensure the handle is a regular file with system attribute.
+ * When the function is called the file pointer must be at the beginning of the file,
+ * and the caller is reponsible for restoring the file pointer.
+ */
+static int winfs_read_symlink(HANDLE hFile, char *target, int buflen)
 {
-	/* TODO: errno */
+	char header[WINFS_SYMLINK_HEADER_LEN];
+	size_t num_read;
+	if (!ReadFile(hFile, header, WINFS_SYMLINK_HEADER_LEN, &num_read, NULL) || num_read < WINFS_SYMLINK_HEADER_LEN)
+		return 0;
+	if (memcmp(header, WINFS_SYMLINK_HEADER, WINFS_SYMLINK_HEADER_LEN))
+		return 0;
+	if (target == NULL || buflen == 0)
+	{
+		LARGE_INTEGER size;
+		if (!GetFileSizeEx(hFile, &size) || size.QuadPart > PATH_MAX)
+			return 0;
+		return (int)size.QuadPart - WINFS_SYMLINK_HEADER_LEN;
+	}
+	else
+	{
+		if (!ReadFile(hFile, target, buflen, &num_read, NULL))
+			return 0;
+		target[num_read] = 0;
+		return num_read;
+	}
+}
+
+static int winfs_is_symlink(const char *pathname, char *target, int buflen)
+{
+	WCHAR wpathname[PATH_MAX];
+	if (utf8_to_utf16(pathname, strlen(pathname) + 1, wpathname, PATH_MAX) <= 0)
+	{
+		return 0;
+	}
+	DWORD attr = GetFileAttributesW(wpathname);
+	if (attr == INVALID_FILE_ATTRIBUTES || (attr && FILE_ATTRIBUTE_DIRECTORY) || !(attr & FILE_ATTRIBUTE_SYSTEM))
+	{
+		return 0;
+	}
+	HANDLE hFile;
+	hFile = CreateFileW(wpathname, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (hFile == INVALID_HANDLE_VALUE)
+	{
+		return 0;
+	}
+	int ret = winfs_read_symlink(hFile, target, buflen);
+	CloseHandle(hFile);
+	return ret;
+}
+
+int winfs_open(const char *pathname, int flags, int mode, struct file **fp, char *target, int buflen)
+{
 	/* TODO: mode */
 	DWORD desiredAccess, shareMode, creationDisposition;
 	HANDLE handle;
+	FILE_ATTRIBUTE_TAG_INFO attributeInfo;
+	WCHAR wpathname[PATH_MAX];
 	struct winfs_file *file;
 
+	if (utf8_to_utf16(pathname, strlen(pathname) + 1, wpathname, PATH_MAX) <= 0)
+		return -ENOENT;
+
 	if (flags & O_PATH)
-		desiredAccess = 0;
+		desiredAccess = GENERIC_READ;
 	else if (flags & O_RDWR)
 		desiredAccess = GENERIC_READ | GENERIC_WRITE;
 	else if (flags & O_WRONLY)
@@ -173,7 +234,7 @@ struct file *winfs_open(const char *pathname, int flags, int mode)
 	else if (flags & O_CREAT)
 	{
 		if (flags & O_TRUNC)
-			creationDisposition = CREATE_ALWAYS;
+			creationDisposition = CREATE_ALWAYS; /* FIXME: This is wrong! */
 		else
 			creationDisposition = OPEN_ALWAYS;
 	}
@@ -181,18 +242,40 @@ struct file *winfs_open(const char *pathname, int flags, int mode)
 		creationDisposition = TRUNCATE_EXISTING;
 	else
 		creationDisposition = OPEN_EXISTING;
-	handle = CreateFileA(pathname, desiredAccess, shareMode, NULL, creationDisposition, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_BACKUP_SEMANTICS, NULL);
+	handle = CreateFileW(wpathname, desiredAccess, shareMode, NULL, creationDisposition, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_BACKUP_SEMANTICS, NULL);
 	if (handle == INVALID_HANDLE_VALUE)
 	{
-		log_debug("CreateFileA() failed.\n");
-		return NULL;
+		log_debug("CreateFileW() failed.\n");
+		return -ENOENT;
 	}
+	if (!GetFileInformationByHandleEx(handle, FileAttributeTagInfo, &attributeInfo, sizeof(attributeInfo)))
+	{
+		CloseHandle(handle);
+		return -EIO;
+	}
+	if (attributeInfo.FileAttributes != INVALID_FILE_ATTRIBUTES && (attributeInfo.FileAttributes & FILE_ATTRIBUTE_SYSTEM))
+	{
+		if (winfs_read_symlink(handle, target, buflen))
+		{
+			CloseHandle(handle);
+			return 1;
+		}
+		LARGE_INTEGER p;
+		p.QuadPart = 0;
+		if (!SetFilePointerEx(handle, p, NULL, FILE_BEGIN))
+		{
+			CloseHandle(handle);
+			return -EIO;
+		}
+	}
+
 	file = (struct winfs_file *)kmalloc(sizeof(struct winfs_file));
 	file->base_file.op_vtable = &winfs_ops;
 	file->base_file.offset = 0;
 	file->base_file.ref = 1;
 	file->handle = handle;
-	return file;
+	*fp = file;
+	return 0;
 }
 
 struct winfs
@@ -205,5 +288,6 @@ struct file_system *winfs_alloc()
 	struct winfs *fs = (struct winfs *)kmalloc(sizeof(struct winfs));
 	fs->base_fs.mountpoint = "/";
 	fs->base_fs.open = winfs_open;
+	fs->base_fs.is_symlink = winfs_is_symlink;
 	return fs;
 }
