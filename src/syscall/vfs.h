@@ -17,6 +17,7 @@ int sys_open(const char *pathname, int flags, int mode);
 int sys_close(int fd);
 
 int sys_symlink(const char *target, const char *linkpath);
+size_t sys_readlink(const char *pathname, char *buf, size_t bufsize);
 
 int sys_dup2(int fd, int newfd);
 

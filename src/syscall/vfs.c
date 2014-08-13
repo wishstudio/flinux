@@ -193,6 +193,8 @@ static int resolve_symlink(struct file_system *fs, char *path, char *subpath, ch
 			*p = '/';
 		}
 	}
+	if (!found)
+		log_debug("No component is a symlink.\n");
 	return found;
 }
 
@@ -327,7 +329,7 @@ int sys_symlink(const char *symlink_target, const char *linkpath)
 		if (!find_filesystem(path, &fs, &subpath))
 			return -ENOENT;
 		log_debug("Try creating symlink...\n");
-		int ret = fs->symlink(symlink_target, linkpath);
+		int ret = fs->symlink(symlink_target, subpath);
 		if (ret == 0)
 		{
 			log_debug("Symlink succeeded.\n");
@@ -336,6 +338,35 @@ int sys_symlink(const char *symlink_target, const char *linkpath)
 		else if (ret == -ENOENT)
 		{
 			log_debug("Create symlink failed, testing whether a component is a symlink...\n");
+			if (!resolve_symlink(fs, path, subpath, target))
+				return -ENOENT;
+		}
+		else
+			return ret;
+	}
+}
+
+size_t sys_readlink(const char *pathname, char *buf, int bufsize)
+{
+	log_debug("readlink(\"%s\", %x, %d)\n", pathname, buf, bufsize);
+	char path[MAX_PATH], target[MAX_PATH];
+	if (!normalize_path(vfs->cwd, pathname, path))
+		return -ENOENT;
+	for (int symlink_level = 0;; symlink_level++)
+	{
+		if (symlink_level == MAX_SYMLINK_LEVEL)
+		{
+			return -ELOOP;
+		}
+		struct file_system *fs;
+		char *subpath;
+		if (!find_filesystem(path, &fs, &subpath))
+			return -ENOENT;
+		log_debug("Try reading symlink...\n");
+		int ret = fs->readlink(subpath, buf, bufsize);
+		if (ret == -ENOENT)
+		{
+			log_debug("Symlink not found, testing whether a component is a symlink...\n");
 			if (!resolve_symlink(fs, path, subpath, target))
 				return -ENOENT;
 		}

@@ -239,7 +239,7 @@ static int winfs_symlink(const char *target, const char *linkpath)
 	return 0;
 }
 
-static int winfs_readlink(const char *pathname, char *target, int buflen)
+static size_t winfs_readlink(const char *pathname, char *target, size_t buflen)
 {
 	WCHAR wpathname[PATH_MAX];
 	DWORD attr;
@@ -250,8 +250,8 @@ static int winfs_readlink(const char *pathname, char *target, int buflen)
 	attr = GetFileAttributesW(wpathname);
 	if (attr == INVALID_FILE_ATTRIBUTES)
 		return -ENOENT;
-	if ((attr && FILE_ATTRIBUTE_DIRECTORY) || !(attr & FILE_ATTRIBUTE_SYSTEM))
-		return -EEXIST;
+	if ((attr & FILE_ATTRIBUTE_DIRECTORY) || !(attr & FILE_ATTRIBUTE_SYSTEM))
+		return -EINVAL;
 	hFile = CreateFileW(wpathname, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (hFile == INVALID_HANDLE_VALUE)
 		return -EIO;
