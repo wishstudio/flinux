@@ -1,14 +1,18 @@
 #pragma once
 
-#include <stdint.h>
 #include <common/stat.h>
 #include <common/dirent.h>
+#include <fs/file.h>
+
+#include <stdint.h>
 
 #define PATH_MAX		4096
 
 void vfs_init();
 void vfs_reset();
 void vfs_shutdown();
+
+int vfs_open(const char *pathname, int flags, int mode, struct file **f);
 
 size_t sys_read(int fd, char *buf, size_t count);
 size_t sys_write(int fd, const char *buf, size_t count);

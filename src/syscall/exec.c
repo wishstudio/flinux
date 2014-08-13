@@ -1,6 +1,7 @@
 #include <binfmt/elf.h>
 #include <common/auxvec.h>
 #include <common/errno.h>
+#include <common/fcntl.h>
 #include <syscall/exec.h>
 #include <syscall/mm.h>
 #include <syscall/process.h>
@@ -85,12 +86,23 @@ static void run(Elf32_Ehdr *eh, void *pht, int argc, char *argv[], int env_size,
 
 int do_execve(const char *filename, int argc, char *argv[], int env_size, char *envp[], PCONTEXT context)
 {
-	HANDLE hFile = CreateFileA(filename, GENERIC_READ | GENERIC_WRITE | GENERIC_EXECUTE, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	if (hFile == INVALID_HANDLE_VALUE)
+	struct file *f;
+	int r = vfs_open(filename, O_RDONLY, 0, &f);
+	if (r < 0)
 	{
-		log_debug("Cannot open file, error code: %d.\n", GetLastError());
-		return -1;
+		return r;
 	}
+
+	if (!f->op_vtable->fn_get_handle)
+	{
+		return -EACCES;
+	}
+
+	HANDLE hFile = f->op_vtable->fn_get_handle(f);
+	/* TODO: SetFilePointer */
+	LARGE_INTEGER p;
+	p.QuadPart = 0;
+	SetFilePointerEx(hFile, p, NULL, FILE_BEGIN);
 
 	/* Load ELF header */
 	Elf32_Ehdr eh;
@@ -98,13 +110,15 @@ int do_execve(const char *filename, int argc, char *argv[], int env_size, char *
 	if (eh.e_type != ET_EXEC)
 	{
 		log_debug("Not an executable!\n");
-		return -1;
+		f->op_vtable->fn_close(f);
+		return -EACCES;
 	}
 
 	if (eh.e_machine != EM_386)
 	{
 		log_debug("Not an i386 executable.\n");
-		return -1;
+		f->op_vtable->fn_close(f);
+		return -EACCES;
 	}
 
 	/* Load program header table */
@@ -135,7 +149,7 @@ int do_execve(const char *filename, int argc, char *argv[], int env_size, char *
 			ReadFile(hFile, (void *)ph->p_vaddr, ph->p_filesz, NULL, NULL);
 		}
 	}
-	CloseHandle(hFile);
+	f->op_vtable->fn_close(f);
 	run(&eh, pht, argc, argv, env_size, envp, context);
 	return 0;
 }

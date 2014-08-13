@@ -4,8 +4,11 @@
 #include <common/stat.h>
 #include <common/dirent.h>
 
+#include <Windows.h>
+
 struct file_ops
 {
+	HANDLE (*fn_get_handle)(struct file *f);
 	int (*fn_close)(struct file *f);
 	size_t (*fn_read)(struct file *f, char *buf, size_t count);
 	size_t (*fn_write)(struct file *f, const char *buf, size_t count);

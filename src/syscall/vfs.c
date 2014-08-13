@@ -198,31 +198,31 @@ static int resolve_symlink(struct file_system *fs, char *path, char *subpath, ch
 	return found;
 }
 
-int sys_open(const char *pathname, int flags, int mode)
+int vfs_open(const char *pathname, int flags, int mode, struct file **f)
 {
-	log_debug("open(%x: \"%s\", %x, %x)\n", pathname, pathname, flags, mode);
-	/* Supported flags:
-	   o O_APPEND
-	   o O_ASYNC
-	   o O_CLOEXEC
-	   o O_DIRECT
-	   o O_DIRECTORY
-	   o O_DSYNC
-	   o O_EXCL
-	   o O_LARGEFILE
-	   o O_NOATIME
-	   o O_NOCTTY
-	   * O_NOFOLLOW
-	   o O_NONBLOCK
-	   * O_PATH
-	   * O_RDONLY
-	   * O_RDWR
-	   o O_SYNC
-	   o O_TMPFILE
-	   * O_TRUNC
-	   * O_WRONLY
-	   All filesystem not supporting these flags should explicitly check "flags" parameter
-	 */
+	/*
+	Supported flags:
+	o O_APPEND
+	o O_ASYNC
+	o O_CLOEXEC
+	o O_DIRECT
+	o O_DIRECTORY
+	o O_DSYNC
+	o O_EXCL
+	o O_LARGEFILE
+	o O_NOATIME
+	o O_NOCTTY
+	* O_NOFOLLOW
+	o O_NONBLOCK
+	* O_PATH
+	* O_RDONLY
+	* O_RDWR
+	o O_SYNC
+	o O_TMPFILE
+	* O_TRUNC
+	* O_WRONLY
+	All filesystem not supporting these flags should explicitly check "flags" parameter
+	*/
 	if ((flags & O_APPEND) || (flags & O_CLOEXEC) || (flags & O_DIRECT)
 		|| (flags & O_DIRECTORY) || (flags & O_DSYNC) || (flags & O_EXCL)
 		|| (flags & O_LARGEFILE) || (flags & O_NOATIME) || (flags & O_NOCTTY)
@@ -238,7 +238,6 @@ int sys_open(const char *pathname, int flags, int mode)
 	}
 	/* Resolve path */
 	char path[MAX_PATH], target[MAX_PATH];
-	struct file *f = NULL;
 	if (!normalize_path(vfs->cwd, pathname, path))
 		return -ENOENT;
 	for (int symlink_level = 0;; symlink_level++)
@@ -254,12 +253,12 @@ int sys_open(const char *pathname, int flags, int mode)
 			return -ENOENT;
 		/* Try opening the file directly */
 		log_debug("Try opening %s\n", path);
-		int ret = fs->open(*subpath? subpath: ".", flags, mode, &f, target, MAX_PATH);
+		int ret = fs->open(*subpath ? subpath : ".", flags, mode, f, target, MAX_PATH);
 		if (ret == 0)
 		{
 			/* We're done opening the file */
 			log_debug("Open file succeeded.\n");
-			break;
+			return 0;
 		}
 		else if (ret == 1)
 		{
@@ -286,6 +285,15 @@ int sys_open(const char *pathname, int flags, int mode)
 			return ret;
 		}
 	}
+}
+
+int sys_open(const char *pathname, int flags, int mode)
+{
+	log_debug("open(%x: \"%s\", %x, %x)\n", pathname, pathname, flags, mode);
+	struct file *f;
+	int r = vfs_open(pathname, flags, mode, &f);
+	if (r < 0)
+		return r;
 	int fd = -1;
 	for (int i = 0; i < MAX_FD_COUNT; i++)
 		if (vfs->fds[i] == NULL)
