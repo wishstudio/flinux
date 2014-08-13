@@ -155,6 +155,45 @@ static struct file_ops winfs_ops =
 	.fn_getdents = winfs_getdents,
 };
 
+static int winfs_symlink(const char *target, const char *linkpath)
+{
+	HANDLE handle;
+	WCHAR wlinkpath[PATH_MAX];
+
+	if (utf8_to_utf16(linkpath, strlen(linkpath) + 1, wlinkpath, PATH_MAX) <= 0)
+		return -ENOENT;
+
+	log_debug("CreateFileW(): %s\n", linkpath);
+	handle = CreateFileW(wlinkpath, GENERIC_WRITE, FILE_SHARE_DELETE, NULL, CREATE_NEW, FILE_ATTRIBUTE_SYSTEM, NULL);
+	if (handle == INVALID_HANDLE_VALUE)
+	{
+		DWORD err = GetLastError();
+		if (err == ERROR_ALREADY_EXISTS)
+		{
+			log_debug("File already exists.\n");
+			return -EEXIST;
+		}
+		log_debug("CreateFileW() failed, error code: %d.\n", GetLastError());
+		return -ENOENT;
+	}
+	size_t num_written;
+	if (!WriteFile(handle, WINFS_SYMLINK_HEADER, WINFS_SYMLINK_HEADER_LEN, &num_written, NULL) || num_written < WINFS_SYMLINK_HEADER_LEN)
+	{
+		log_debug("WriteFile() failed, error code: %d.\n", GetLastError());
+		CloseHandle(handle);
+		return -EIO;
+	}
+	size_t targetlen = strlen(target);
+	if (!WriteFile(handle, target, targetlen, &num_written, NULL) || num_written < targetlen)
+	{
+		log_debug("WriteFile() failed, error code: %d.\n", GetLastError());
+		CloseHandle(handle);
+		return -EIO;
+	}
+	CloseHandle(handle);
+	return 0;
+}
+
 /* Test if a handle is a symlink, also return its target if requested.
  * For optimal performance, caller should ensure the handle is a regular file with system attribute.
  * When the function is called the file pointer must be at the beginning of the file,
@@ -184,7 +223,7 @@ static int winfs_read_symlink(HANDLE hFile, char *target, int buflen)
 	}
 }
 
-static int winfs_is_symlink(const char *pathname, char *target, int buflen)
+static int winfs_readlink(const char *pathname, char *target, int buflen)
 {
 	WCHAR wpathname[PATH_MAX];
 	DWORD attr;
@@ -205,7 +244,7 @@ static int winfs_is_symlink(const char *pathname, char *target, int buflen)
 	return ret;
 }
 
-int winfs_open(const char *pathname, int flags, int mode, struct file **fp, char *target, int buflen)
+static int winfs_open(const char *pathname, int flags, int mode, struct file **fp, char *target, int buflen)
 {
 	/* TODO: mode */
 	DWORD desiredAccess, shareMode, creationDisposition;
@@ -244,8 +283,17 @@ int winfs_open(const char *pathname, int flags, int mode, struct file **fp, char
 	handle = CreateFileW(wpathname, desiredAccess, shareMode, NULL, creationDisposition, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_BACKUP_SEMANTICS, NULL);
 	if (handle == INVALID_HANDLE_VALUE)
 	{
-		log_debug("CreateFileW() failed, error code: %d.\n", GetLastError());
-		return -ENOENT;
+		DWORD err = GetLastError();
+		if (err == ERROR_ALREADY_EXISTS)
+		{
+			log_debug("File already exists.\n");
+			return -EEXIST;
+		}
+		else
+		{
+			log_debug("Unhandled CreateFileW() failure, error code: %d, returning ENOENT.\n", GetLastError());
+			return -ENOENT;
+		}
 	}
 	if (!GetFileInformationByHandleEx(handle, FileAttributeTagInfo, &attributeInfo, sizeof(attributeInfo)))
 	{
@@ -270,7 +318,7 @@ int winfs_open(const char *pathname, int flags, int mode, struct file **fp, char
 			log_debug("Reopen succeeded.\n");
 			handle = read_handle;
 		}
-		if (winfs_read_symlink(handle, target, buflen))
+		if (winfs_read_symlink(handle, target, buflen) > 0)
 		{
 			CloseHandle(handle);
 			return 1;
@@ -304,6 +352,7 @@ struct file_system *winfs_alloc()
 	struct winfs *fs = (struct winfs *)kmalloc(sizeof(struct winfs));
 	fs->base_fs.mountpoint = "/";
 	fs->base_fs.open = winfs_open;
-	fs->base_fs.is_symlink = winfs_is_symlink;
+	fs->base_fs.symlink = winfs_symlink;
+	fs->base_fs.readlink = winfs_readlink;
 	return fs;
 }

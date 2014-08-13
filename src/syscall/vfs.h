@@ -16,6 +16,8 @@ size_t sys_write(int fd, const char *buf, size_t count);
 int sys_open(const char *pathname, int flags, int mode);
 int sys_close(int fd);
 
+int sys_symlink(const char *target, const char *linkpath);
+
 int sys_dup2(int fd, int newfd);
 
 int sys_getdents64(int fd, struct linux_dirent64 *dirent, unsigned int count);

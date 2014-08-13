@@ -7,6 +7,19 @@
 #include <log.h>
 #include <Windows.h>
 
+/* Notes on symlink solving:
+
+   Sometimes we need to perform file operation and symlink checking at
+   one place.
+
+   For example, if we test symlink first and try opening file later,
+   another process may replace the file with a symlink after the symlink
+   check. This will result in opening a symlink file as a regular file.
+
+   But for path components this is fine as if a symlink check fails for
+   a component, the whole operation immediately fails.
+*/
+
 #define MAX_FD_COUNT		1024
 #define MAX_SYMLINK_LEVEL	8
 
@@ -15,7 +28,6 @@ struct vfs_data
 	struct file *fds[MAX_FD_COUNT];
 	struct file_system *fs_first;
 	char cwd[PATH_MAX];
-	size_t cwdlen;
 };
 
 static struct vfs_data * const vfs = VFS_DATA_BASE;
@@ -38,7 +50,6 @@ void vfs_init()
 	//int len = GetCurrentDirectoryW(PATH_MAX, wcwd);
 	vfs->cwd[0] = '/';
 	vfs->cwd[1] = 0;
-	vfs->cwdlen = 2;
 }
 
 void vfs_reset()
@@ -77,8 +88,30 @@ size_t sys_write(int fd, const char *buf, size_t count)
 		return -EBADF;
 }
 
-/* Normalize a unix path: remove redundant "/", "." and ".." */
-/* We allow aliasing `current` and `out` */
+static int find_filesystem(const char *path, struct file_system **out_fs, char **out_subpath)
+{
+	struct file_system *fs;
+	for (fs = vfs->fs_first; fs; fs = fs->next)
+	{
+		char *p = fs->mountpoint;
+		char *subpath = path;
+		while (*p && *p == *subpath)
+		{
+			p++;
+			subpath++;
+		}
+		if (*p == 0)
+		{
+			*out_fs = fs;
+			*out_subpath = subpath;
+			return 1;
+		}
+	}
+	return 0;
+}
+
+/* Normalize a unix path: remove redundant "/", "." and ".."
+   We allow aliasing `current` and `out` */
 static int normalize_path(const char *current, const char *pathname, char *out)
 {
 	/* TODO: Avoid overflow */
@@ -122,7 +155,45 @@ static int normalize_path(const char *current, const char *pathname, char *out)
 		p[-1] = 0;
 	else
 		*p = 0;
-	return 0;
+	return 1;
+}
+
+/* Test if a component of the given path is a symlink */
+static int resolve_symlink(struct file_system *fs, char *path, char *subpath, char *target)
+{
+	/* Test from right to left */
+	/* Note: Currently we assume the symlink only appears in subpath */
+	int found = 0;
+	for (char *p = subpath + strlen(subpath) - 1; p > subpath; p--)
+	{
+		if (*p == '/')
+		{
+			*p = 0;
+			log_debug("Testing %s\n", path);
+			int r = fs->readlink(subpath, target, MAX_PATH);
+			if (r >= 0)
+			{
+				log_debug("It is a symlink, target: %s\n", target);
+				found = 1;
+				/* Combine symlink target with remaining path */
+				char *q = p + 1;
+				char *t = target + strlen(target);
+				if (*t != '/')
+					*t++ = '/';
+				while (*q)
+					*t++ = *q++;
+				/* Combine heading file path with remaining path */
+				if (!normalize_path(path, target, path))
+					return -ENOENT;
+				break;
+			}
+			else if (r != -ENOENT)
+				/* A component exists, or i/o failed, returning failure */
+				return r;
+			*p = '/';
+		}
+	}
+	return found;
 }
 
 int sys_open(const char *pathname, int flags, int mode)
@@ -167,9 +238,8 @@ int sys_open(const char *pathname, int flags, int mode)
 	/* Resolve path */
 	char path[MAX_PATH], target[MAX_PATH];
 	struct file *f = NULL;
-	int r = normalize_path(vfs->cwd, pathname, path);
-	if (r < 0)
-		return r;
+	if (!normalize_path(vfs->cwd, pathname, path))
+		return -ENOENT;
 	for (int symlink_level = 0;; symlink_level++)
 	{
 		if (symlink_level == MAX_SYMLINK_LEVEL)
@@ -179,38 +249,15 @@ int sys_open(const char *pathname, int flags, int mode)
 		/* Find filesystem */
 		struct file_system *fs;
 		char *subpath;
-		for (fs = vfs->fs_first; fs; fs = fs->next)
-		{
-			char *p = fs->mountpoint;
-			subpath = path;
-			while (*p && *p == *subpath)
-			{
-				p++;
-				subpath++;
-			}
-			if (*p == 0)
-				break;
-		}
-		if (!fs)
-		{
+		if (!find_filesystem(path, &fs, &subpath))
 			return -ENOENT;
-		}
-		/* We need to perform file opening and symlink checking atomically at this case.
-
-		   If we test symlink first and try opening file later, another process may
-		   replace the file with a symlink after the symlink check failed, resulting
-		   in opening a symlink file as a regular file.
-
-		   But for path components this is fine as if a symlink check fails for
-		   a component, the whole open(2) operation immediately fails.
-		 */
 		/* Try opening the file directly */
 		log_debug("Try opening %s\n", path);
 		int ret = fs->open(*subpath? subpath: ".", flags, mode, &f, target, MAX_PATH);
 		if (ret == 0)
 		{
 			/* We're done opening the file */
-			log_debug("Open file succeed.\n");
+			log_debug("Open file succeeded.\n");
 			break;
 		}
 		else if (ret == 1)
@@ -223,50 +270,17 @@ int sys_open(const char *pathname, int flags, int mode)
 				p--;
 			p[1] = 0;
 			/* Combine file path with symlink target */
-			int r = normalize_path(path, target, path);
-			if (r < 0)
-				return r;
+			if (!normalize_path(path, target, path))
+				return -ENOENT;
 		}
-		else
+		else if (ret == -ENOENT)
 		{
-			/* Open file failed, test if a component of the path is a symlink */
 			log_debug("Open file failed, testing whether a component is a symlink...\n");
-			/* Test from right to left */
-			/* Note: Currently we assume the symlink only appears in subpath */
-			int found = 0;
-			for (char *p = subpath + strlen(subpath) - 1; p > subpath; p--)
-			{
-				if (*p == '/')
-				{
-					*p = 0;
-					log_debug("Testing %s\n", path);
-					int r = fs->is_symlink(subpath, target, MAX_PATH);
-					if (r == 0)
-					{
-						log_debug("It is a symlink, target: %s\n", target);
-						found = 1;
-						/* Combine symlink target with remaining path */
-						char *q = p + 1;
-						char *t = target + strlen(target);
-						if (*t != '/')
-							*t++ = '/';
-						while (*q)
-							*t++ = *q++;
-						/* Combine heading file path with remaining path */
-						int r = normalize_path(path, target, path);
-						if (r < 0)
-							return r;
-						break;
-					}
-					else if (r != -ENOENT)
-						/* A component exists, or i/o failed, returning failure */
-						return r;
-					*p = '/';
-				}
-			}
-			if (!found)
+			if (!resolve_symlink(fs, path, subpath, target))
 				return ret;
 		}
+		else
+			return ret;
 	}
 	int fd = -1;
 	for (int i = 0; i < MAX_FD_COUNT; i++)
@@ -292,6 +306,40 @@ int sys_close(int fd)
 		return -EBADF;
 	f->op_vtable->fn_close(f);
 	return 0;
+}
+
+int sys_symlink(const char *symlink_target, const char *linkpath)
+{
+	log_debug("symlink(\"%s\", \"%s\")\n", symlink_target, linkpath);
+	char path[MAX_PATH], target[MAX_PATH];
+	if (!normalize_path(vfs->cwd, linkpath, path))
+		return -ENOENT;
+	for (int symlink_level = 0;; symlink_level++)
+	{
+		if (symlink_level == MAX_SYMLINK_LEVEL)
+		{
+			return -ELOOP;
+		}
+		struct file_system *fs;
+		char *subpath;
+		if (!find_filesystem(path, &fs, &subpath))
+			return -ENOENT;
+		log_debug("Try creating symlink...\n");
+		int ret = fs->symlink(symlink_target, linkpath);
+		if (ret == 0)
+		{
+			log_debug("Symlink succeeded.\n");
+			return 0;
+		}
+		else if (ret == -ENOENT)
+		{
+			log_debug("Create symlink failed, testing whether a component is a symlink...\n");
+			if (!resolve_symlink(fs, path, subpath, target))
+				return -ENOENT;
+		}
+		else
+			return ret;
+	}
 }
 
 int sys_dup2(int fd, int newfd)
@@ -424,7 +472,7 @@ int sys_chdir(const char *pathname)
 char *sys_getcwd(char *buf, size_t size)
 {
 	log_debug("getcwd(%x, %d): %s\n", buf, size, vfs->cwd);
-	if (size < vfs->cwdlen)
+	if (size < strlen(vfs->cwd) + 1)
 		return -ERANGE;
 	strcpy(buf, vfs->cwd);
 	return buf;

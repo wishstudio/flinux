@@ -26,5 +26,6 @@ struct file_system
 	struct file_system *next;
 	char *mountpoint;
 	int (*open)(const char *path, int flags, int mode, struct file **fp, char *target, int buflen);
-	int (*is_symlink)(const char *pathname, char *target, int buflen);
+	int (*symlink)(const char *target, const char *linkpath);
+	int (*readlink)(const char *pathname, char *target, int buflen);
 };
