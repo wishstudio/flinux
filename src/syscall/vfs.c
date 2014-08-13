@@ -502,11 +502,21 @@ int sys_ioctl(int fd, unsigned int cmd, unsigned long arg)
 int sys_chdir(const char *pathname)
 {
 	log_debug("chdir(%s)\n", pathname);
+	/* TODO: Check whether pathname is a directory */
 	int fd = sys_open(pathname, O_PATH, 0);
 	if (fd < 0)
 		return fd;
 	sys_close(fd);
-	strcpy(vfs->cwd, pathname);
+	normalize_path(vfs->cwd, pathname, vfs->cwd);
+	/* Add a tail "/" */
+	int l = strlen(vfs->cwd);
+	if (vfs->cwd[l - 1] != '/')
+	{
+		vfs->cwd[l] = '/';
+		vfs->cwd[l + 1] = 0;
+	}
+	else
+		vfs->cwd[l] = 0;
 	return 0;
 }
 
