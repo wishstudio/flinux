@@ -220,7 +220,7 @@ int winfs_open(const char *pathname, int flags, int mode, struct file **fp, char
 		return -ENOENT;
 
 	if (flags & O_PATH)
-		desiredAccess = GENERIC_READ;
+		desiredAccess = 0;
 	else if (flags & O_RDWR)
 		desiredAccess = GENERIC_READ | GENERIC_WRITE;
 	else if (flags & O_WRONLY)
@@ -245,7 +245,7 @@ int winfs_open(const char *pathname, int flags, int mode, struct file **fp, char
 	handle = CreateFileW(wpathname, desiredAccess, shareMode, NULL, creationDisposition, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_BACKUP_SEMANTICS, NULL);
 	if (handle == INVALID_HANDLE_VALUE)
 	{
-		log_debug("CreateFileW() failed.\n");
+		log_debug("CreateFileW() failed, error code: %d.\n", GetLastError());
 		return -ENOENT;
 	}
 	if (!GetFileInformationByHandleEx(handle, FileAttributeTagInfo, &attributeInfo, sizeof(attributeInfo)))
@@ -253,8 +253,24 @@ int winfs_open(const char *pathname, int flags, int mode, struct file **fp, char
 		CloseHandle(handle);
 		return -EIO;
 	}
+	/* Test if the file is a symlink */
 	if (attributeInfo.FileAttributes != INVALID_FILE_ATTRIBUTES && (attributeInfo.FileAttributes & FILE_ATTRIBUTE_SYSTEM))
 	{
+		log_debug("The file has system flag set.\n");
+		if (!(desiredAccess & GENERIC_READ))
+		{
+			/* We need to get a readable handle */
+			log_debug("Reopening file...\n");
+			HANDLE read_handle = ReOpenFile(handle, desiredAccess | GENERIC_READ, shareMode, FILE_FLAG_BACKUP_SEMANTICS);
+			if (read_handle == INVALID_HANDLE_VALUE)
+			{
+				log_debug("Reopen file failed, error code %d. Assume not symlink.\n", GetLastError());
+				goto after_symlink_test;
+			}
+			CloseHandle(handle);
+			log_debug("Reopen succeeded.\n");
+			handle = read_handle;
+		}
 		if (winfs_read_symlink(handle, target, buflen))
 		{
 			CloseHandle(handle);
@@ -269,6 +285,7 @@ int winfs_open(const char *pathname, int flags, int mode, struct file **fp, char
 		}
 	}
 
+after_symlink_test:
 	file = (struct winfs_file *)kmalloc(sizeof(struct winfs_file));
 	file->base_file.op_vtable = &winfs_ops;
 	file->base_file.offset = 0;
