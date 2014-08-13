@@ -15,7 +15,7 @@ void log_init()
 	for (char i = '0'; i <= '9'; i++)
 	{
 		filename[7] = i;
-		hFile = CreateFileA(filename, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_DELETE, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+		hFile = CreateFileA(filename, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_DELETE, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH, NULL);
 		if (hFile != INVALID_HANDLE_VALUE)
 			break;
 	}
@@ -32,6 +32,5 @@ void log_debug(const char *format, ...)
 	va_start(ap, format);
 	int size = wvsprintfA(buffer, format, ap);
 	WriteFile(hFile, buffer, size, NULL, NULL);
-	FlushFileBuffers(hFile);
 }
 #endif
