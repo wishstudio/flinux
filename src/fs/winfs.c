@@ -242,6 +242,7 @@ int winfs_open(const char *pathname, int flags, int mode, struct file **fp, char
 		creationDisposition = TRUNCATE_EXISTING;
 	else
 		creationDisposition = OPEN_EXISTING;
+	log_debug("CreateFileW(): %s\n", pathname);
 	handle = CreateFileW(wpathname, desiredAccess, shareMode, NULL, creationDisposition, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_BACKUP_SEMANTICS, NULL);
 	if (handle == INVALID_HANDLE_VALUE)
 	{

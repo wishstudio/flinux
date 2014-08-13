@@ -206,7 +206,7 @@ int sys_open(const char *pathname, int flags, int mode)
 		 */
 		/* Try opening the file directly */
 		log_debug("Try opening %s\n", path);
-		int ret = fs->open(subpath, flags, mode, &f, target, MAX_PATH);
+		int ret = fs->open(*subpath? subpath: ".", flags, mode, &f, target, MAX_PATH);
 		if (ret == 0)
 		{
 			/* We're done opening the file */
@@ -409,7 +409,12 @@ int sys_ioctl(int fd, unsigned int cmd, unsigned long arg)
 int sys_chdir(const char *pathname)
 {
 	log_debug("chdir(%s)\n", pathname);
-	return -EIO;
+	int fd = sys_open(pathname, O_PATH, 0);
+	if (fd < 0)
+		return fd;
+	sys_close(fd);
+	strcpy(vfs->cwd, pathname);
+	return 0;
 }
 
 char *sys_getcwd(char *buf, size_t size)
