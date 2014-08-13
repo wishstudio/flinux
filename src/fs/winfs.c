@@ -187,21 +187,19 @@ static int winfs_read_symlink(HANDLE hFile, char *target, int buflen)
 static int winfs_is_symlink(const char *pathname, char *target, int buflen)
 {
 	WCHAR wpathname[PATH_MAX];
-	if (utf8_to_utf16(pathname, strlen(pathname) + 1, wpathname, PATH_MAX) <= 0)
-	{
-		return 0;
-	}
-	DWORD attr = GetFileAttributesW(wpathname);
-	if (attr == INVALID_FILE_ATTRIBUTES || (attr && FILE_ATTRIBUTE_DIRECTORY) || !(attr & FILE_ATTRIBUTE_SYSTEM))
-	{
-		return 0;
-	}
+	DWORD attr;
 	HANDLE hFile;
+
+	if (utf8_to_utf16(pathname, strlen(pathname) + 1, wpathname, PATH_MAX) <= 0)
+		return -EIO;
+	attr = GetFileAttributesW(wpathname);
+	if (attr == INVALID_FILE_ATTRIBUTES)
+		return -ENOENT;
+	if ((attr && FILE_ATTRIBUTE_DIRECTORY) || !(attr & FILE_ATTRIBUTE_SYSTEM))
+		return -EEXIST;
 	hFile = CreateFileW(wpathname, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (hFile == INVALID_HANDLE_VALUE)
-	{
-		return 0;
-	}
+		return -EIO;
 	int ret = winfs_read_symlink(hFile, target, buflen);
 	CloseHandle(hFile);
 	return ret;

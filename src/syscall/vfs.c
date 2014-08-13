@@ -240,7 +240,8 @@ int sys_open(const char *pathname, int flags, int mode)
 				{
 					*p = 0;
 					log_debug("Testing %s\n", path);
-					if (fs->is_symlink(subpath, target, MAX_PATH))
+					int r = fs->is_symlink(subpath, target, MAX_PATH);
+					if (r == 0)
 					{
 						log_debug("It is a symlink, target: %s\n", target);
 						found = 1;
@@ -257,6 +258,9 @@ int sys_open(const char *pathname, int flags, int mode)
 							return r;
 						break;
 					}
+					else if (r != -ENOENT)
+						/* A component exists, or i/o failed, returning failure */
+						return r;
 					*p = '/';
 				}
 			}
