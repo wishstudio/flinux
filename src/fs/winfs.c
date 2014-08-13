@@ -117,14 +117,29 @@ static int winfs_stat(struct file *f, struct stat64 *buf)
 	else
 		buf->st_mode = 0755;
 	if (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+	{
 		buf->st_mode |= S_IFDIR;
+		buf->st_size = 0;
+	}
 	else
-		buf->st_mode |= S_IFREG;
+	{
+		int r;
+		if ((info.dwFileAttributes & FILE_ATTRIBUTE_SYSTEM)
+			&& (r = winfs_read_symlink(winfile->handle, NULL, 0)) > 0)
+		{
+			buf->st_mode |= S_IFLNK;
+			buf->st_size = r;
+		}
+		else
+		{
+			buf->st_mode |= S_IFREG;
+			buf->st_size = ((uint64_t)info.nFileSizeLow << 32ULL) + info.nFileSizeHigh;
+		}
+	}
 	buf->st_nlink = info.nNumberOfLinks;
 	buf->st_uid = 0;
 	buf->st_gid = 0;
 	buf->st_rdev = 0;
-	buf->st_size = ((uint64_t) info.nFileSizeLow << 32ULL) + info.nFileSizeHigh;
 	buf->st_blksize = PAGE_SIZE;
 	buf->st_blocks = (buf->st_size + buf->st_blksize - 1) / buf->st_blksize;
 	buf->st_atime = filetime_to_unix_sec(&info.ftLastAccessTime);
