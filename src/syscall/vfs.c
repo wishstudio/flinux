@@ -54,7 +54,16 @@ void vfs_init()
 
 void vfs_reset()
 {
-	/* TODO: Handle CLOEXEC */
+	/* Handle O_CLOEXEC */
+	for (int i = 0; i < MAX_FD_COUNT; i++)
+	{
+		struct file *f = vfs->fds[i];
+		if (f && (f->openflags & O_CLOEXEC))
+		{
+			f->op_vtable->fn_close(f);
+			vfs->fds[i] = NULL;
+		}
+	}
 }
 
 void vfs_shutdown()
@@ -212,7 +221,7 @@ int vfs_open(const char *pathname, int flags, int mode, struct file **f)
 	Supported flags:
 	o O_APPEND
 	o O_ASYNC
-	o O_CLOEXEC
+	* O_CLOEXEC
 	o O_DIRECT
 	o O_DIRECTORY
 	o O_DSYNC
@@ -231,8 +240,8 @@ int vfs_open(const char *pathname, int flags, int mode, struct file **f)
 	* O_WRONLY
 	All filesystem not supporting these flags should explicitly check "flags" parameter
 	*/
-	if ((flags & O_APPEND) || (flags & O_CLOEXEC) || (flags & O_DIRECT)
-		|| (flags & O_DIRECTORY) || (flags & O_DSYNC) || (flags & O_EXCL)
+	if ((flags & O_APPEND) || (flags & O_DIRECT)
+		|| (flags & O_DIRECTORY) || (flags & O_DSYNC)
 		|| (flags & O_LARGEFILE) || (flags & O_NOATIME) || (flags & O_NOCTTY)
 		|| (flags & O_NONBLOCK) || (flags & O_SYNC) || (flags & O_TMPFILE))
 	{

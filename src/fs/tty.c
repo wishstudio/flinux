@@ -67,7 +67,7 @@ struct file *tty_alloc(HANDLE file_handle)
 	struct tty_file *tty = (struct tty_file *) kmalloc(sizeof(struct tty_file));
 	tty->base_file.op_vtable = &tty_ops;
 	tty->base_file.ref = 1;
-	tty->base_file.offset = 0;
+	tty->base_file.openflags = 0;
 	tty->file_handle = file_handle;
 
 	return (struct file *) tty;

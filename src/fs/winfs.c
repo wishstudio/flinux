@@ -368,8 +368,8 @@ static int winfs_open(const char *pathname, int flags, int mode, struct file **f
 after_symlink_test:
 	file = (struct winfs_file *)kmalloc(sizeof(struct winfs_file));
 	file->base_file.op_vtable = &winfs_ops;
-	file->base_file.offset = 0;
 	file->base_file.ref = 1;
+	file->base_file.openflags = flags;
 	file->handle = handle;
 	*fp = file;
 	return 0;
