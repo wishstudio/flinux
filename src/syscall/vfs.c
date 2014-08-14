@@ -445,8 +445,8 @@ int sys_dup2(int fd, int newfd)
 		return -EBADF;
 	if (fd == newfd)
 		return newfd;
-	/* TODO: Close newfd before duplicate */
-	/* TODO: Do things atomically */
+	if (vfs->fds[newfd])
+		vfs->fds[newfd]->op_vtable->fn_close(vfs->fds[newfd]);
 	vfs->fds[newfd] = f;
 	f->ref++;
 	return newfd;
