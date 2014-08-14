@@ -1,5 +1,6 @@
 #include <common/errno.h>
 #include <common/fcntl.h>
+#include <fs/pipe.h>
 #include <fs/tty.h>
 #include <fs/winfs.h>
 #include <syscall/mm.h>
@@ -75,6 +76,14 @@ void vfs_shutdown()
 			f->op_vtable->fn_close(f);
 	}
 	mm_munmap(VFS_DATA_BASE, sizeof(struct vfs_data));
+}
+
+static int alloc_fd_slot()
+{
+	for (int i = 0; i < MAX_FD_COUNT; i++)
+		if (vfs->fds[i] == NULL)
+			return i;
+	return -1;
 }
 
 size_t sys_read(int fd, char *buf, size_t count)
@@ -311,13 +320,7 @@ int sys_open(const char *pathname, int flags, int mode)
 	int r = vfs_open(pathname, flags, mode, &f);
 	if (r < 0)
 		return r;
-	int fd = -1;
-	for (int i = 0; i < MAX_FD_COUNT; i++)
-		if (vfs->fds[i] == NULL)
-		{
-			fd = i;
-			break;
-		}
+	int fd = alloc_fd_slot();
 	if (fd == -1)
 	{
 		f->op_vtable->fn_close(f);
@@ -398,6 +401,41 @@ size_t sys_readlink(const char *pathname, char *buf, int bufsize)
 		else
 			return ret;
 	}
+}
+
+int sys_pipe(int pipefd[2])
+{
+	return sys_pipe2(pipefd, 0);
+}
+
+int sys_pipe2(int pipefd[2], int flags)
+{
+	/*
+	Supported flags:
+	* O_CLOEXEC
+	o O_DIRECT
+	o O_NONBLOCK
+	*/
+	log_debug("pipe2(%x, %d)\n", pipefd, flags);
+	if ((flags & O_DIRECT) || (flags & O_NONBLOCK))
+	{
+		log_debug("Unsupported flags combination: %x\n", flags);
+		return -EINVAL;
+	}
+	HANDLE read_handle, write_handle;
+	if (!CreatePipe(&read_handle, &write_handle, NULL, 0))
+	{
+		log_debug("CreatePipe() failed, error code: %d.\n", GetLastError());
+		return -EMFILE; /* TODO: Is this appropriate? */
+	}
+	/* TODO: Deal with EMFILE error */
+	int rfd = alloc_fd_slot();
+	vfs->fds[rfd] = pipe_alloc(read_handle, 1, flags);
+	int wfd = alloc_fd_slot();
+	vfs->fds[wfd] = pipe_alloc(write_handle, 0, flags);
+	pipefd[0] = rfd;
+	pipefd[1] = wfd;
+	return 0;
 }
 
 int sys_dup2(int fd, int newfd)

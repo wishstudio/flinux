@@ -1,5 +1,5 @@
 #pragma once
 
-#include "file.h"
+#include <fs/file.h>
 
 struct file_system *winfs_alloc();

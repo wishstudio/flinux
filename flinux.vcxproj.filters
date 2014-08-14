@@ -106,6 +106,9 @@
       <Filter>syscall</Filter>
     </ClInclude>
     <ClInclude Include="src\str.h" />
+    <ClInclude Include="src\fs\pipe.h">
+      <Filter>fs</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
@@ -145,6 +148,9 @@
       <Filter>syscall</Filter>
     </ClCompile>
     <ClCompile Include="src\str.c" />
+    <ClCompile Include="src\fs\pipe.c">
+      <Filter>fs</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="src\ntdll.def" />

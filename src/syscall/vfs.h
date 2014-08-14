@@ -23,6 +23,9 @@ int sys_close(int fd);
 int sys_symlink(const char *target, const char *linkpath);
 size_t sys_readlink(const char *pathname, char *buf, size_t bufsize);
 
+int sys_pipe(int pipefd[2]);
+int sys_pipe2(int pipefd[2], int flags);
+
 int sys_dup2(int fd, int newfd);
 
 int sys_getdents64(int fd, struct linux_dirent64 *dirent, unsigned int count);

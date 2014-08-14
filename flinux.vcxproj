@@ -27,6 +27,7 @@
     <ClInclude Include="src\common\utsname.h" />
     <ClInclude Include="src\common\wait.h" />
     <ClInclude Include="src\fs\file.h" />
+    <ClInclude Include="src\fs\pipe.h" />
     <ClInclude Include="src\fs\tty.h" />
     <ClInclude Include="src\fs\winfs.h" />
     <ClInclude Include="src\heap.h" />
@@ -46,6 +47,7 @@
     <ClInclude Include="src\syscall\x86_inst.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\fs\pipe.c" />
     <ClCompile Include="src\fs\tty.c" />
     <ClCompile Include="src\fs\winfs.c" />
     <ClCompile Include="src\heap.c" />
