@@ -154,7 +154,7 @@ void mm_reset()
 		{
 			NtUnmapViewOfSection(NtCurrentProcess(), GET_BLOCK_ADDRESS(i));
 			NtClose(mm->block_section_handle[i]);
-			mm->block_section_handle[i] = 0;
+			mm->block_section_handle[i] = NULL;
 			mm->block_page_count[i] = 0;
 		}
 	for (struct map_entry *e = mm->map_list, *p = NULL; e;)
@@ -446,8 +446,11 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offs
 
 		addr = GET_PAGE_ADDRESS(alloc_page);
 	}
-	if (!IS_ALIGNED(addr, PAGE_SIZE))
-		return NULL;
+	if ((flags & MAP_FIXED) && !IS_ALIGNED(addr, PAGE_SIZE))
+	{
+		log_debug("Not aligned addr with MAP_FIXED.\n");
+		return -EINVAL;
+	}
 	if (flags & MAP_ANONYMOUS)
 	{
 		uint32_t start_page = GET_PAGE(addr);
@@ -540,6 +543,7 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offs
 			mm->page_prot[i] = prot;
 			mm->block_page_count[GET_BLOCK_OF_PAGE(i)]++; /* TODO: Optimization */
 		}
+		log_debug("Allocated memory: %x\n", addr);
 		return addr;
 	}
 	return NULL;
