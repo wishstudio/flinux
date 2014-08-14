@@ -49,7 +49,7 @@ static const struct file_ops pipe_ops = {
 	.fn_write = pipe_write,
 };
 
-struct file *pipe_alloc(HANDLE handle, int is_read, int flags)
+static struct file *pipe_create_file(HANDLE handle, int is_read, int flags)
 {
 	struct pipe_file *pipe = (struct pipe_file *)kmalloc(sizeof(struct pipe_file *));
 	pipe->base_file.op_vtable = &pipe_ops;
@@ -58,4 +58,21 @@ struct file *pipe_alloc(HANDLE handle, int is_read, int flags)
 	pipe->handle = handle;
 	pipe->is_read = is_read;
 	return pipe;
+}
+
+int pipe_alloc(struct file **fread, struct file **fwrite, int flags)
+{
+	HANDLE read_handle, write_handle;
+	SECURITY_ATTRIBUTES attr;
+	attr.nLength = sizeof(SECURITY_ATTRIBUTES);
+	attr.lpSecurityDescriptor = NULL;
+	attr.bInheritHandle = TRUE;
+	if (!CreatePipe(&read_handle, &write_handle, &attr, 0))
+	{
+		log_debug("CreatePipe() failed, error code: %d\n");
+		return -EMFILE; /* TODO: Find an appropriate flag */
+	}
+	*fread = pipe_create_file(read_handle, 1, flags);
+	*fwrite = pipe_create_file(write_handle, 1, flags);
+	return 0;
 }

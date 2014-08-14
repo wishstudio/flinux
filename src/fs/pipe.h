@@ -4,4 +4,4 @@
 
 #include <Windows.h>
 
-struct file *pipe_alloc(HANDLE handle, int is_read, int flags);
+int pipe_alloc(struct file **fread, struct file **fwrite, int flags);

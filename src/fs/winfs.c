@@ -138,7 +138,7 @@ static int winfs_stat(struct file *f, struct stat64 *buf)
 		else
 		{
 			buf->st_mode |= S_IFREG;
-			buf->st_size = ((uint64_t)info.nFileSizeLow << 32ULL) + info.nFileSizeHigh;
+			buf->st_size = ((uint64_t)info.nFileSizeHigh << 32ULL) + info.nFileSizeLow;
 		}
 	}
 	buf->st_nlink = info.nNumberOfLinks;
@@ -302,7 +302,11 @@ static int winfs_open(const char *pathname, int flags, int mode, struct file **f
 	else
 		creationDisposition = OPEN_EXISTING;
 	log_debug("CreateFileW(): %s\n", pathname);
-	handle = CreateFileW(wpathname, desiredAccess, shareMode, NULL, creationDisposition, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_BACKUP_SEMANTICS, NULL);
+	SECURITY_ATTRIBUTES attr;
+	attr.nLength = sizeof(SECURITY_ATTRIBUTES);
+	attr.lpSecurityDescriptor = NULL;
+	attr.bInheritHandle = TRUE;
+	handle = CreateFileW(wpathname, desiredAccess, shareMode, &attr, creationDisposition, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_BACKUP_SEMANTICS, NULL);
 	if (handle == INVALID_HANDLE_VALUE)
 	{
 		DWORD err = GetLastError();

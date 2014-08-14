@@ -423,17 +423,15 @@ int sys_pipe2(int pipefd[2], int flags)
 		log_debug("Unsupported flags combination: %x\n", flags);
 		return -EINVAL;
 	}
-	HANDLE read_handle, write_handle;
-	if (!CreatePipe(&read_handle, &write_handle, NULL, 0))
-	{
-		log_debug("CreatePipe() failed, error code: %d.\n", GetLastError());
-		return -EMFILE; /* TODO: Is this appropriate? */
-	}
+	struct file *fread, *fwrite;
+	int r = pipe_alloc(&fread, &fwrite, flags);
+	if (r < 0)
+		return r;
 	/* TODO: Deal with EMFILE error */
 	int rfd = alloc_fd_slot();
-	vfs->fds[rfd] = pipe_alloc(read_handle, 1, flags);
+	vfs->fds[rfd] = fread;
 	int wfd = alloc_fd_slot();
-	vfs->fds[wfd] = pipe_alloc(write_handle, 0, flags);
+	vfs->fds[wfd] = fwrite;
 	pipefd[0] = rfd;
 	pipefd[1] = wfd;
 	return 0;
