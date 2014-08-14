@@ -1,6 +1,7 @@
 #include <common/errno.h>
 #include <fs/pipe.h>
 #include <syscall/mm.h>
+#include <log.h>
 
 struct pipe_file
 {
