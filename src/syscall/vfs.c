@@ -337,6 +337,7 @@ int sys_close(int fd)
 	if (!f)
 		return -EBADF;
 	f->op_vtable->fn_close(f);
+	vfs->fds[fd] = NULL;
 	return 0;
 }
 
