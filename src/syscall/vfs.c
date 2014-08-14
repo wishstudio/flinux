@@ -160,7 +160,10 @@ static int normalize_path(const char *current, const char *pathname, char *out)
 	return 1;
 }
 
-/* Test if a component of the given path is a symlink */
+/*
+Test if a component of the given path is a symlink
+Return 0 for success, errno for error
+*/
 static int resolve_symlink(struct file_system *fs, char *path, char *subpath, char *target)
 {
 	/* Test from right to left */
@@ -196,8 +199,11 @@ static int resolve_symlink(struct file_system *fs, char *path, char *subpath, ch
 		}
 	}
 	if (!found)
+	{
 		log_debug("No component is a symlink.\n");
-	return found;
+		return -ENOENT;
+	}
+	return 0;
 }
 
 int vfs_open(const char *pathname, int flags, int mode, struct file **f)
@@ -210,7 +216,7 @@ int vfs_open(const char *pathname, int flags, int mode, struct file **f)
 	o O_DIRECT
 	o O_DIRECTORY
 	o O_DSYNC
-	o O_EXCL
+	* O_EXCL
 	o O_LARGEFILE
 	o O_NOATIME
 	o O_NOCTTY
@@ -278,7 +284,7 @@ int vfs_open(const char *pathname, int flags, int mode, struct file **f)
 		else if (ret == -ENOENT)
 		{
 			log_debug("Open file failed, testing whether a component is a symlink...\n");
-			if (!resolve_symlink(fs, path, subpath, target))
+			if (resolve_symlink(fs, path, subpath, target) < 0)
 				return ret;
 		}
 		else
@@ -348,7 +354,7 @@ int sys_symlink(const char *symlink_target, const char *linkpath)
 		else if (ret == -ENOENT)
 		{
 			log_debug("Create symlink failed, testing whether a component is a symlink...\n");
-			if (!resolve_symlink(fs, path, subpath, target))
+			if (resolve_symlink(fs, path, subpath, target) < 0)
 				return -ENOENT;
 		}
 		else
@@ -377,7 +383,7 @@ size_t sys_readlink(const char *pathname, char *buf, int bufsize)
 		if (ret == -ENOENT)
 		{
 			log_debug("Symlink not found, testing whether a component is a symlink...\n");
-			if (!resolve_symlink(fs, path, subpath, target))
+			if (resolve_symlink(fs, path, subpath, target) < 0)
 				return -ENOENT;
 		}
 		else
