@@ -23,6 +23,7 @@ static size_t pipe_read(struct file *f, char *buf, size_t count)
 	struct pipe_file *pipe = (struct pipe_file *)f;
 	if (!pipe->is_read)
 	{
+		log_debug("read() on pipe write end.\n");
 		return -EBADF;
 	}
 	size_t num_read;
@@ -36,6 +37,7 @@ static size_t pipe_write(struct file *f, const char *buf, size_t count)
 	struct pipe_file *pipe = (struct pipe_file *)f;
 	if (pipe->is_read)
 	{
+		log_debug("write() on pipe read end.\n");
 		return -EBADF;
 	}
 	size_t num_written;
@@ -74,6 +76,6 @@ int pipe_alloc(struct file **fread, struct file **fwrite, int flags)
 		return -EMFILE; /* TODO: Find an appropriate flag */
 	}
 	*fread = pipe_create_file(read_handle, 1, flags);
-	*fwrite = pipe_create_file(write_handle, 1, flags);
+	*fwrite = pipe_create_file(write_handle, 0, flags);
 	return 0;
 }
