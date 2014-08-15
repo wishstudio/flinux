@@ -27,6 +27,7 @@
 struct vfs_data
 {
 	struct file *fds[MAX_FD_COUNT];
+	int fds_cloexec[MAX_FD_COUNT];
 	struct file_system *fs_first;
 	char cwd[PATH_MAX];
 };
@@ -59,10 +60,11 @@ void vfs_reset()
 	for (int i = 0; i < MAX_FD_COUNT; i++)
 	{
 		struct file *f = vfs->fds[i];
-		if (f && (f->openflags & O_CLOEXEC))
+		if (f && vfs->fds_cloexec[i])
 		{
 			f->op_vtable->fn_close(f);
 			vfs->fds[i] = NULL;
+			vfs->fds_cloexec[i] = 0;
 		}
 	}
 }
@@ -327,6 +329,7 @@ int sys_open(const char *pathname, int flags, int mode)
 		return -EMFILE;
 	}
 	vfs->fds[fd] = f;
+	vfs->fds_cloexec[fd] = (flags & O_CLOEXEC) > 0;
 	return fd;
 }
 
@@ -338,6 +341,7 @@ int sys_close(int fd)
 		return -EBADF;
 	f->op_vtable->fn_close(f);
 	vfs->fds[fd] = NULL;
+	vfs->fds_cloexec[fd] = 0;
 	return 0;
 }
 
@@ -430,8 +434,10 @@ int sys_pipe2(int pipefd[2], int flags)
 	/* TODO: Deal with EMFILE error */
 	int rfd = alloc_fd_slot();
 	vfs->fds[rfd] = fread;
+	vfs->fds_cloexec[rfd] = (flags & O_CLOEXEC) > 0;
 	int wfd = alloc_fd_slot();
 	vfs->fds[wfd] = fwrite;
+	vfs->fds_cloexec[wfd] = (flags & O_CLOEXEC) > 0;
 	pipefd[0] = rfd;
 	pipefd[1] = wfd;
 	return 0;
@@ -448,6 +454,7 @@ int sys_dup2(int fd, int newfd)
 	if (vfs->fds[newfd])
 		vfs->fds[newfd]->op_vtable->fn_close(vfs->fds[newfd]);
 	vfs->fds[newfd] = f;
+	vfs->fds_cloexec[newfd] = 0;
 	f->ref++;
 	return newfd;
 }
