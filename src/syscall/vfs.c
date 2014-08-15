@@ -339,9 +339,12 @@ int sys_close(int fd)
 	struct file *f = vfs->fds[fd];
 	if (!f)
 		return -EBADF;
-	f->op_vtable->fn_close(f);
-	vfs->fds[fd] = NULL;
-	vfs->fds_cloexec[fd] = 0;
+	if (--f->ref == 0)
+	{
+		f->op_vtable->fn_close(f);
+		vfs->fds[fd] = NULL;
+		vfs->fds_cloexec[fd] = 0;
+	}
 	return 0;
 }
 
