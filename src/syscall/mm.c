@@ -422,18 +422,23 @@ int mm_fork(HANDLE process)
 
 void *mm_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset_pages)
 {
-	/* TODO: errno */
 	if (length == 0)
-		return NULL;
+		return -EINVAL;
 	length = ALIGN_TO_PAGE(length);
 	if ((size_t)addr < ADDRESS_SPACE_LOW || (size_t)addr >= ADDRESS_SPACE_HIGH
 		|| (size_t)addr + length < ADDRESS_SPACE_LOW || (size_t)addr + length >= ADDRESS_SPACE_HIGH
 		|| (size_t)addr + length < (size_t)addr)
-		return NULL;
+		return -EINVAL;
 	if (flags & MAP_SHARED)
-		return NULL;
+	{
+		log_debug("MAP_SHARED is not supported yet.\n");
+		return -EINVAL;
+	}
 	if (!(flags & MAP_ANONYMOUS))
-		return NULL;
+	{
+		log_debug("Non MAP_ANONYMOUS is not supported yet.\n");
+		return -EINVAL;
+	}
 	if (!(flags & MAP_FIXED))
 	{
 		uint32_t alloc_page;
@@ -442,7 +447,10 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offs
 		else
 			alloc_page = find_free_pages(GET_PAGE(ALIGN_TO_PAGE(length)), ADDRESS_ALLOCATION_LOW, ADDRESS_ALLOCATION_HIGH);
 		if (!alloc_page)
-			return NULL;
+		{
+			log_debug("Cannot find free pages.\n");
+			return -ENOMEM;
+		}
 
 		addr = GET_PAGE_ADDRESS(alloc_page);
 	}
@@ -462,7 +470,10 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offs
 		 * Otherwise the pages are found by find_free_pages() thus are guaranteed free.
 		 */
 		if ((flags & MAP_FIXED) && !is_pages_free(start_page, end_page))
-			return NULL;
+		{
+			log_debug("Address conflict with existing mapping.");
+			return -EINVAL; /* TODO: Correct flag in this case? */
+		}
 
 		/* Allocate and map missing section objects */
 		for (uint16_t i = start_block; i <= end_block; i++)
@@ -514,7 +525,7 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offs
 						mm->block_section_handle[j] = NULL;
 					}
 				}
-				return NULL;
+				return -ENOMEM; /* TODO */
 			}
 		}
 
@@ -546,35 +557,36 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offs
 		log_debug("Allocated memory: %x\n", addr);
 		return addr;
 	}
-	return NULL;
+	log_debug("TODO: Should not come here.\n");
+	return -EINVAL;
 }
 
 int mm_munmap(void *addr, size_t length)
 {
 	/* TODO: We should mark NOACCESS for munmap()-ed but not VirtualFree()-ed pages */
 	/* TODO: We currently only support unmap full pages */
-	/* TODO: errno */
 	if (!IS_ALIGNED(addr, PAGE_SIZE))
-		return -1;
+		return -EINVAL;
 	length = ALIGN_TO_PAGE(length);
 	if ((size_t)addr < ADDRESS_SPACE_LOW || (size_t)addr >= ADDRESS_SPACE_HIGH
 		|| (size_t)addr + length < ADDRESS_SPACE_LOW || (size_t)addr + length >= ADDRESS_SPACE_HIGH
 		|| (size_t)addr + length < (size_t)addr)
 	{
-		return -1;
+		return -EINVAL;
 	}
 
 	struct map_entry *entry, *pred;
 	if (!find_entry(addr, &entry, &pred))
 	{
-		return 0;
+		return -EINVAL;
 	}
 	uint32_t start_page = entry->start_page;
 	uint32_t end_page = entry->end_page;
 	/* Don't allow partial free */
 	if (GET_PAGE((size_t)addr + length - 1) != end_page)
 	{
-		return -1;
+		log_debug("Partial free not supported yet.\n");
+		return -EINVAL;
 	}
 	/* Remove entry from entry list */
 	if (pred == NULL)
@@ -605,9 +617,8 @@ void *sys_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t off
 	/* TODO: We should mark NOACCESS for VirtualAlloc()-ed but currently unused pages */
 	log_debug("mmap(%x, %x, %x, %x, %d, %x)\n", addr, length, prot, flags, fd, offset);
 	/* TODO: Initialize mapped area to zero */
-	/* TODO: errno */
 	if (!IS_ALIGNED(offset, PAGE_SIZE))
-		return NULL;
+		return -EINVAL;
 	return mm_mmap(addr, length, prot, flags, fd, offset / PAGE_SIZE);
 }
 
@@ -663,12 +674,16 @@ void *sys_brk(void *addr)
 {
 	log_debug("brk(%x)\n", addr);
 	log_debug("Last brk: %x\n", mm->brk);
+	uint32_t brk = ALIGN_TO_PAGE(mm->brk);
 	addr = ALIGN_TO_PAGE(addr);
 	/* TODO: Handle brk shrink */
 	if (addr > mm->brk)
 	{
-		if (!sys_mmap(mm->brk, (uint32_t)addr - (uint32_t)mm->brk, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, -1, 0))
-			return -1;
+		if (sys_mmap(brk, (uint32_t)addr - (uint32_t)brk, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, -1, 0) < 0)
+		{
+			log_debug("Enlarge brk failed.\n");
+			return -ENOMEM;
+		}
 		mm->brk = addr;
 	}
 	log_debug("New brk: %x\n", mm->brk);
