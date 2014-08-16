@@ -28,7 +28,14 @@ static size_t pipe_read(struct file *f, char *buf, size_t count)
 	}
 	size_t num_read;
 	if (!ReadFile(pipe->handle, buf, count, &num_read, NULL))
+	{
+		if (GetLastError() == ERROR_BROKEN_PIPE)
+		{
+			log_debug("Pipe closed. Read returns 0.\n");
+			return 0;
+		}
 		return -EIO;
+	}
 	return num_read;
 }
 
@@ -42,7 +49,15 @@ static size_t pipe_write(struct file *f, const char *buf, size_t count)
 	}
 	size_t num_written;
 	if (!WriteFile(pipe->handle, buf, count, &num_written, NULL))
+	{
+		if (GetLastError() == ERROR_BROKEN_PIPE)
+		{
+			log_debug("Write failed: broken pipe.\n");
+			/* TODO: Send SIGPIPE signal */
+			return -EPIPE;
+		}
 		return -EIO;
+	}
 	return num_written;
 }
 
