@@ -245,17 +245,21 @@ size_t console_read(struct file *f, char *buf, size_t count)
 			char ch = ir.Event.KeyEvent.uChar.AsciiChar;
 			if (ch >= 0x20)
 			{
-				if (console->termios.c_lflag & ECHO)
-					WriteConsoleA(console->out, &ch, 1, NULL, NULL);
 				if (console->termios.c_lflag & ICANON)
 				{
 					if (len < MAX_CANON)
+					{
 						line[len++] = ch;
+						if (console->termios.c_lflag & ECHO)
+							WriteConsoleA(console->out, &ch, 1, NULL, NULL);
+					}
 				}
 				else
 				{
 					count--;
 					buf[bytes_read++] = ch;
+					if (console->termios.c_lflag & ECHO)
+						WriteConsoleA(console->out, &ch, 1, NULL, NULL);
 				}
 			}
 			else if (console->termios.c_lflag & ICANON)
