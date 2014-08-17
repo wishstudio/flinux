@@ -225,7 +225,7 @@ static int find_entry(void *addr, struct map_entry **entry, struct map_entry **p
 	uint32_t page = GET_PAGE(addr);
 	struct map_entry *p = NULL;
 	for (struct map_entry *e = mm->map_list; e; p = e, e = e->next)
-		if (page > e->end_page)
+		if (page < e->start_page)
 			return 0;
 		else if (page >= e->start_page && page <= e->end_page)
 		{
