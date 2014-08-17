@@ -236,7 +236,7 @@ int vfs_open(const char *pathname, int flags, int mode, struct file **f)
 	o O_ASYNC
 	* O_CLOEXEC
 	o O_DIRECT
-	o O_DIRECTORY
+	* O_DIRECTORY
 	o O_DSYNC
 	* O_EXCL
 	o O_LARGEFILE
@@ -254,7 +254,7 @@ int vfs_open(const char *pathname, int flags, int mode, struct file **f)
 	All filesystem not supporting these flags should explicitly check "flags" parameter
 	*/
 	if ((flags & O_APPEND) || (flags & O_DIRECT)
-		|| (flags & O_DIRECTORY) || (flags & O_DSYNC)
+		|| (flags & O_DSYNC)
 		|| (flags & O_LARGEFILE) || (flags & O_NOATIME) || (flags & O_NOCTTY)
 		|| (flags & O_NONBLOCK) || (flags & O_SYNC) || (flags & O_TMPFILE))
 	{

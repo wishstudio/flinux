@@ -326,6 +326,11 @@ static int winfs_open(const char *pathname, int flags, int mode, struct file **f
 		CloseHandle(handle);
 		return -EIO;
 	}
+	if (attributeInfo.FileAttributes != INVALID_FILE_ATTRIBUTES && !(attributeInfo.FileAttributes & FILE_ATTRIBUTE_DIRECTORY) && (flags & O_DIRECTORY))
+	{
+		log_debug("Not a directory.\n");
+		return -ENOTDIR;
+	}
 	/* Test if the file is a symlink */
 	if (attributeInfo.FileAttributes != INVALID_FILE_ATTRIBUTES && (attributeInfo.FileAttributes & FILE_ATTRIBUTE_SYSTEM))
 	{
