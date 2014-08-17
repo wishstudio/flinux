@@ -52,9 +52,6 @@
     <ClInclude Include="src\common\stat.h">
       <Filter>common</Filter>
     </ClInclude>
-    <ClInclude Include="src\fs\tty.h">
-      <Filter>fs</Filter>
-    </ClInclude>
     <ClInclude Include="src\common\utsname.h">
       <Filter>common</Filter>
     </ClInclude>
@@ -109,6 +106,15 @@
     <ClInclude Include="src\fs\pipe.h">
       <Filter>fs</Filter>
     </ClInclude>
+    <ClInclude Include="src\fs\console.h">
+      <Filter>fs</Filter>
+    </ClInclude>
+    <ClInclude Include="src\common\ioctls.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="src\common\termios.h">
+      <Filter>common</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
@@ -128,9 +134,6 @@
     <ClCompile Include="src\syscall\vfs.c">
       <Filter>syscall</Filter>
     </ClCompile>
-    <ClCompile Include="src\fs\tty.c">
-      <Filter>fs</Filter>
-    </ClCompile>
     <ClCompile Include="src\syscall\tls.c">
       <Filter>syscall</Filter>
     </ClCompile>
@@ -149,6 +152,9 @@
     </ClCompile>
     <ClCompile Include="src\str.c" />
     <ClCompile Include="src\fs\pipe.c">
+      <Filter>fs</Filter>
+    </ClCompile>
+    <ClCompile Include="src\fs\console.c">
       <Filter>fs</Filter>
     </ClCompile>
   </ItemGroup>

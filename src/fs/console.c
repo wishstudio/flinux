@@ -1,14 +1,225 @@
+#include <common/errno.h>
+#include <common/ioctls.h>
+#include <common/termios.h>
 #include <fs/console.h>
+#include <heap.h>
+#include <log.h>
+
+#include <Windows.h>
+
+/* TODO: UTF-8 support */
+
+#define CONSOLE_MAX_PARAMS	16
+#define MAX_INPUT			256
+#define MAX_CANON			256
 
 struct console_file
 {
 	struct file base_file;
 	HANDLE in, out;
+	int params[CONSOLE_MAX_PARAMS];
+	char input_buffer[MAX_INPUT];
+	size_t input_buffer_head, input_buffer_tail;
+	struct termios termios;
+	void (*processor)(struct console_file *console, char ch);
 };
 
+static void control_escape2(struct console_file *console, char ch)
+{
+	switch (ch)
+	{
+	}
+}
+
+static void control_escape(struct console_file *console, char ch)
+{
+	switch (ch)
+	{
+	}
+}
+
+static void console_add_input(struct console_file *console, char *str, size_t size)
+{
+	/* TODO: Detect input buffer wrapping */
+	for (size_t i = 0; i < size; i++)
+	{
+		console->input_buffer[console->input_buffer_head] = str[i];
+		console->input_buffer_head = (console->input_buffer_head + 1) % MAX_INPUT;
+	}
+}
+
+int console_close(struct file *f)
+{
+	struct console_file *console = (struct console_file *)f;
+	CloseHandle(console->in);
+	CloseHandle(console->out);
+	return 0;
+}
+
+size_t console_read(struct file *f, char *buf, size_t count)
+{
+	struct console_file *console = (struct console_file *)f;
+	size_t bytes_read = 0;
+	while (console->input_buffer_head != console->input_buffer_tail && count > 0)
+	{
+		count--;
+		buf[bytes_read++] = console->input_buffer[console->input_buffer_tail];
+		console->input_buffer_tail = (console->input_buffer_tail + 1) % MAX_INPUT;
+	}
+	char line[MAX_CANON + 1]; /* One more for storing CR or LF */
+	size_t len = 0;
+	while (count > 0)
+	{
+		INPUT_RECORD ir;
+		DWORD read;
+		ReadConsoleInputA(console->in, &ir, 1, &read);
+		if (ir.EventType == KEY_EVENT && ir.Event.KeyEvent.bKeyDown)
+		{
+			char ch = ir.Event.KeyEvent.uChar.AsciiChar;
+			if (ch >= 0x20)
+			{
+				if (console->termios.c_lflag & ECHO)
+					WriteConsoleA(console->out, &ch, 1, NULL, NULL);
+				if (console->termios.c_lflag & ICANON)
+				{
+					if (len < MAX_CANON)
+						line[len++] = ch;
+				}
+				else
+				{
+					count--;
+					buf[bytes_read++] = ch;
+				}
+			}
+			else if (console->termios.c_lflag & ICANON)
+			{
+				switch (ir.Event.KeyEvent.wVirtualKeyCode)
+				{
+				case VK_RETURN:
+				{
+					line[len++] = console->termios.c_iflag & ICRNL? '\n': '\r';
+					size_t r = min(count, len);
+					memcpy(buf + bytes_read, line, r);
+					bytes_read += r;
+					count -= r;
+					if (r < len)
+					{
+						/* Some bytes not fit, add to input buffer */
+						console_add_input(console, line + r, len - r);
+					}
+					WriteConsoleA(console->out, "\r\n", 2, NULL, NULL);
+					return bytes_read;
+				}
+				}
+			}
+		}
+		else
+		{
+			/* TODO */
+		}
+	}
+	return bytes_read;
+}
+
+size_t console_write(struct file *f, const char *buf, size_t count)
+{
+	struct console_file *console = (struct console_file *)f;
+	size_t last = -1;
+	for (size_t i = 0; i < count; i++)
+	{
+		char ch = buf[i];
+		if (console->processor)
+			console->processor(console, ch);
+		else if (ch == 0x1B) /* Escape */
+		{
+			if (last != -1)
+			{
+				WriteConsoleA(console->out, buf + last, i - last, NULL, NULL);
+				last = -1;
+			}
+			console->processor = control_escape;
+		}
+		else if (last == -1)
+			last = i;
+	}
+	if (last != -1)
+		WriteConsoleA(console->out, buf + last, count - last, NULL, NULL);
+	return count;
+}
+
+static int console_stat(struct file *f, struct stat64 *buf)
+{
+	buf->st_dev = mkdev(0, 1);
+	buf->st_ino = 0;
+	buf->st_mode = S_IFCHR + 0644;
+	buf->st_nlink = 1;
+	buf->st_uid = 0;
+	buf->st_gid = 0;
+	buf->st_rdev = mkdev(5, 1);
+	buf->st_size = 0;
+	buf->st_blksize = 4096;
+	buf->st_blocks = 0;
+	buf->st_atime = 0;
+	buf->st_atime_nsec = 0;
+	buf->st_mtime = 0;
+	buf->st_mtime_nsec = 0;
+	buf->st_ctime = 0;
+	buf->st_ctime_nsec = 0;
+	return 0;
+}
+
+static void console_update_termios(struct console_file *console)
+{
+	/* Nothing to do for now */
+}
+
+static int console_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
+{
+	return 0;
+}
+
 static const struct file_ops console_ops = {
+	.fn_close = console_close,
+	.fn_read = console_read,
+	.fn_write = console_write,
+	.fn_stat = console_stat,
+	.fn_ioctl = console_ioctl,
 };
 
 struct file *console_alloc()
 {
+	SECURITY_ATTRIBUTES attr;
+	attr.nLength = sizeof(SECURITY_ATTRIBUTES);
+	attr.lpSecurityDescriptor = NULL;
+	attr.bInheritHandle = TRUE;
+	HANDLE in = CreateFileA("CONIN$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &attr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (in == INVALID_HANDLE_VALUE)
+	{
+		log_debug("CreateFile(\"CONIN$\") failed, error code: %d\n", GetLastError());
+		return NULL;
+	}
+	HANDLE out = CreateFileA("CONOUT$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &attr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (out == INVALID_HANDLE_VALUE)
+	{
+		CloseHandle(in);
+		log_debug("CreateFile(\"CONOUT$\") failed, error code: %d\n", GetLastError());
+		return NULL;
+	}
+	struct console_file *console = (struct console_file *)kmalloc(sizeof(struct console_file));
+	console->base_file.op_vtable = &console_ops;
+	console->base_file.ref = 1;
+	console->in = in;
+	console->out = out;
+	console->termios.c_iflag = ICRNL;
+	console->termios.c_oflag = ONLCR | OPOST;
+	console->termios.c_cflag = 0;
+	console->termios.c_lflag = ICANON | ECHO | ECHOCTL;
+	memset(console->termios.c_cc, 0, sizeof(console->termios.c_cc));
+	console->termios.c_cc[VINTR] = 3;
+	console->termios.c_cc[VERASE] = 8;
+	console->termios.c_cc[VEOF] = 4;
+	console->termios.c_cc[VSUSP] = 26;
+	SetConsoleMode(in, 0);
+	SetConsoleMode(out, ENABLE_PROCESSED_OUTPUT | ENABLE_WRAP_AT_EOL_OUTPUT);
+	return console;
 }

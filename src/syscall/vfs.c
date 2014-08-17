@@ -1,7 +1,7 @@
 #include <common/errno.h>
 #include <common/fcntl.h>
+#include <fs/console.h>
 #include <fs/pipe.h>
-#include <fs/tty.h>
 #include <fs/winfs.h>
 #include <syscall/mm.h>
 #include <syscall/vfs.h>
@@ -43,9 +43,11 @@ static void vfs_add(struct file_system *fs)
 void vfs_init()
 {
 	mm_mmap(VFS_DATA_BASE, sizeof(struct vfs_data), PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
-	vfs->fds[0] = tty_alloc(GetStdHandle(STD_INPUT_HANDLE));
-	vfs->fds[1] = tty_alloc(GetStdHandle(STD_OUTPUT_HANDLE));
-	vfs->fds[2] = tty_alloc(GetStdHandle(STD_ERROR_HANDLE));
+	struct file *console = console_alloc();
+	console->ref = 3;
+	vfs->fds[0] = console;
+	vfs->fds[1] = console;
+	vfs->fds[2] = console;
 	vfs_add(winfs_alloc());
 	/* Initialize CWD */
 	//static wchar_t wcwd[PATH_MAX];
@@ -555,7 +557,7 @@ int sys_fstat64(int fd, struct stat64 *buf)
 
 int sys_ioctl(int fd, unsigned int cmd, unsigned long arg)
 {
-	log_debug("ioctl(%d, %d, %x)\n", fd, cmd, arg);
+	log_debug("ioctl(%d, %x, %x)\n", fd, cmd, arg);
 	struct file *f = vfs->fds[fd];
 	if (f && f->op_vtable->fn_ioctl)
 		return f->op_vtable->fn_ioctl(f, cmd, arg);
