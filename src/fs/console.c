@@ -18,16 +18,175 @@ struct console_file
 	struct file base_file;
 	HANDLE in, out;
 	int params[CONSOLE_MAX_PARAMS];
+	int param_count;
+	int bright, reverse, foreground, background;
 	char input_buffer[MAX_INPUT];
 	size_t input_buffer_head, input_buffer_tail;
 	struct termios termios;
 	void (*processor)(struct console_file *console, char ch);
 };
 
-static void control_escape2(struct console_file *console, char ch)
+static WORD get_text_attribute(struct console_file *console)
+{
+	WORD attr = 0;
+	if (console->bright)
+		attr |= FOREGROUND_INTENSITY;
+	switch (console->reverse ? console->background : console->foreground)
+	{
+	case 0: /* Black */
+		break;
+
+	case 1: /* Red */
+		attr |= FOREGROUND_RED;
+		break;
+
+	case 2: /* Green */
+		attr |= FOREGROUND_GREEN;
+		break;
+
+	case 3: /* Yellow */
+		attr |= FOREGROUND_RED | FOREGROUND_GREEN;
+		break;
+
+	case 4: /* Blue */
+		attr |= FOREGROUND_BLUE;
+		break;
+
+	case 5: /* Magenta */
+		attr |= FOREGROUND_RED | FOREGROUND_BLUE;
+		break;
+
+	case 6: /* Cyan */
+		attr |= FOREGROUND_GREEN | FOREGROUND_BLUE;
+		break;
+
+	case 7: /* White */
+		attr |= FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE;
+		break;
+	}
+	switch (console->reverse ? console->foreground : console->background)
+	{
+	case 0: /* Black */
+		break;
+
+	case 1: /* Red */
+		attr |= BACKGROUND_RED;
+		break;
+
+	case 2: /* Green */
+		attr |= BACKGROUND_GREEN;
+		break;
+
+	case 3: /* Yellow */
+		attr |= BACKGROUND_RED | BACKGROUND_GREEN;
+		break;
+
+	case 4: /* Blue */
+		attr |= BACKGROUND_BLUE;
+		break;
+
+	case 5: /* Magenta */
+		attr |= BACKGROUND_RED | BACKGROUND_BLUE;
+		break;
+
+	case 6: /* Cyan */
+		attr |= BACKGROUND_GREEN | BACKGROUND_BLUE;
+		break;
+
+	case 7: /* White */
+		attr |= BACKGROUND_RED | BACKGROUND_GREEN | BACKGROUND_BLUE;
+		break;
+	}
+	return attr;
+}
+
+static void control_escape_param(struct console_file *console, char ch)
 {
 	switch (ch)
 	{
+	case '0':
+	case '1':
+	case '2':
+	case '3':
+	case '4':
+	case '5':
+	case '6':
+	case '7':
+	case '8':
+	case '9':
+		if (console->param_count == 0)
+		{
+			console->params[0] = 0;
+			console->param_count++;
+		}
+		console->params[console->param_count - 1] = 10 * console->params[console->param_count - 1] + (ch - '0');
+		break;
+
+	case ';':
+		if (console->param_count + 1 == CONSOLE_MAX_PARAMS)
+			log_debug("Too many console parameters.\n");
+		else
+			console->params[console->param_count++] = 0;
+		break;
+
+	case 'm':
+		for (int i = 0; i < console->param_count; i++)
+		{
+			switch (console->params[i])
+			{
+			case 0: /* Reset */
+				console->bright = 0;
+				console->reverse = 0;
+				console->foreground = 7;
+				console->background = 0;
+				break;
+
+			case 1:
+				console->bright = 1;
+				break;
+
+			case 2:
+				console->bright = 0;
+				break;
+
+			case 7:
+				console->reverse = 1;
+				break;
+
+			case 30:
+			case 31:
+			case 32:
+			case 33:
+			case 34:
+			case 35:
+			case 36:
+			case 37:
+				console->foreground = console->params[i] - 30;
+				break;
+
+			case 40:
+			case 41:
+			case 42:
+			case 43:
+			case 44:
+			case 45:
+			case 46:
+			case 47:
+				console->background = console->params[i] - 40;
+				break;
+
+			default:
+				log_debug("Unknown console attribute: %d\n", console->params[i]);
+			}
+		}
+		/* Set updated text attribute */
+		SetConsoleTextAttribute(console->out, get_text_attribute(console));
+		console->processor = NULL;
+		break;
+
+	default:
+		log_debug("control_escape_param(): Unhandled character %c\n", ch);
+		console->processor = NULL;
 	}
 }
 
@@ -35,6 +194,14 @@ static void control_escape(struct console_file *console, char ch)
 {
 	switch (ch)
 	{
+	case '[':
+		console->param_count = 0;
+		console->processor = control_escape_param;
+		break;
+
+	default:
+		log_debug("control_escape(): Unhandled character %c\n", ch);
+		console->processor = NULL;
 	}
 }
 
@@ -210,6 +377,10 @@ struct file *console_alloc()
 	console->base_file.ref = 1;
 	console->in = in;
 	console->out = out;
+	console->bright = 0;
+	console->reverse = 0;
+	console->foreground = 7;
+	console->background = 0;
 	console->termios.c_iflag = ICRNL;
 	console->termios.c_oflag = ONLCR | OPOST;
 	console->termios.c_cflag = 0;
