@@ -116,6 +116,7 @@ static pid_t fork_process(PCONTEXT context, unsigned long flags, void *ptid, voi
 
 	CloseHandle(info.hThread);
 	/* Process handled will be used for wait() */
+	log_debug("Child pid: %d\n", info.dwProcessId);
 	process_add_child(info.dwProcessId, info.hProcess);
 	return info.dwProcessId;
 

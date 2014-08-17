@@ -57,23 +57,42 @@ pid_t sys_waitpid(pid_t pid, int *status, int options)
 		log_debug("Unhandled option WUNTRACED\n");
 	if (options & WCONTINUED)
 		log_debug("Unhandled option WCONTINUED\n");
-	if (pid != -1)
+	int id = -1;
+	if (pid > 0)
 	{
-		log_debug("pid != -1 unhandled\n");
-		return -1;
+		for (int i = 0; i < process->child_count; i++)
+			if (process->child_pids[i] == pid)
+			{
+				DWORD result = WaitForSingleObject(process->child_handles[i], INFINITE);
+				id = i;
+				break;
+			}
+		if (id == -1)
+		{
+			log_debug("pid %d is not a child.\n", pid);
+			return -ECHILD;
+		}
 	}
-	if (process->child_count == 0)
+	else if (pid == -1)
 	{
-		log_debug("No childs.\n");
-		return -ECHILD;
+		if (process->child_count == 0)
+		{
+			log_debug("No childs.\n");
+			return -ECHILD;
+		}
+		DWORD result = WaitForMultipleObjects(process->child_count, process->child_handles, FALSE, INFINITE);
+		if (result < WAIT_OBJECT_0 || result >= WAIT_OBJECT_0 + process->child_count)
+		{
+			log_debug("WaitForMultipleObjects(): Unexpected return.\n");
+			return -1;
+		}
+		id = result - WAIT_OBJECT_0;
 	}
-	DWORD result = WaitForMultipleObjects(process->child_count, process->child_handles, FALSE, INFINITE);
-	if (result < WAIT_OBJECT_0 || result >= WAIT_OBJECT_0 + process->child_count)
+	else
 	{
-		log_debug("WaitForMultipleObjects(): Unexpected return.\n");
-		return -1;
+		log_debug("pid != %d unhandled\n");
+		return -EINVAL;
 	}
-	int id = result - WAIT_OBJECT_0;
 	DWORD exitCode;
 	GetExitCodeProcess(process->child_handles[id], &exitCode);
 	CloseHandle(process->child_handles[id]);
