@@ -11,6 +11,7 @@ Feature highlights
 * Copy-on-Write fork(2) implementation
 * Cygwin-style symlink support
 * Interprocess pipes
+* vt102 terminal emulation on Win32 console
 
 Comparison
 ======
