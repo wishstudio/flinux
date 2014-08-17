@@ -457,7 +457,10 @@ int sys_dup2(int fd, int newfd)
 	if (fd == newfd)
 		return newfd;
 	if (vfs->fds[newfd])
-		vfs->fds[newfd]->op_vtable->fn_close(vfs->fds[newfd]);
+	{
+		if (--vfs->fds[newfd]->ref == 0)
+			vfs->fds[newfd]->op_vtable->fn_close(vfs->fds[newfd]);
+	}
 	vfs->fds[newfd] = f;
 	vfs->fds_cloexec[newfd] = 0;
 	f->ref++;

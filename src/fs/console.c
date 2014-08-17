@@ -332,7 +332,8 @@ size_t console_write(struct file *f, const char *buf, size_t count)
 		{
 			if (last != -1)
 			{
-				WriteConsoleA(console->out, buf + last, i - last, NULL, NULL);
+				DWORD bytes_written;
+				WriteConsoleA(console->out, buf + last, i - last, &bytes_written, NULL);
 				last = -1;
 			}
 			console->processor = control_escape;
@@ -341,7 +342,10 @@ size_t console_write(struct file *f, const char *buf, size_t count)
 			last = i;
 	}
 	if (last != -1)
-		WriteConsoleA(console->out, buf + last, count - last, NULL, NULL);
+	{
+		DWORD bytes_written;
+		WriteConsoleA(console->out, buf + last, count - last, &bytes_written, NULL);
+	}
 	return count;
 }
 
