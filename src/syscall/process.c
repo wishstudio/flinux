@@ -1,4 +1,5 @@
 #include <common/errno.h>
+#include <common/resource.h>
 #include <common/wait.h>
 #include <syscall/mm.h>
 #include <syscall/process.h>
@@ -205,4 +206,32 @@ int sys_time(int *c)
 	if (c)
 		*c = (int)t;
 	return t;
+}
+
+int sys_getrlimit(int resource, struct rlimit *rlim)
+{
+	log_debug("getrlimit(%d, %x)\n", resource, rlim);
+	switch (resource)
+	{
+	case RLIMIT_STACK:
+		rlim->rlim_cur = STACK_SIZE;
+		rlim->rlim_max = STACK_SIZE;
+		break;
+
+	default:
+		log_debug("Unsupported resource: %d\n", resource);
+		return -EINVAL;
+	}
+	return 0;
+}
+
+int sys_setrlimit(int resource, const struct rlimit *rlim)
+{
+	log_debug("setrlimit(%d, %x)\n", resource, rlim);
+	switch (resource)
+	{
+	default:
+		log_debug("Unsupported resource: %d\n", resource);
+		return -EINVAL;
+	}
 }

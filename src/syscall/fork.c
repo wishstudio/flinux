@@ -132,6 +132,12 @@ pid_t sys_fork(int _1, int _2, int _3, int _4, int _5, PCONTEXT context)
 	return fork_process(context, 0, NULL, NULL);
 }
 
+pid_t sys_vfork(int _1, int _2, int _3, int _4, int _5, PCONTEXT context)
+{
+	log_debug("vfork()\n");
+	return fork_process(context, 0, NULL, NULL);
+}
+
 pid_t sys_clone(unsigned long flags, void *child_stack, void *ptid, int tls, void *ctid, PCONTEXT context)
 {
 	log_debug("sys_clone(flags=%x, child_stack=%x, ptid=%x, ctid=%x)\n", flags, child_stack, ptid, ctid);

@@ -19,6 +19,7 @@
     <ClInclude Include="src\common\ioctls.h" />
     <ClInclude Include="src\common\ldt.h" />
     <ClInclude Include="src\common\ptrace.h" />
+    <ClInclude Include="src\common\resource.h" />
     <ClInclude Include="src\common\sched.h" />
     <ClInclude Include="src\common\signal.h" />
     <ClInclude Include="src\common\stat.h" />
