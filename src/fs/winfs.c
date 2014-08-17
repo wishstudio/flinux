@@ -219,7 +219,7 @@ static int winfs_symlink(const char *target, const char *linkpath)
 	if (handle == INVALID_HANDLE_VALUE)
 	{
 		DWORD err = GetLastError();
-		if (err == ERROR_ALREADY_EXISTS)
+		if (err == ERROR_FILE_EXISTS || err == ERROR_ALREADY_EXISTS)
 		{
 			log_debug("File already exists.\n");
 			return -EEXIST;
@@ -310,7 +310,7 @@ static int winfs_open(const char *pathname, int flags, int mode, struct file **f
 	if (handle == INVALID_HANDLE_VALUE)
 	{
 		DWORD err = GetLastError();
-		if (err == ERROR_ALREADY_EXISTS)
+		if (err == ERROR_FILE_EXISTS || err == ERROR_ALREADY_EXISTS)
 		{
 			log_debug("File already exists.\n");
 			return -EEXIST;
