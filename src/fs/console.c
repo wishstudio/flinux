@@ -274,8 +274,39 @@ size_t console_read(struct file *f, char *buf, size_t count)
 						/* Some bytes not fit, add to input buffer */
 						console_add_input(console, line + r, len - r);
 					}
-					WriteConsoleA(console->out, "\r\n", 2, NULL, NULL);
+					/* TODO: Do we need to write CRLF in non-echo mode? */
+					DWORD bytes_written;
+					WriteConsoleA(console->out, "\r\n", 2, &bytes_written, NULL);
 					return bytes_read;
+				}
+
+				case VK_BACK:
+				{
+					if (len > 0)
+					{
+						len--;
+						if (console->termios.c_lflag & ECHO)
+						{
+							/* If we're in echo mode, erase deleted characters */
+							CONSOLE_SCREEN_BUFFER_INFO info;
+							GetConsoleScreenBufferInfo(console->out, &info);
+							if (info.dwCursorPosition.X == 0)
+							{
+								if (info.dwCursorPosition.Y > 0)
+								{
+									info.dwCursorPosition.X = info.dwSize.X - 1;
+									info.dwCursorPosition.Y--;
+								}
+								else
+									break; /* switch */
+							}
+							else
+								info.dwCursorPosition.X--;
+							DWORD bytes_written;
+							WriteConsoleOutputCharacterA(console->out, " ", 1, info.dwCursorPosition, &bytes_written);
+							SetConsoleCursorPosition(console->out, info.dwCursorPosition);
+						}
+					}
 				}
 				}
 			}
