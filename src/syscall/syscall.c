@@ -51,6 +51,8 @@ static LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
 		else if (ep->ExceptionRecord->ExceptionInformation[0] == 2)
 			log_debug("Page fault(DEP): %x at %x\n", ep->ExceptionRecord->ExceptionInformation[1], ep->ContextRecord->Eip);
 	}
+	/* If we come here we're sure to crash, so gracefully close logging */
+	log_shutdown();
 	return EXCEPTION_CONTINUE_SEARCH;
 }
 

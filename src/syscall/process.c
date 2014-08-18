@@ -165,6 +165,7 @@ void sys_exit(int status)
 {
 	log_debug("exit(%d)\n", status);
 	/* TODO: Gracefully shutdown mm, vfs, etc. */
+	log_shutdown();
 	ExitProcess(status);
 }
 
@@ -172,6 +173,7 @@ void sys_exit_group(int status)
 {
 	log_debug("exit_group(%d)\n", status);
 	/* TODO: Gracefully shutdown mm, vfs, etc. */
+	log_shutdown();
 	ExitProcess(status);
 }
 
