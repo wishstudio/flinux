@@ -43,3 +43,6 @@ int sys_chdir(const char *pathname);
 char *sys_getcwd(char *buf, size_t size);
 
 int sys_fcntl64(int fd, int cmd, ...);
+
+int sys_chmod(const char *pathname, int mode);
+int sys_chown(const char *pathname, uid_t owner, gid_t group);

@@ -276,7 +276,7 @@ int vfs_open(const char *pathname, int flags, int mode, struct file **f)
 	if (mode != 0)
 	{
 		log_debug("mode != 0\n");
-		return -EINVAL;
+		//return -EINVAL;
 	}
 	/* Resolve path */
 	char path[MAX_PATH], target[MAX_PATH];
@@ -638,5 +638,17 @@ char *sys_getcwd(char *buf, size_t size)
 int sys_fcntl64(int fd, int cmd, ...)
 {
 	log_debug("fcntl64(%d, %d)\n", fd, cmd);
+	return 0;
+}
+
+int sys_chmod(const char *pathname, int mode)
+{
+	log_debug("chmod(\"%s\", %d)\n", pathname, mode);
+	return 0;
+}
+
+int sys_chown(const char *pathname, uid_t owner, gid_t group)
+{
+	log_debug("chown(\"%s\", %d, %d)\n", pathname, owner, group);
 	return 0;
 }
