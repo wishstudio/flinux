@@ -64,7 +64,7 @@ void vfs_reset()
 		struct file *f = vfs->fds[i];
 		if (f && vfs->fds_cloexec[i])
 		{
-			f->op_vtable->fn_close(f);
+			f->op_vtable->close(f);
 			vfs->fds[i] = NULL;
 			vfs->fds_cloexec[i] = 0;
 		}
@@ -77,7 +77,7 @@ void vfs_shutdown()
 	{
 		struct file *f = vfs->fds[i];
 		if (f)
-			f->op_vtable->fn_close(f);
+			f->op_vtable->close(f);
 	}
 	mm_munmap(VFS_DATA_BASE, sizeof(struct vfs_data));
 }
@@ -94,8 +94,8 @@ size_t sys_read(int fd, char *buf, size_t count)
 {
 	log_debug("read(%d, %x, %d)\n", fd, buf, count);
 	struct file *f = vfs->fds[fd];
-	if (f && f->op_vtable->fn_read)
-		return f->op_vtable->fn_read(f, buf, count);
+	if (f && f->op_vtable->read)
+		return f->op_vtable->read(f, buf, count);
 	else
 		return -EBADF;
 }
@@ -104,8 +104,8 @@ size_t sys_write(int fd, const char *buf, size_t count)
 {
 	log_debug("write(%d, %x, %d)\n", fd, buf, count);
 	struct file *f = vfs->fds[fd];
-	if (f && f->op_vtable->fn_write)
-		return f->op_vtable->fn_write(f, buf, count);
+	if (f && f->op_vtable->write)
+		return f->op_vtable->write(f, buf, count);
 	else
 		return -EBADF;
 }
@@ -221,8 +221,6 @@ static int resolve_symlink(struct file_system *fs, char *path, char *subpath, ch
 				while (p[-1] != '/')
 					p--;
 				p[0] = 0;
-				log_debug("%s\n", path);
-				log_debug("%s\n", target);
 				/* Combine heading file path with remaining path */
 				if (!normalize_path(path, target, path))
 					return -ENOENT;
@@ -341,7 +339,7 @@ int sys_open(const char *pathname, int flags, int mode)
 	int fd = alloc_fd_slot();
 	if (fd == -1)
 	{
-		f->op_vtable->fn_close(f);
+		f->op_vtable->close(f);
 		return -EMFILE;
 	}
 	vfs->fds[fd] = f;
@@ -357,11 +355,45 @@ int sys_close(int fd)
 		return -EBADF;
 	if (--f->ref == 0)
 	{
-		f->op_vtable->fn_close(f);
+		f->op_vtable->close(f);
 		vfs->fds[fd] = NULL;
 		vfs->fds_cloexec[fd] = 0;
 	}
 	return 0;
+}
+
+int sys_unlink(const char *pathname)
+{
+	log_debug("unlink(\"%s\")\n", pathname);
+	char path[MAX_PATH], target[MAX_PATH];
+	if (!normalize_path(vfs->cwd, pathname, path))
+		return -ENOENT;
+	for (int symlink_level = 0;; symlink_level++)
+	{
+		if (symlink_level == MAX_SYMLINK_LEVEL)
+		{
+			return -ELOOP;
+		}
+		struct file_system *fs;
+		char *subpath;
+		if (!find_filesystem(path, &fs, &subpath))
+			return -ENOENT;
+		log_debug("Try unlinking file...\n");
+		int ret = fs->unlink(subpath);
+		if (ret == 0)
+		{
+			log_debug("Unlink succeeded.\n");
+			return 0;
+		}
+		else if (ret == -ENOENT)
+		{
+			log_debug("Unlink failed, testing whether a component is a symlink...\n");
+			if (resolve_symlink(fs, path, subpath, target) < 0)
+				return -ENOENT;
+		}
+		else
+			return ret;
+	}
 }
 
 int sys_symlink(const char *symlink_target, const char *linkpath)
@@ -473,7 +505,7 @@ int sys_dup2(int fd, int newfd)
 	if (vfs->fds[newfd])
 	{
 		if (--vfs->fds[newfd]->ref == 0)
-			vfs->fds[newfd]->op_vtable->fn_close(vfs->fds[newfd]);
+			vfs->fds[newfd]->op_vtable->close(vfs->fds[newfd]);
 	}
 	vfs->fds[newfd] = f;
 	vfs->fds_cloexec[newfd] = 0;
@@ -485,8 +517,8 @@ int sys_getdents64(int fd, struct linux_dirent64 *dirent, unsigned int count)
 {
 	log_debug("getdents64(%d, %x, %d)\n", fd, dirent, count);
 	struct file *f = vfs->fds[fd];
-	if (f && f->op_vtable->fn_getdents)
-		return f->op_vtable->fn_getdents(f, dirent, count);
+	if (f && f->op_vtable->getdents)
+		return f->op_vtable->getdents(f, dirent, count);
 	else
 		return -EBADF;
 }
@@ -566,8 +598,8 @@ int sys_fstat64(int fd, struct stat64 *buf)
 {
 	log_debug("fstat64(%d, %x)\n", fd, buf);
 	struct file *f = vfs->fds[fd];
-	if (f && f->op_vtable->fn_stat)
-		return f->op_vtable->fn_stat(f, buf);
+	if (f && f->op_vtable->stat)
+		return f->op_vtable->stat(f, buf);
 	else
 		return -EBADF;
 }
@@ -576,8 +608,8 @@ int sys_ioctl(int fd, unsigned int cmd, unsigned long arg)
 {
 	log_debug("ioctl(%d, %x, %x)\n", fd, cmd, arg);
 	struct file *f = vfs->fds[fd];
-	if (f && f->op_vtable->fn_ioctl)
-		return f->op_vtable->fn_ioctl(f, cmd, arg);
+	if (f && f->op_vtable->ioctl)
+		return f->op_vtable->ioctl(f, cmd, arg);
 	else
 		return -EBADF;
 }

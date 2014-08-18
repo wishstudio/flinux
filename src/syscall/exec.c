@@ -93,12 +93,12 @@ int do_execve(const char *filename, int argc, char *argv[], int env_size, char *
 		return r;
 	}
 
-	if (!f->op_vtable->fn_get_handle)
+	if (!f->op_vtable->get_handle)
 	{
 		return -EACCES;
 	}
 
-	HANDLE hFile = f->op_vtable->fn_get_handle(f);
+	HANDLE hFile = f->op_vtable->get_handle(f);
 	/* TODO: SetFilePointer */
 	LARGE_INTEGER p;
 	p.QuadPart = 0;
@@ -110,14 +110,14 @@ int do_execve(const char *filename, int argc, char *argv[], int env_size, char *
 	if (eh.e_type != ET_EXEC)
 	{
 		log_debug("Not an executable!\n");
-		f->op_vtable->fn_close(f);
+		f->op_vtable->close(f);
 		return -EACCES;
 	}
 
 	if (eh.e_machine != EM_386)
 	{
 		log_debug("Not an i386 executable.\n");
-		f->op_vtable->fn_close(f);
+		f->op_vtable->close(f);
 		return -EACCES;
 	}
 
@@ -149,7 +149,7 @@ int do_execve(const char *filename, int argc, char *argv[], int env_size, char *
 			ReadFile(hFile, (void *)ph->p_vaddr, ph->p_filesz, NULL, NULL);
 		}
 	}
-	f->op_vtable->fn_close(f);
+	f->op_vtable->close(f);
 	run(&eh, pht, argc, argv, env_size, envp, context);
 	return 0;
 }

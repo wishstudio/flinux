@@ -8,13 +8,13 @@
 
 struct file_ops
 {
-	HANDLE (*fn_get_handle)(struct file *f);
-	int (*fn_close)(struct file *f);
-	size_t (*fn_read)(struct file *f, char *buf, size_t count);
-	size_t (*fn_write)(struct file *f, const char *buf, size_t count);
-	int (*fn_stat)(struct file *f, struct stat64 *buf);
-	int (*fn_getdents)(struct file *f, struct linux_dirent64 *dirent, int count);
-	int (*fn_ioctl)(struct file *f, unsigned int cmd, unsigned long arg);
+	HANDLE (*get_handle)(struct file *f);
+	int (*close)(struct file *f);
+	size_t (*read)(struct file *f, char *buf, size_t count);
+	size_t (*write)(struct file *f, const char *buf, size_t count);
+	int (*stat)(struct file *f, struct stat64 *buf);
+	int (*getdents)(struct file *f, struct linux_dirent64 *dirent, int count);
+	int (*ioctl)(struct file *f, unsigned int cmd, unsigned long arg);
 };
 
 struct file
@@ -31,4 +31,5 @@ struct file_system
 	int (*symlink)(const char *target, const char *linkpath);
 	size_t (*readlink)(const char *pathname, char *buf, size_t bufsize);
 	int (*is_symlink)(const char *pathname, char *target, int buflen);
+	int (*unlink)(const char *pathname);
 };

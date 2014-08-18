@@ -198,12 +198,12 @@ static int winfs_getdents(struct file *f, struct linux_dirent64 *dirent, int cou
 
 static struct file_ops winfs_ops = 
 {
-	.fn_get_handle = winfs_get_handle,
-	.fn_close = winfs_close,
-	.fn_read = winfs_read,
-	.fn_write = winfs_write,
-	.fn_stat = winfs_stat,
-	.fn_getdents = winfs_getdents,
+	.get_handle = winfs_get_handle,
+	.close = winfs_close,
+	.read = winfs_read,
+	.write = winfs_write,
+	.stat = winfs_stat,
+	.getdents = winfs_getdents,
 };
 
 static int winfs_symlink(const char *target, const char *linkpath)
@@ -264,6 +264,16 @@ static size_t winfs_readlink(const char *pathname, char *target, size_t buflen)
 	int ret = winfs_read_symlink(hFile, target, buflen);
 	CloseHandle(hFile);
 	return ret;
+}
+
+static int winfs_unlink(const char *pathname)
+{
+	if (!DeleteFileA(pathname))
+	{
+		log_debug("DeleteFile() failed.\n");
+		return -ENOENT;
+	}
+	return 0;
 }
 
 static int winfs_open(const char *pathname, int flags, int mode, struct file **fp, char *target, int buflen)
@@ -395,5 +405,6 @@ struct file_system *winfs_alloc()
 	fs->base_fs.open = winfs_open;
 	fs->base_fs.symlink = winfs_symlink;
 	fs->base_fs.readlink = winfs_readlink;
+	fs->base_fs.unlink = winfs_unlink;
 	return fs;
 }

@@ -385,11 +385,11 @@ static int console_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 }
 
 static const struct file_ops console_ops = {
-	.fn_close = console_close,
-	.fn_read = console_read,
-	.fn_write = console_write,
-	.fn_stat = console_stat,
-	.fn_ioctl = console_ioctl,
+	.close = console_close,
+	.read = console_read,
+	.write = console_write,
+	.stat = console_stat,
+	.ioctl = console_ioctl,
 };
 
 struct file *console_alloc()

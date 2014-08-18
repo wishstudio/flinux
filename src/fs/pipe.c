@@ -62,9 +62,9 @@ static size_t pipe_write(struct file *f, const char *buf, size_t count)
 }
 
 static const struct file_ops pipe_ops = {
-	.fn_close = pipe_close,
-	.fn_read = pipe_read,
-	.fn_write = pipe_write,
+	.close = pipe_close,
+	.read = pipe_read,
+	.write = pipe_write,
 };
 
 static struct file *pipe_create_file(HANDLE handle, int is_read, int flags)
