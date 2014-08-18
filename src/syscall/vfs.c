@@ -155,15 +155,21 @@ static int normalize_path(const char *current, const char *pathname, char *out)
 		if (p[-1] != '/')
 			*p++ = '/';
 	}
-	while (*pathname)
+	while (pathname[0])
 	{
-		if (*pathname == '/')
+		if (pathname[0] == '/')
 			pathname++;
-		else if (*pathname == '.' && *(pathname + 1) == '/')
+		else if (pathname[0] == '.' && pathname[1] == '/')
 			pathname += 2;
-		else if (*pathname == '.' && *(pathname + 1) == '.' && *(pathname + 2) == '/')
+		else if (pathname[0] == '.' && pathname[1] == 0)
+			pathname += 1;
+		else if (pathname[0] == '.' && pathname[1] == '.' && (pathname[2] == '/' || pathname[2] == 0))
 		{
-			while (p > out && *(p - 1) != '/')
+			if (pathname[2] == 0)
+				pathname += 2;
+			else
+				pathname += 3;
+			while (p > out && p[-1] != '/')
 				p--;
 		}
 		else
@@ -191,6 +197,7 @@ static int resolve_symlink(struct file_system *fs, char *path, char *subpath, ch
 	/* Test from right to left */
 	/* Note: Currently we assume the symlink only appears in subpath */
 	int found = 0;
+	log_debug("PATH: %s\n", path);
 	for (char *p = subpath + strlen(subpath) - 1; p > subpath; p--)
 	{
 		if (*p == '/')
@@ -204,11 +211,18 @@ static int resolve_symlink(struct file_system *fs, char *path, char *subpath, ch
 				found = 1;
 				/* Combine symlink target with remaining path */
 				char *q = p + 1;
-				char *t = target + strlen(target);
+				char *t = target + r;
 				if (*t != '/')
 					*t++ = '/';
 				while (*q)
 					*t++ = *q++;
+				*t++ = 0;
+				/* Remove symlink basename from path */
+				while (p[-1] != '/')
+					p--;
+				p[0] = 0;
+				log_debug("%s\n", path);
+				log_debug("%s\n", target);
 				/* Combine heading file path with remaining path */
 				if (!normalize_path(path, target, path))
 					return -ENOENT;
