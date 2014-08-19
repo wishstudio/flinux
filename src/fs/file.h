@@ -1,8 +1,9 @@
 #pragma once
 
-#include <common/types.h>
-#include <common/stat.h>
 #include <common/dirent.h>
+#include <common/stat.h>
+#include <common/types.h>
+#include <common/utime.h>
 
 #include <Windows.h>
 
@@ -12,7 +13,9 @@ struct file_ops
 	int (*close)(struct file *f);
 	size_t (*read)(struct file *f, char *buf, size_t count);
 	size_t (*write)(struct file *f, const char *buf, size_t count);
+	int (*llseek)(struct file *f, loff_t offset, loff_t *newoffset, int whence);
 	int (*stat)(struct file *f, struct stat64 *buf);
+	int (*utimes)(struct file *f, const struct timeval times[2]);
 	int (*getdents)(struct file *f, struct linux_dirent64 *dirent, int count);
 	int (*ioctl)(struct file *f, unsigned int cmd, unsigned long arg);
 };

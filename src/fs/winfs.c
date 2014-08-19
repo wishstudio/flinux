@@ -1,8 +1,8 @@
 #include <common/errno.h>
 #include <common/fcntl.h>
 #include <fs/winfs.h>
-#include <syscall/mm.h> /* For PAGE_SIZE */
-#include <syscall/vfs.h> /* For PATH_MAX */
+#include <syscall/mm.h>
+#include <syscall/vfs.h>
 #include <log.h>
 #include <heap.h>
 #include <str.h>
@@ -24,7 +24,7 @@ struct winfs_file
 #define TICKS_PER_SECOND		10000000ULL
 #define SEC_TO_UNIX_EPOCH		11644473600ULL
 
-static uint64_t filetime_to_unix_nsec(FILETIME *filetime)
+static uint64_t filetime_to_unix(FILETIME *filetime)
 {
 	uint64_t ticks = ((uint64_t)filetime->dwHighDateTime << 32ULL) + filetime->dwLowDateTime;
 	if (ticks < SEC_TO_UNIX_EPOCH * TICKS_PER_SECOND) /* Out of range */
@@ -35,10 +35,30 @@ static uint64_t filetime_to_unix_nsec(FILETIME *filetime)
 
 static uint64_t filetime_to_unix_sec(FILETIME *filetime)
 {
-	uint64_t nsec = filetime_to_unix_nsec(filetime);
+	uint64_t nsec = filetime_to_unix(filetime);
 	if (nsec == -1)
 		return -1;
 	return nsec / NANOSECONDS_PER_SECOND;
+}
+
+static uint64_t filetime_to_unix_nsec(FILETIME *filetime)
+{
+	uint64_t nsec = filetime_to_unix(filetime);
+	if (nsec == -1)
+		return -1;
+	return nsec % NANOSECONDS_PER_SECOND;
+}
+
+static void unix_to_filetime(uint64_t nsec, FILETIME *filetime)
+{
+	uint64_t ticks = nsec / NANOSECONDS_PER_TICK;
+	filetime->dwLowDateTime = (DWORD)(ticks % 32ULL);
+	filetime->dwHighDateTime = (DWORD)(ticks / 32ULL);
+}
+
+static void unix_timeval_to_filetime(const struct timeval *time, FILETIME *filetime)
+{
+	unix_to_filetime((uint64_t)time->tv_sec * 1000000 + (uint64_t)time->tv_usec, filetime);
 }
 
 /*
@@ -106,6 +126,25 @@ static size_t winfs_write(struct file *f, const char *buf, size_t count)
 	return num_written;
 }
 
+static int winfs_llseek(struct file *f, loff_t offset, loff_t *newoffset, int whence)
+{
+	struct winfs_file *winfile = (struct winfs_file *) f;
+	DWORD dwMoveMethod;
+	if (whence == SEEK_SET)
+		dwMoveMethod = FILE_BEGIN;
+	else if (whence == SEEK_CUR)
+		dwMoveMethod = FILE_CURRENT;
+	else if (whence == SEEK_END)
+		dwMoveMethod = FILE_END;
+	else
+		return -EINVAL;
+	LARGE_INTEGER liDistanceToMove, liNewFilePointer;
+	liDistanceToMove.QuadPart = offset;
+	SetFilePointerEx(winfile->handle, liDistanceToMove, &liNewFilePointer, dwMoveMethod);
+	*newoffset = liNewFilePointer.QuadPart;
+	return 0;
+}
+
 static int winfs_stat(struct file *f, struct stat64 *buf)
 {
 	struct winfs_file *winfile = (struct winfs_file *) f;
@@ -156,6 +195,27 @@ static int winfs_stat(struct file *f, struct stat64 *buf)
 	return 0;
 }
 
+static int winfs_utimes(struct file *f, const struct timeval times[2])
+{
+	struct winfs_file *winfs = (struct winfs_file *)f;
+	if (times)
+	{
+		SYSTEMTIME time;
+		GetSystemTime(&time);
+		FILETIME filetime;
+		SystemTimeToFileTime(&time, &filetime);
+		SetFileTime(winfs->handle, NULL, &filetime, &filetime);
+	}
+	else
+	{
+		FILETIME actime, modtime;
+		unix_timeval_to_filetime(&times[0], &actime);
+		unix_timeval_to_filetime(&times[1], &modtime);
+		SetFileTime(winfs->handle, NULL, &actime, &modtime);
+	}
+	return 0;
+}
+
 static int winfs_getdents(struct file *f, struct linux_dirent64 *dirent, int count)
 {
 	NTSTATUS status;
@@ -202,7 +262,9 @@ static struct file_ops winfs_ops =
 	.close = winfs_close,
 	.read = winfs_read,
 	.write = winfs_write,
+	.llseek = winfs_llseek,
 	.stat = winfs_stat,
+	.utimes = winfs_utimes,
 	.getdents = winfs_getdents,
 };
 

@@ -16,6 +16,8 @@ int vfs_open(const char *pathname, int flags, int mode, struct file **f);
 
 size_t sys_read(int fd, char *buf, size_t count);
 size_t sys_write(int fd, const char *buf, size_t count);
+off_t sys_lseek(int fd, off_t offset, int whence);
+int sys_llseek(unsigned long offset_high, unsigned long offset_low, loff_t *result, int whence);
 
 int sys_open(const char *pathname, int flags, int mode);
 int sys_close(int fd);
@@ -37,6 +39,9 @@ int sys_fstat(int fd, struct stat *buf);
 int sys_stat64(const char *pathname, struct stat64 *buf);
 int sys_lstat64(const char *pathname, struct stat64 *buf);
 int sys_fstat64(int fd, struct stat64 *buf);
+
+int sys_utime(const char *filename, const struct utimbuf *times);
+int sys_utimes(const char *filename, const struct timeval times[2]);
 
 int sys_ioctl(int fd, unsigned int cmd, unsigned long arg);
 int sys_chdir(const char *pathname);

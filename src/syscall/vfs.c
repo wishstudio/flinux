@@ -7,6 +7,7 @@
 #include <syscall/vfs.h>
 #include <log.h>
 #include <Windows.h>
+#include <limits.h>
 
 /* Notes on symlink solving:
 
@@ -38,6 +39,23 @@ static void vfs_add(struct file_system *fs)
 {
 	fs->next = vfs->fs_first;
 	vfs->fs_first = fs;
+}
+
+/* Close a file, only used on raw file not created by sys_open() */
+static void vfs_close_raw(struct file *f)
+{
+	if (--f->ref == 0)
+		f->op_vtable->close(f);
+}
+
+/* Close a file descriptor fd */
+static void vfs_close(int fd)
+{
+	struct file *f = vfs->fds[fd];
+	if (--f->ref == 0)
+		f->op_vtable->close(f);
+	vfs->fds[fd] = NULL;
+	vfs->fds_cloexec[fd] = 0;
 }
 
 void vfs_init()
@@ -106,6 +124,35 @@ size_t sys_write(int fd, const char *buf, size_t count)
 	struct file *f = vfs->fds[fd];
 	if (f && f->op_vtable->write)
 		return f->op_vtable->write(f, buf, count);
+	else
+		return -EBADF;
+}
+
+off_t sys_lseek(int fd, off_t offset, int whence)
+{
+	log_debug("lseek(%d, %d, %d)\n", fd, offset, whence);
+	struct file *f = vfs->fds[fd];
+	if (f && f->op_vtable->llseek)
+	{
+		loff_t n;
+		int r = f->op_vtable->llseek(f, offset, &n, whence);
+		if (r < 0)
+			return r;
+		if (n >= INT_MAX)
+			return -EOVERFLOW; /* TODO: Do we need to rollback? */
+		return (off_t) n;
+	}
+	else
+		return -EBADF;
+}
+
+int sys_llseek(int fd, unsigned long offset_high, unsigned long offset_low, loff_t *result, int whence)
+{
+	loff_t offset = ((uint64_t) offset_high << 32ULL) + offset_low;
+	log_debug("llseek(%d, %lld, %x, %d)\n", fd, offset, result, whence);
+	struct file *f = vfs->fds[fd];
+	if (f && f->op_vtable->llseek)
+		return f->op_vtable->llseek(f, offset, result, whence);
 	else
 		return -EBADF;
 }
@@ -612,6 +659,39 @@ int sys_ioctl(int fd, unsigned int cmd, unsigned long arg)
 		return f->op_vtable->ioctl(f, cmd, arg);
 	else
 		return -EBADF;
+}
+
+int sys_utime(const char *filename, const struct utimbuf *times)
+{
+	log_debug("sys_utime(\"%s\", %x)\n", filename, times);
+	struct file *f;
+	int r = vfs_open(filename, O_WRONLY, 0, &f);
+	if (r < 0)
+		return r;
+	struct timeval t[2];
+	t[0].tv_sec = times->actime;
+	t[0].tv_usec = 0;
+	t[1].tv_sec = times->modtime;
+	t[1].tv_usec = 0;
+	r = f->op_vtable->utimes(f, t);
+	if (r < 0)
+		return r;
+	vfs_close_raw(f);
+	return 0;
+}
+
+int sys_utimes(const char *filename, const struct timeval times[2])
+{
+	log_debug("sys_utimes(\"%s\", %x)\n", filename, times);
+	struct file *f;
+	int r = vfs_open(filename, O_WRONLY, 0, &f);
+	if (r < 0)
+		return r;
+	r = f->op_vtable->utimes(f, times);
+	if (r < 0)
+		return r;
+	vfs_close_raw(f);
+	return 0;
 }
 
 int sys_chdir(const char *pathname)
