@@ -81,11 +81,7 @@ void vfs_reset()
 	{
 		struct file *f = vfs->fds[i];
 		if (f && vfs->fds_cloexec[i])
-		{
-			f->op_vtable->close(f);
-			vfs->fds[i] = NULL;
-			vfs->fds_cloexec[i] = 0;
-		}
+			vfs_close(i);
 	}
 }
 
@@ -95,7 +91,7 @@ void vfs_shutdown()
 	{
 		struct file *f = vfs->fds[i];
 		if (f)
-			f->op_vtable->close(f);
+			vfs_close(i);
 	}
 	mm_munmap(VFS_DATA_BASE, sizeof(struct vfs_data));
 }
@@ -386,7 +382,7 @@ int sys_open(const char *pathname, int flags, int mode)
 	int fd = alloc_fd_slot();
 	if (fd == -1)
 	{
-		f->op_vtable->close(f);
+		vfs_close_raw(f);
 		return -EMFILE;
 	}
 	vfs->fds[fd] = f;
@@ -550,10 +546,7 @@ int sys_dup2(int fd, int newfd)
 	if (fd == newfd)
 		return newfd;
 	if (vfs->fds[newfd])
-	{
-		if (--vfs->fds[newfd]->ref == 0)
-			vfs->fds[newfd]->op_vtable->close(vfs->fds[newfd]);
-	}
+		vfs_close(newfd);
 	vfs->fds[newfd] = f;
 	vfs->fds_cloexec[newfd] = 0;
 	f->ref++;
