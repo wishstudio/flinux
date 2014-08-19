@@ -314,7 +314,7 @@ static size_t winfs_readlink(const char *pathname, char *target, size_t buflen)
 	HANDLE hFile;
 
 	if (utf8_to_utf16(pathname, strlen(pathname) + 1, wpathname, PATH_MAX) <= 0)
-		return -EIO;
+		return -ENOENT;
 	attr = GetFileAttributesW(wpathname);
 	if (attr == INVALID_FILE_ATTRIBUTES)
 		return -ENOENT;
@@ -333,6 +333,26 @@ static int winfs_unlink(const char *pathname)
 	if (!DeleteFileA(pathname))
 	{
 		log_debug("DeleteFile() failed.\n");
+		return -ENOENT;
+	}
+	return 0;
+}
+
+static int winfs_mkdir(const char *pathname, int mode)
+{
+	WCHAR wpathname[PATH_MAX];
+
+	if (utf8_to_utf16(pathname, strlen(pathname) + 1, wpathname, PATH_MAX) <= 0)
+		return -ENOENT;
+	if (!CreateDirectoryW(wpathname, NULL))
+	{
+		DWORD err = GetLastError();
+		if (err == ERROR_FILE_EXISTS || err == ERROR_ALREADY_EXISTS)
+		{
+			log_debug("File already exists.\n");
+			return -EEXIST;
+		}
+		log_debug("CreateDirectoryW() failed, error code: %d\n", GetLastError());
 		return -ENOENT;
 	}
 	return 0;
@@ -468,5 +488,6 @@ struct file_system *winfs_alloc()
 	fs->base_fs.symlink = winfs_symlink;
 	fs->base_fs.readlink = winfs_readlink;
 	fs->base_fs.unlink = winfs_unlink;
+	fs->base_fs.mkdir = winfs_mkdir;
 	return fs;
 }

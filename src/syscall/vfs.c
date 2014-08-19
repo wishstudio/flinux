@@ -553,6 +553,37 @@ int sys_dup2(int fd, int newfd)
 	return newfd;
 }
 
+int sys_mkdir(const char *pathname, int mode)
+{
+	log_debug("mkdir(\"%s\", %x)\n", pathname, mode);
+	if (mode != 0)
+		log_debug("mode != 0\n");
+	char path[MAX_PATH], target[MAX_PATH];
+	if (!normalize_path(vfs->cwd, pathname, path))
+		return -ENOENT;
+	for (int symlink_level = 0;; symlink_level++)
+	{
+		if (symlink_level == MAX_SYMLINK_LEVEL)
+		{
+			return -ELOOP;
+		}
+		struct file_system *fs;
+		char *subpath;
+		if (!find_filesystem(path, &fs, &subpath))
+			return -ENOENT;
+		log_debug("Try creating directory...\n");
+		int ret = fs->mkdir(subpath, mode);
+		if (ret == -ENOENT)
+		{
+			log_debug("Creating directory failed, testing whether a component is a symlink...\n");
+			if (resolve_symlink(fs, path, subpath, target) < 0)
+				return -ENOENT;
+		}
+		else
+			return ret;
+	}
+}
+
 int sys_getdents64(int fd, struct linux_dirent64 *dirent, unsigned int count)
 {
 	log_debug("getdents64(%d, %x, %d)\n", fd, dirent, count);
@@ -711,6 +742,12 @@ char *sys_getcwd(char *buf, size_t size)
 int sys_fcntl64(int fd, int cmd, ...)
 {
 	log_debug("fcntl64(%d, %d)\n", fd, cmd);
+	return 0;
+}
+
+int sys_access(const char *pathname, int mode)
+{
+	log_debug("access(\"%s\", %d)\n", pathname, mode);
 	return 0;
 }
 

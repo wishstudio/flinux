@@ -30,6 +30,7 @@ int sys_pipe2(int pipefd[2], int flags);
 
 int sys_dup2(int fd, int newfd);
 
+int sys_mkdir(const char *pathname, int mode);
 int sys_getdents64(int fd, struct linux_dirent64 *dirent, unsigned int count);
 
 int sys_stat(const char *pathname, struct stat *buf);
@@ -49,5 +50,6 @@ char *sys_getcwd(char *buf, size_t size);
 
 int sys_fcntl64(int fd, int cmd, ...);
 
+int sys_access(const char *pathname, int mode);
 int sys_chmod(const char *pathname, int mode);
 int sys_chown(const char *pathname, uid_t owner, gid_t group);
