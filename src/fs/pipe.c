@@ -61,10 +61,16 @@ static size_t pipe_write(struct file *f, const char *buf, size_t count)
 	return num_written;
 }
 
+static int pipe_llseek(struct file *f, loff_t offset, loff_t *newoffset, int whence)
+{
+	return -ESPIPE;
+}
+
 static const struct file_ops pipe_ops = {
 	.close = pipe_close,
 	.read = pipe_read,
 	.write = pipe_write,
+	.llseek = pipe_llseek,
 };
 
 static struct file *pipe_create_file(HANDLE handle, int is_read, int flags)
