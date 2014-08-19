@@ -330,7 +330,11 @@ static size_t winfs_readlink(const char *pathname, char *target, size_t buflen)
 
 static int winfs_unlink(const char *pathname)
 {
-	if (!DeleteFileA(pathname))
+	WCHAR wpathname[PATH_MAX];
+	
+	if (utf8_to_utf16(pathname, strlen(pathname) + 1, wpathname, PATH_MAX) <= 0)
+		return -ENOENT;
+	if (!DeleteFileW(wpathname))
 	{
 		log_debug("DeleteFile() failed.\n");
 		return -ENOENT;
