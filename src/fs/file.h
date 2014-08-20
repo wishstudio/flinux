@@ -34,6 +34,7 @@ struct file_system
 	int (*symlink)(const char *target, const char *linkpath);
 	size_t (*readlink)(const char *pathname, char *buf, size_t bufsize);
 	int (*is_symlink)(const char *pathname, char *target, int buflen);
+	int (*link)(struct file *f, const char *newpath);
 	int (*unlink)(const char *pathname);
 	int (*mkdir)(const char *pathname, int mode);
 };

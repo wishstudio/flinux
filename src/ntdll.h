@@ -180,6 +180,13 @@ typedef struct _FILE_ID_FULL_DIR_INFORMATION {
 	WCHAR         FileName[1];
 } FILE_ID_FULL_DIR_INFORMATION, *PFILE_ID_FULL_DIR_INFORMATION;
 
+typedef struct _FILE_LINK_INFORMATION {
+	BOOLEAN ReplaceIfExists;
+	HANDLE  RootDirectory;
+	ULONG   FileNameLength;
+	WCHAR   FileName[1];
+} FILE_LINK_INFORMATION, *PFILE_LINK_INFORMATION;
+
 typedef struct _FILE_FULL_EA_INFORMATION {
 	ULONG  NextEntryOffset;
 	UCHAR  Flags;
@@ -193,6 +200,14 @@ typedef struct _FILE_GET_EA_INFORMATION {
 	UCHAR EaNameLength;
 	CHAR  EaName[1];
 } FILE_GET_EA_INFORMATION, *PFILE_GET_EA_INFORMATION;
+
+NTSYSAPI NTSTATUS NTAPI NtSetInformationFile(
+	_In_		HANDLE FileHandle,
+	_Out_		PIO_STATUS_BLOCK IoStatusBlock,
+	_In_		PVOID FileInformation,
+	_In_		ULONG Length,
+	_In_		FILE_INFORMATION_CLASS FileInformationClass
+	);
 
 NTSYSAPI NTSTATUS NTAPI NtQueryDirectoryFile(
 	_In_		HANDLE FileHandle,

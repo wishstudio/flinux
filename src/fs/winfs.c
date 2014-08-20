@@ -19,6 +19,33 @@ struct winfs_file
 	HANDLE handle;
 };
 
+/* Convert a relative file name to NT file name, return name lengths, no NULL terminator is appended */
+static int filename_to_nt_pathname(const char *filename, WCHAR *buf, int buf_size)
+{
+	if (buf_size < 4)
+		return 0;
+	buf[0] = L'\\';
+	buf[1] = L'?';
+	buf[2] = L'?';
+	buf[3] = L'\\';
+	buf += 4;
+	buf_size -= 4;
+	int out_size = 4;
+	int len = (DWORD)GetCurrentDirectoryW(buf_size, buf);
+	buf += len;
+	out_size += len;
+	buf_size -= len;
+	if (filename[0] == 0)
+		return out_size;
+	*buf++ = L'\\';
+	out_size++;
+	buf_size--;
+	int fl = utf8_to_utf16(filename, strlen(filename), buf, buf_size);
+	if (fl == 0)
+		return 0;
+	return out_size + fl;
+}
+
 #define NANOSECONDS_PER_TICK	100ULL
 #define NANOSECONDS_PER_SECOND	1000000000ULL
 #define TICKS_PER_SECOND		10000000ULL
@@ -328,6 +355,29 @@ static size_t winfs_readlink(const char *pathname, char *target, size_t buflen)
 	return ret;
 }
 
+static int winfs_link(struct file *f, const char *newpath)
+{
+	struct winfs_file *winfile = (struct winfs_file *) f;
+	NTSTATUS status;
+	char buf[sizeof(FILE_LINK_INFORMATION) + PATH_MAX * 2];
+	FILE_LINK_INFORMATION *info = (FILE_LINK_INFORMATION *)buf;
+	info->ReplaceIfExists = FALSE;
+	info->RootDirectory = NULL;
+	info->FileNameLength = 2 * filename_to_nt_pathname(newpath, info->FileName, PATH_MAX);
+	if (info->FileNameLength == 0)
+	{
+		return -ENOENT;
+	}
+	IO_STATUS_BLOCK status_block;
+	status = NtSetInformationFile(winfile->handle, &status_block, info, info->FileNameLength + sizeof(FILE_LINK_INFORMATION), FileLinkInformation);
+	if (status != STATUS_SUCCESS)
+	{
+		log_debug("NtSetInformationFile() failed, status: %x.\n", status);
+		return -EMLINK;
+	}
+	return 0;
+}
+
 static int winfs_unlink(const char *pathname)
 {
 	WCHAR wpathname[PATH_MAX];
@@ -491,7 +541,13 @@ struct file_system *winfs_alloc()
 	fs->base_fs.open = winfs_open;
 	fs->base_fs.symlink = winfs_symlink;
 	fs->base_fs.readlink = winfs_readlink;
+	fs->base_fs.link = winfs_link;
 	fs->base_fs.unlink = winfs_unlink;
 	fs->base_fs.mkdir = winfs_mkdir;
 	return fs;
+}
+
+int winfs_is_winfile(struct file *f)
+{
+	return f->op_vtable == &winfs_ops;
 }

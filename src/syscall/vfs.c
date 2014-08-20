@@ -408,6 +408,67 @@ int sys_close(int fd)
 	return 0;
 }
 
+int sys_mknod(const char *pathname, int mode, unsigned int dev)
+{
+	log_debug("mknod(\"%s\", %x, (%d:%d))", pathname, mode, major(dev), minor(dev));
+	/* TODO: Touch that file */
+	return 0;
+}
+
+int sys_link(const char *oldpath, const char *newpath)
+{
+	log_debug("link(\"%s\", \"%s\")\n", oldpath, newpath);
+	struct file *f;
+	char path[MAX_PATH], target[MAX_PATH];
+	if (!normalize_path(vfs->cwd, newpath, path))
+		return -ENOENT;
+	int r = vfs_open(oldpath, O_PATH | O_NOFOLLOW, 0, &f);
+	if (r < 0)
+		return r;
+	if (!winfs_is_winfile(f))
+		return -EPERM;
+	for (int symlink_level = 0;; symlink_level++)
+	{
+		if (symlink_level == MAX_SYMLINK_LEVEL)
+		{
+			return -ELOOP;
+		}
+		struct file_system *fs;
+		char *subpath;
+		if (!find_filesystem(path, &fs, &subpath))
+		{
+			vfs_close_raw(f);
+			return -ENOENT;
+		}
+		log_debug("Try linking file...\n");
+		int ret;
+		if (!fs->link)
+			ret = -ENOENT;
+		else
+			ret = fs->link(f, subpath);
+		if (ret == 0)
+		{
+			log_debug("Link succeeded.\n");
+			vfs_close_raw(f);
+			return 0;
+		}
+		else if (ret == -ENOENT)
+		{
+			log_debug("Link failed, testing whether a component is a symlink...\n");
+			if (resolve_symlink(fs, path, subpath, target) < 0)
+			{
+				vfs_close_raw(f);
+				return -ENOENT;
+			}
+		}
+		else
+		{
+			vfs_close_raw(f);
+			return ret;
+		}
+	}
+}
+
 int sys_unlink(const char *pathname)
 {
 	log_debug("unlink(\"%s\")\n", pathname);

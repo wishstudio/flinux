@@ -22,6 +22,11 @@ int sys_llseek(unsigned long offset_high, unsigned long offset_low, loff_t *resu
 int sys_open(const char *pathname, int flags, int mode);
 int sys_close(int fd);
 
+int sys_mknod(const char *pathname, int mode, unsigned int dev);
+
+int sys_link(const char *pathname);
+int sys_unlink(const char *pathname);
+
 int sys_symlink(const char *target, const char *linkpath);
 size_t sys_readlink(const char *pathname, char *buf, size_t bufsize);
 
