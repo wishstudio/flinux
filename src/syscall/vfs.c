@@ -31,6 +31,7 @@ struct vfs_data
 	int fds_cloexec[MAX_FD_COUNT];
 	struct file_system *fs_first;
 	char cwd[PATH_MAX];
+	int umask;
 };
 
 static struct vfs_data * const vfs = VFS_DATA_BASE;
@@ -72,6 +73,7 @@ void vfs_init()
 	//int len = GetCurrentDirectoryW(PATH_MAX, wcwd);
 	vfs->cwd[0] = '/';
 	vfs->cwd[1] = 0;
+	vfs->umask = S_IWGRP | S_IWOTH;
 }
 
 void vfs_reset()
@@ -83,6 +85,7 @@ void vfs_reset()
 		if (f && vfs->fds_cloexec[i])
 			vfs_close(i);
 	}
+	vfs->umask = S_IWGRP | S_IWOTH;
 }
 
 void vfs_shutdown()
@@ -755,6 +758,13 @@ int sys_chmod(const char *pathname, int mode)
 {
 	log_debug("chmod(\"%s\", %d)\n", pathname, mode);
 	return 0;
+}
+
+int sys_umask(int mask)
+{
+	int old = vfs->umask;
+	vfs->umask = mask;
+	return old;
 }
 
 int sys_chown(const char *pathname, uid_t owner, gid_t group)

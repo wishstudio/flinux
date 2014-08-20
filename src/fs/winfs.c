@@ -169,7 +169,7 @@ static int winfs_stat(struct file *f, struct stat64 *buf)
 	{
 		int r;
 		if ((info.dwFileAttributes & FILE_ATTRIBUTE_SYSTEM)
-			&& (r = winfs_read_symlink(winfile->handle, NULL, 0)) > 0)
+			&& (r = winfs_read_symlink(winfile->handle, NULL, 0)) > 0) /* TODO: Restore file position */
 		{
 			buf->st_mode |= S_IFLNK;
 			buf->st_size = r;

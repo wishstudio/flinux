@@ -52,4 +52,5 @@ int sys_fcntl64(int fd, int cmd, ...);
 
 int sys_access(const char *pathname, int mode);
 int sys_chmod(const char *pathname, int mode);
+int sys_umask(int mask);
 int sys_chown(const char *pathname, uid_t owner, gid_t group);
