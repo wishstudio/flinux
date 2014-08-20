@@ -56,6 +56,7 @@ struct stat {
 	unsigned long __unused2;
 };
 
+#pragma pack(push, 4)
 struct stat64 {
 	unsigned long long st_dev;
 	unsigned long long st_ino;
@@ -64,10 +65,9 @@ struct stat64 {
 	unsigned int st_uid;
 	unsigned int st_gid;
 	unsigned long long st_rdev;
-	unsigned long long __pad1;
+	unsigned int __pad1;
 	long long st_size;
 	int st_blksize;
-	int __pad2;
 	long long st_blocks;
 	int st_atime;
 	unsigned int st_atime_nsec;
@@ -78,6 +78,7 @@ struct stat64 {
 	unsigned int __unused4;
 	unsigned int __unused5;
 };
+#pragma pack(pop)
 
 #define major(dev)		((unsigned int) ((dev) >> 8))
 #define minor(dev)		((unsigned int) ((dev) & 0xFF))
