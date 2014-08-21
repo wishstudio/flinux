@@ -40,7 +40,7 @@ static int filename_to_nt_pathname(const char *filename, WCHAR *buf, int buf_siz
 	*buf++ = L'\\';
 	out_size++;
 	buf_size--;
-	int fl = utf8_to_utf16(filename, strlen(filename), buf, buf_size);
+	int fl = utf8_to_utf16_filename(filename, strlen(filename), buf, buf_size);
 	if (fl == 0)
 		return 0;
 	return out_size + fl;
@@ -273,7 +273,7 @@ static int winfs_getdents(struct file *f, struct linux_dirent64 *dirent, int cou
 			 p->d_ino = info->FileId.QuadPart;
 			 p->d_off = 0; /* TODO */
 			 p->d_type = (info->FileAttributes & FILE_ATTRIBUTE_DIRECTORY) ? DT_DIR : DT_REG;
-			 int len = utf16_to_utf8(info->FileName, info->FileNameLength / 2, p->d_name, count - size);
+			 int len = utf16_to_utf8_filename(info->FileName, info->FileNameLength / 2, p->d_name, count - size);
 			 p->d_name[len] = 0;
 			 p->d_reclen = (sizeof(struct linux_dirent64) + len + 1 + 3) & ~3;
 			 size += p->d_reclen;
@@ -300,7 +300,7 @@ static int winfs_symlink(const char *target, const char *linkpath)
 	HANDLE handle;
 	WCHAR wlinkpath[PATH_MAX];
 
-	if (utf8_to_utf16(linkpath, strlen(linkpath) + 1, wlinkpath, PATH_MAX) <= 0)
+	if (utf8_to_utf16_filename(linkpath, strlen(linkpath) + 1, wlinkpath, PATH_MAX) <= 0)
 		return -ENOENT;
 
 	log_debug("CreateFileW(): %s\n", linkpath);
@@ -340,7 +340,7 @@ static size_t winfs_readlink(const char *pathname, char *target, size_t buflen)
 	DWORD attr;
 	HANDLE hFile;
 
-	if (utf8_to_utf16(pathname, strlen(pathname) + 1, wpathname, PATH_MAX) <= 0)
+	if (utf8_to_utf16_filename(pathname, strlen(pathname) + 1, wpathname, PATH_MAX) <= 0)
 		return -ENOENT;
 	attr = GetFileAttributesW(wpathname);
 	if (attr == INVALID_FILE_ATTRIBUTES)
@@ -382,7 +382,7 @@ static int winfs_unlink(const char *pathname)
 {
 	WCHAR wpathname[PATH_MAX];
 	
-	if (utf8_to_utf16(pathname, strlen(pathname) + 1, wpathname, PATH_MAX) <= 0)
+	if (utf8_to_utf16_filename(pathname, strlen(pathname) + 1, wpathname, PATH_MAX) <= 0)
 		return -ENOENT;
 	if (!DeleteFileW(wpathname))
 	{
@@ -396,7 +396,7 @@ static int winfs_mkdir(const char *pathname, int mode)
 {
 	WCHAR wpathname[PATH_MAX];
 
-	if (utf8_to_utf16(pathname, strlen(pathname) + 1, wpathname, PATH_MAX) <= 0)
+	if (utf8_to_utf16_filename(pathname, strlen(pathname) + 1, wpathname, PATH_MAX) <= 0)
 		return -ENOENT;
 	if (!CreateDirectoryW(wpathname, NULL))
 	{
@@ -421,7 +421,7 @@ static int winfs_open(const char *pathname, int flags, int mode, struct file **f
 	WCHAR wpathname[PATH_MAX];
 	struct winfs_file *file;
 
-	if (utf8_to_utf16(pathname, strlen(pathname) + 1, wpathname, PATH_MAX) <= 0)
+	if (utf8_to_utf16_filename(pathname, strlen(pathname) + 1, wpathname, PATH_MAX) <= 0)
 		return -ENOENT;
 
 	if (flags & O_PATH)
