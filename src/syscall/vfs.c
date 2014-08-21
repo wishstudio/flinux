@@ -215,6 +215,7 @@ static int normalize_path(const char *current, const char *pathname, char *out)
 				pathname += 2;
 			else
 				pathname += 3;
+			p--;
 			while (p > out && p[-1] != '/')
 				p--;
 		}
