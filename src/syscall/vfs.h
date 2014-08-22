@@ -13,6 +13,8 @@ void vfs_reset();
 void vfs_shutdown();
 
 int vfs_open(const char *pathname, int flags, int mode, struct file **f);
+void vfs_close_file(struct file *f);
+void vfs_close(int fd);
 
 size_t sys_read(int fd, char *buf, size_t count);
 size_t sys_write(int fd, const char *buf, size_t count);

@@ -42,15 +42,15 @@ static void vfs_add(struct file_system *fs)
 	vfs->fs_first = fs;
 }
 
-/* Close a file, only used on raw file not created by sys_open() */
-static void vfs_close_raw(struct file *f)
+/* Close a file, only used on raw file handles not created by sys_open() */
+void vfs_close_file(struct file *f)
 {
 	if (--f->ref == 0)
 		f->op_vtable->close(f);
 }
 
 /* Close a file descriptor fd */
-static void vfs_close(int fd)
+void vfs_close(int fd)
 {
 	struct file *f = vfs->fds[fd];
 	if (--f->ref == 0)
@@ -406,7 +406,7 @@ int sys_open(const char *pathname, int flags, int mode)
 	int fd = alloc_fd_slot();
 	if (fd == -1)
 	{
-		vfs_close_raw(f);
+		vfs_close_file(f);
 		return -EMFILE;
 	}
 	vfs->fds[fd] = f;
@@ -420,12 +420,7 @@ int sys_close(int fd)
 	struct file *f = vfs->fds[fd];
 	if (!f)
 		return -EBADF;
-	if (--f->ref == 0)
-	{
-		f->op_vtable->close(f);
-		vfs->fds[fd] = NULL;
-		vfs->fds_cloexec[fd] = 0;
-	}
+	vfs_close(fd);
 	return 0;
 }
 
@@ -458,7 +453,7 @@ int sys_link(const char *oldpath, const char *newpath)
 		char *subpath;
 		if (!find_filesystem(path, &fs, &subpath))
 		{
-			vfs_close_raw(f);
+			vfs_close_file(f);
 			return -ENOENT;
 		}
 		log_debug("Try linking file...\n");
@@ -470,7 +465,7 @@ int sys_link(const char *oldpath, const char *newpath)
 		if (ret == 0)
 		{
 			log_debug("Link succeeded.\n");
-			vfs_close_raw(f);
+			vfs_close_file(f);
 			return 0;
 		}
 		else if (ret == -ENOENT)
@@ -478,13 +473,13 @@ int sys_link(const char *oldpath, const char *newpath)
 			log_debug("Link failed, testing whether a component is a symlink...\n");
 			if (resolve_symlink(fs, path, subpath, target) < 0)
 			{
-				vfs_close_raw(f);
+				vfs_close_file(f);
 				return -ENOENT;
 			}
 		}
 		else
 		{
-			vfs_close_raw(f);
+			vfs_close_file(f);
 			return ret;
 		}
 	}
@@ -785,7 +780,7 @@ int sys_utime(const char *filename, const struct utimbuf *times)
 	r = f->op_vtable->utimes(f, t);
 	if (r < 0)
 		return r;
-	vfs_close_raw(f);
+	vfs_close_file(f);
 	return 0;
 }
 
@@ -799,7 +794,7 @@ int sys_utimes(const char *filename, const struct timeval times[2])
 	r = f->op_vtable->utimes(f, times);
 	if (r < 0)
 		return r;
-	vfs_close_raw(f);
+	vfs_close_file(f);
 	return 0;
 }
 
