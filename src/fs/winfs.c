@@ -91,14 +91,19 @@ static void unix_timeval_to_filetime(const struct timeval *time, FILETIME *filet
 /*
 Test if a handle is a symlink, also return its target if requested.
 For optimal performance, caller should ensure the handle is a regular file with system attribute.
-When the function is called the file pointer must be at the beginning of the file,
-and the caller is reponsible for restoring the file pointer.
 */
 static int winfs_read_symlink(HANDLE hFile, char *target, int buflen)
 {
 	char header[WINFS_SYMLINK_HEADER_LEN];
 	size_t num_read;
-	if (!ReadFile(hFile, header, WINFS_SYMLINK_HEADER_LEN, &num_read, NULL) || num_read < WINFS_SYMLINK_HEADER_LEN)
+	/* Use overlapped structure to avoid changing file pointer */
+	OVERLAPPED overlapped;
+	overlapped.Internal = 0;
+	overlapped.InternalHigh = 0;
+	overlapped.Offset = 0;
+	overlapped.OffsetHigh = 0;
+	overlapped.hEvent = 0;
+	if (!ReadFile(hFile, header, WINFS_SYMLINK_HEADER_LEN, &num_read, &overlapped) || num_read < WINFS_SYMLINK_HEADER_LEN)
 		return 0;
 	if (memcmp(header, WINFS_SYMLINK_HEADER, WINFS_SYMLINK_HEADER_LEN))
 		return 0;
@@ -111,7 +116,8 @@ static int winfs_read_symlink(HANDLE hFile, char *target, int buflen)
 	}
 	else
 	{
-		if (!ReadFile(hFile, target, buflen, &num_read, NULL))
+		overlapped.Offset = WINFS_SYMLINK_HEADER_LEN;
+		if (!ReadFile(hFile, target, buflen, &num_read, &overlapped))
 			return 0;
 		target[num_read] = 0;
 		return num_read;
@@ -537,14 +543,6 @@ static int winfs_open(const char *pathname, int flags, int mode, struct file **f
 			}
 		}
 		log_debug("Opening file directly.\n");
-		LARGE_INTEGER p;
-		p.QuadPart = 0;
-		if (!SetFilePointerEx(handle, p, NULL, FILE_BEGIN))
-		{
-			log_debug("SetFilePointerEx() failed, error code: %d.\n", GetLastError());
-			CloseHandle(handle);
-			return -EIO;
-		}
 	}
 	else if (attributeInfo.FileAttributes != INVALID_FILE_ATTRIBUTES && !(attributeInfo.FileAttributes & FILE_ATTRIBUTE_DIRECTORY) && (flags & O_DIRECTORY))
 	{
