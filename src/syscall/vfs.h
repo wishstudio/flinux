@@ -16,6 +16,8 @@ int vfs_open(const char *pathname, int flags, int mode, struct file **f);
 
 size_t sys_read(int fd, char *buf, size_t count);
 size_t sys_write(int fd, const char *buf, size_t count);
+size_t sys_pread64(int fd, char *buf, size_t count, loff_t offset);
+size_t sys_pwrite64(int fd, const char *buf, size_t count, loff_t offset);
 off_t sys_lseek(int fd, off_t offset, int whence);
 int sys_llseek(unsigned long offset_high, unsigned long offset_low, loff_t *result, int whence);
 

@@ -127,6 +127,26 @@ size_t sys_write(int fd, const char *buf, size_t count)
 		return -EBADF;
 }
 
+size_t sys_pread64(int fd, char *buf, size_t count, loff_t offset)
+{
+	log_debug("pread64(%d, %x, %d, %lld)\n", fd, buf, count, offset);
+	struct file *f = vfs->fds[fd];
+	if (f && f->op_vtable->pread)
+		return f->op_vtable->pread(f, buf, count, offset);
+	else
+		return -EBADF;
+}
+
+size_t sys_pwrite64(int fd, const char *buf, size_t count, loff_t offset)
+{
+	log_debug("pwrite64(%d, %x, %d, %lld)\n", fd, buf, count, offset);
+	struct file *f = vfs->fds[fd];
+	if (f && f->op_vtable->pwrite)
+		return f->op_vtable->pwrite(f, buf, count, offset);
+	else
+		return -EBADF;
+}
+
 off_t sys_lseek(int fd, off_t offset, int whence)
 {
 	log_debug("lseek(%d, %d, %d)\n", fd, offset, whence);

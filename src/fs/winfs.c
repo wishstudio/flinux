@@ -153,6 +153,36 @@ static size_t winfs_write(struct file *f, const char *buf, size_t count)
 	return num_written;
 }
 
+static size_t winfs_pread(struct file *f, char *buf, size_t count, loff_t offset)
+{
+	struct winfs_file *winfile = (struct winfs_file *) f;
+	size_t num_read;
+	OVERLAPPED overlapped;
+	overlapped.Internal = 0;
+	overlapped.InternalHigh = 0;
+	overlapped.Offset = offset & 0xFFFFFFFF;
+	overlapped.OffsetHigh = offset >> 32ULL;
+	overlapped.hEvent = 0;
+	if (!ReadFile(winfile->handle, buf, count, &num_read, &overlapped))
+		return -1;
+	return num_read;
+}
+
+static size_t winfs_pwrite(struct file *f, const char *buf, size_t count, loff_t offset)
+{
+	struct winfs_file *winfile = (struct winfs_file *) f;
+	size_t num_written;
+	OVERLAPPED overlapped;
+	overlapped.Internal = 0;
+	overlapped.InternalHigh = 0;
+	overlapped.Offset = offset & 0xFFFFFFFF;
+	overlapped.OffsetHigh = offset >> 32ULL;
+	overlapped.hEvent = 0;
+	if (!WriteFile(winfile->handle, buf, count, &num_written, &overlapped))
+		return -1;
+	return num_written;
+}
+
 static int winfs_llseek(struct file *f, loff_t offset, loff_t *newoffset, int whence)
 {
 	struct winfs_file *winfile = (struct winfs_file *) f;
@@ -289,6 +319,8 @@ static struct file_ops winfs_ops =
 	.close = winfs_close,
 	.read = winfs_read,
 	.write = winfs_write,
+	.pread = winfs_pread,
+	.pwrite = winfs_pwrite,
 	.llseek = winfs_llseek,
 	.stat = winfs_stat,
 	.utimes = winfs_utimes,

@@ -13,6 +13,8 @@ struct file_ops
 	int (*close)(struct file *f);
 	size_t (*read)(struct file *f, char *buf, size_t count);
 	size_t (*write)(struct file *f, const char *buf, size_t count);
+	size_t (*pread)(struct file *f, char *buf, size_t count, loff_t offset);
+	size_t (*pwrite)(struct file *f, const char *buf, size_t count, loff_t offset);
 	int (*llseek)(struct file *f, loff_t offset, loff_t *newoffset, int whence);
 	int (*stat)(struct file *f, struct stat64 *buf);
 	int (*utimes)(struct file *f, const struct timeval times[2]);
