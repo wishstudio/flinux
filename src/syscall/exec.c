@@ -2,6 +2,7 @@
 #include <common/auxvec.h>
 #include <common/errno.h>
 #include <common/fcntl.h>
+#include <fs/winfs.h>
 #include <syscall/exec.h>
 #include <syscall/mm.h>
 #include <syscall/process.h>
@@ -89,24 +90,16 @@ int do_execve(const char *filename, int argc, char *argv[], int env_size, char *
 	struct file *f;
 	int r = vfs_open(filename, O_RDONLY, 0, &f);
 	if (r < 0)
-	{
 		return r;
-	}
 
-	if (!f->op_vtable->get_handle)
+	if (!winfs_is_winfile(f))
 	{
 		return -EACCES;
 	}
 
-	HANDLE hFile = f->op_vtable->get_handle(f);
-	/* TODO: SetFilePointer */
-	LARGE_INTEGER p;
-	p.QuadPart = 0;
-	SetFilePointerEx(hFile, p, NULL, FILE_BEGIN);
-
 	/* Load ELF header */
 	Elf32_Ehdr eh;
-	ReadFile(hFile, &eh, sizeof(Elf32_Ehdr), NULL, NULL);
+	f->op_vtable->pread(f, &eh, sizeof(eh), 0);
 	if (eh.e_type != ET_EXEC)
 	{
 		log_debug("Not an executable!\n");
@@ -124,8 +117,7 @@ int do_execve(const char *filename, int argc, char *argv[], int env_size, char *
 	/* Load program header table */
 	uint32_t phsize = (uint32_t)eh.e_phentsize * (uint32_t)eh.e_phnum;
 	void *pht = kmalloc(phsize); /* TODO: Free it at execve */
-	SetFilePointer(hFile, eh.e_phoff, NULL, FILE_BEGIN);
-	ReadFile(hFile, pht, phsize, NULL, NULL);
+	f->op_vtable->pread(f, pht, phsize, eh.e_phoff);
 
 	for (int i = 0; i < eh.e_phnum; i++)
 	{
@@ -145,11 +137,10 @@ int do_execve(const char *filename, int argc, char *argv[], int env_size, char *
 				prot |= PROT_EXEC;
 			void *mem = sys_mmap((void *)addr, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_FIXED | MAP_ANONYMOUS, -1, 0);
 			mm_update_brk((uint32_t)addr + size);
-			SetFilePointer(hFile, ph->p_offset, NULL, FILE_BEGIN);
-			ReadFile(hFile, (void *)ph->p_vaddr, ph->p_filesz, NULL, NULL);
+			f->op_vtable->pread(f, (char *)ph->p_vaddr, ph->p_filesz, ph->p_offset);
 		}
 	}
-	f->op_vtable->close(f);
+	vfs_close_file(f);
 	run(&eh, pht, argc, argv, env_size, envp, context);
 	return 0;
 }
