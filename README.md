@@ -3,7 +3,7 @@ Foreign Linux
 
 Foreign Linux is a Linux system call translator for the Windows platform. It can run *unmodified* Linux binaries on Windows without any drivers or modifications to the system. You can think it as [WINE](http://www.winehq.org) but in reverse. 
 
-This project is still in heavy development. It's still buggy and not meant for everyday use.
+This project is still in heavy development. It's still buggy and not meant for everyday use. On the other hand it already runs a lot of [busybox](http://busybox.net) utilities.
 
 Feature highlights
 ======
@@ -13,6 +13,7 @@ Feature highlights
 * Cygwin-style emulated symlink
 * Interprocess pipes
 * vt102 terminal emulation on Win32 console
+* Small footprint (flinux executable < 100k)
 
 Comparison
 ======
@@ -25,3 +26,7 @@ Here is a quick comparison between previous similar projects. All these projects
 * [LBW](http://lbw.sourceforge.net): Linux Binaries on Windows uses Interix to implmenet many POSIX functions, notably fork(2). As Interix is now deprecated, LBW is no longer useful.
 
 * [Line](http://sourceforge.net/projects/line): Linux Is Not an Emulator is a very early project to run linux binaries on Windows. It sill work on Win8 x64 as I tested. It uses Cygwin for POSIX layer thus no efficient fork(2).
+
+Development
+======
+You need dlltool.exe from mingw for generating the import library for ntdll.dll. Add it to your PATH and you should be able to compile the Visual Studio project.
