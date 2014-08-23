@@ -36,7 +36,7 @@ void main()
 		ExitProcess(1);
 	}
 
-	mm_mmap(STARTUP_DATA_BASE, BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+	mm_mmap(STARTUP_DATA_BASE, BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, NULL, 0);
 	memcpy(startup, cmdline, len + 1);
 	int argc = 0;
 	const char **argv = (const char **)((uintptr_t)(startup + len + 1 + sizeof(void*) - 1) & -sizeof(void*));
@@ -76,5 +76,5 @@ void main()
 	if (filename)
 		do_execve(filename, argc - 1, argv + 1, 0, envp, NULL);
 	kprintf("Execution failed.\n");
-	ExitProcess(0);
+	ExitProcess(1);
 }

@@ -103,14 +103,14 @@ int do_execve(const char *filename, int argc, char *argv[], int env_size, char *
 	if (eh.e_type != ET_EXEC)
 	{
 		log_debug("Not an executable!\n");
-		f->op_vtable->close(f);
+		vfs_release(f);
 		return -EACCES;
 	}
 
 	if (eh.e_machine != EM_386)
 	{
 		log_debug("Not an i386 executable.\n");
-		f->op_vtable->close(f);
+		vfs_release(f);
 		return -EACCES;
 	}
 
@@ -140,7 +140,7 @@ int do_execve(const char *filename, int argc, char *argv[], int env_size, char *
 			f->op_vtable->pread(f, (char *)ph->p_vaddr, ph->p_filesz, ph->p_offset);
 		}
 	}
-	vfs_close_file(f);
+	vfs_release(f);
 	run(&eh, pht, argc, argv, env_size, envp, context);
 	return 0;
 }

@@ -1,5 +1,6 @@
 #include <common/errno.h>
 #include <syscall/mm.h>
+#include <syscall/vfs.h>
 #include <log.h>
 
 #include <stdint.h>
@@ -420,7 +421,7 @@ int mm_fork(HANDLE process)
 	return 1;
 }
 
-void *mm_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset_pages)
+void *mm_mmap(void *addr, size_t length, int prot, int flags, struct file *f, off_t offset_pages)
 {
 	if (length == 0)
 		return -EINVAL;
@@ -619,7 +620,7 @@ void *sys_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t off
 	/* TODO: Initialize mapped area to zero */
 	if (!IS_ALIGNED(offset, PAGE_SIZE))
 		return -EINVAL;
-	return mm_mmap(addr, length, prot, flags, fd, offset / PAGE_SIZE);
+	return mm_mmap(addr, length, prot, flags, vfs_get(fd), offset / PAGE_SIZE);
 }
 
 void *sys_oldmmap(void *_args)
@@ -641,7 +642,7 @@ void *sys_oldmmap(void *_args)
 void *sys_mmap2(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
 {
 	log_debug("mmap2(%x, %x, %x, %x, %d, %x)\n", addr, length, prot, flags, fd, offset);
-	return mm_mmap(addr, length, prot, flags, fd, offset);
+	return mm_mmap(addr, length, prot, flags, vfs_get(fd), offset);
 }
 
 int sys_munmap(void *addr, size_t length)

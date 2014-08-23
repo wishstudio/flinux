@@ -35,7 +35,7 @@ static struct heap_data *const heap = MM_HEAP_BASE;
 
 void heap_init()
 {
-	mm_mmap(MM_HEAP_BASE, sizeof(struct heap_data), PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+	mm_mmap(MM_HEAP_BASE, sizeof(struct heap_data), PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, NULL, 0);
 	heap->pools[0].objsize = 16;   heap->pools[0].first = NULL;
 	heap->pools[1].objsize = 32;   heap->pools[0].first = NULL;
 	heap->pools[2].objsize = 64;   heap->pools[0].first = NULL;
