@@ -97,6 +97,8 @@ struct map_entry
 {
 	uint32_t start_page;
 	uint32_t end_page;
+	struct file *f;
+	off_t offset_pages;
 	struct map_entry *next;
 };
 
@@ -435,10 +437,15 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, struct file *f, of
 		log_debug("MAP_SHARED is not supported yet.\n");
 		return -EINVAL;
 	}
-	if (!(flags & MAP_ANONYMOUS))
+	if ((flags & MAP_ANONYMOUS) && f != NULL)
 	{
-		log_debug("Non MAP_ANONYMOUS is not supported yet.\n");
+		log_debug("MAP_ANONYMOUS with file descriptor.\n");
 		return -EINVAL;
+	}
+	if (!(flags & MAP_ANONYMOUS) && f == NULL)
+	{
+		log_debug("MAP_FILE with bad file descriptor.\n");
+		return -EBADF;
 	}
 	if (!(flags & MAP_FIXED))
 	{
@@ -460,106 +467,112 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, struct file *f, of
 		log_debug("Not aligned addr with MAP_FIXED.\n");
 		return -EINVAL;
 	}
-	if (flags & MAP_ANONYMOUS)
+
+	uint32_t start_page = GET_PAGE(addr);
+	uint32_t end_page = GET_PAGE((size_t)addr + length - 1);
+	uint16_t start_block = GET_BLOCK(addr);
+	uint16_t end_block = GET_BLOCK((size_t)addr + length - 1);
+
+	/* If address are given, test whether all pages are free.
+	* Otherwise the pages are found by find_free_pages() thus are guaranteed free.
+	*/
+	if ((flags & MAP_FIXED) && !is_pages_free(start_page, end_page))
 	{
-		uint32_t start_page = GET_PAGE(addr);
-		uint32_t end_page = GET_PAGE((size_t)addr + length - 1);
-		uint16_t start_block = GET_BLOCK(addr);
-		uint16_t end_block = GET_BLOCK((size_t)addr + length - 1);
-
-		/* If address are given, test whether all pages are free.
-		 * Otherwise the pages are found by find_free_pages() thus are guaranteed free.
-		 */
-		if ((flags & MAP_FIXED) && !is_pages_free(start_page, end_page))
-		{
-			log_debug("Address conflict with existing mapping.");
-			return -EINVAL; /* TODO: Correct flag in this case? */
-		}
-
-		/* Allocate and map missing section objects */
-		for (uint16_t i = start_block; i <= end_block; i++)
-		{
-			if (mm->block_page_count[i] == 0)
-			{
-				OBJECT_ATTRIBUTES attr;
-				attr.Length = sizeof(OBJECT_ATTRIBUTES);
-				attr.RootDirectory = NULL;
-				attr.ObjectName = NULL;
-				attr.Attributes = OBJ_INHERIT;
-				attr.SecurityDescriptor = NULL;
-				attr.SecurityQualityOfService = NULL;
-				LARGE_INTEGER max_size;
-				max_size.QuadPart = BLOCK_SIZE;
-				NTSTATUS status;
-				HANDLE handle;
-
-				/* Allocate section */
-				status = NtCreateSection(&handle, SECTION_MAP_READ | SECTION_MAP_WRITE | SECTION_MAP_EXECUTE, &attr, &max_size, PAGE_EXECUTE_READWRITE, SEC_COMMIT, NULL);
-				if (status != STATUS_SUCCESS)
-				{
-					log_debug("NtCreateSection() failed. Status: %x\n", status);
-					goto ROLLBACK;
-				}
-
-				/* Map section */
-				PVOID base_addr = GET_BLOCK_ADDRESS(i);
-				SIZE_T view_size = BLOCK_SIZE;
-				status = NtMapViewOfSection(handle, NtCurrentProcess(), &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, prot_linux2win(prot));
-				if (status != STATUS_SUCCESS)
-				{
-					log_debug("NtMapViewOfSection() failed. Address: %x, Status: %x\n", base_addr, status);
-					NtClose(handle);
-					dump_virtual_memory(NtCurrentProcess());
-					goto ROLLBACK;
-				}
-				mm->block_section_handle[i] = handle;
-				continue;
-
-			ROLLBACK:
-				/* Roll back */
-				for (uint16_t j = start_block; j < i; j++)
-				{
-					if (mm->block_page_count[j] == 0)
-					{
-						NtUnmapViewOfSection(NtCurrentProcess(), GET_BLOCK_ADDRESS(j));
-						NtClose(mm->block_section_handle[j]);
-						mm->block_section_handle[j] = NULL;
-					}
-				}
-				return -ENOMEM; /* TODO */
-			}
-		}
-
-		/* Set up all kinds of flags */
-		struct map_entry *entry = new_map_entry();
-		entry->start_page = start_page;
-		entry->end_page = end_page;
-		if (!mm->map_list || mm->map_list->start_page > end_page)
-		{
-			if (mm->map_list)
-				entry->next = mm->map_list->next;
-			mm->map_list = entry;
-		}
-		else
-		{
-			for (struct map_entry *e = mm->map_list; e; e = e->next)
-				if (!e->next || e->next->start_page > end_page)
-				{
-					entry->next = e->next;
-					e->next = entry;
-					break;
-				}
-		}
-		for (uint32_t i = start_page; i <= end_page; i++)
-		{
-			mm->page_prot[i] = prot;
-			mm->block_page_count[GET_BLOCK_OF_PAGE(i)]++; /* TODO: Optimization */
-		}
-		log_debug("Allocated memory: %x\n", addr);
-		return addr;
+		log_debug("Address conflict with existing mapping.");
+		return -EINVAL; /* TODO: Correct flag in this case? */
 	}
-	log_debug("TODO: Should not come here.\n");
-	return -EINVAL;
+
+	if (!(flags & MAP_ANONYMOUS))
+		prot |= PROT_WRITE; /* TODO: Fix at end */
+
+	/* Allocate and map missing section objects */
+	for (uint16_t i = start_block; i <= end_block; i++)
+	{
+		if (mm->block_page_count[i] == 0)
+		{
+			OBJECT_ATTRIBUTES attr;
+			attr.Length = sizeof(OBJECT_ATTRIBUTES);
+			attr.RootDirectory = NULL;
+			attr.ObjectName = NULL;
+			attr.Attributes = OBJ_INHERIT;
+			attr.SecurityDescriptor = NULL;
+			attr.SecurityQualityOfService = NULL;
+			LARGE_INTEGER max_size;
+			max_size.QuadPart = BLOCK_SIZE;
+			NTSTATUS status;
+			HANDLE handle;
+
+			/* Allocate section */
+			status = NtCreateSection(&handle, SECTION_MAP_READ | SECTION_MAP_WRITE | SECTION_MAP_EXECUTE, &attr, &max_size, PAGE_EXECUTE_READWRITE, SEC_COMMIT, NULL);
+			if (status != STATUS_SUCCESS)
+			{
+				log_debug("NtCreateSection() failed. Status: %x\n", status);
+				goto ROLLBACK;
+			}
+
+			/* Map section */
+			PVOID base_addr = GET_BLOCK_ADDRESS(i);
+			SIZE_T view_size = BLOCK_SIZE;
+			status = NtMapViewOfSection(handle, NtCurrentProcess(), &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, prot_linux2win(prot));
+			if (status != STATUS_SUCCESS)
+			{
+				log_debug("NtMapViewOfSection() failed. Address: %x, Status: %x\n", base_addr, status);
+				NtClose(handle);
+				dump_virtual_memory(NtCurrentProcess());
+				goto ROLLBACK;
+			}
+			mm->block_section_handle[i] = handle;
+			continue;
+
+		ROLLBACK:
+			/* Roll back */
+			for (uint16_t j = start_block; j < i; j++)
+			{
+				if (mm->block_page_count[j] == 0)
+				{
+					NtUnmapViewOfSection(NtCurrentProcess(), GET_BLOCK_ADDRESS(j));
+					NtClose(mm->block_section_handle[j]);
+					mm->block_section_handle[j] = NULL;
+				}
+			}
+			return -ENOMEM; /* TODO */
+		}
+	}
+
+	/* Set up all kinds of flags */
+	struct map_entry *entry = new_map_entry();
+	entry->start_page = start_page;
+	entry->end_page = end_page;
+	entry->f = f;
+	entry->offset_pages = offset_pages;
+	if (f) /* TODO: Implement on demand paging? */
+	{
+		f->ref++;
+		f->op_vtable->pread(f, (char*)(start_page * PAGE_SIZE), (end_page - start_page + 1) * PAGE_SIZE, (loff_t)offset_pages * PAGE_SIZE);
+	}
+	if (!mm->map_list || mm->map_list->start_page > end_page)
+	{
+		if (mm->map_list)
+			entry->next = mm->map_list->next;
+		mm->map_list = entry;
+	}
+	else
+	{
+		for (struct map_entry *e = mm->map_list; e; e = e->next)
+			if (!e->next || e->next->start_page > end_page)
+			{
+				entry->next = e->next;
+				e->next = entry;
+				break;
+			}
+	}
+	for (uint32_t i = start_page; i <= end_page; i++)
+	{
+		mm->page_prot[i] = prot;
+		mm->block_page_count[GET_BLOCK_OF_PAGE(i)]++; /* TODO: Optimization */
+	}
+	log_debug("Allocated memory: %x\n", addr);
+	return addr;
 }
 
 int mm_munmap(void *addr, size_t length)

@@ -124,9 +124,9 @@ int do_execve(const char *filename, int argc, char *argv[], int env_size, char *
 		Elf32_Phdr *ph = (Elf32_Phdr *)((uint8_t *)pht + (eh.e_phentsize * i));
 		if (ph->p_type == PT_LOAD)
 		{
-			uint32_t addr = ph->p_vaddr;
-			uint32_t size = ph->p_memsz + (addr & 0x00000FFF);
-			addr &= 0xFFFFF000;
+			uint32_t addr = ph->p_vaddr & 0xFFFFF000;
+			uint32_t size = ph->p_memsz + (ph->p_vaddr & 0x00000FFF);
+			off_t offset_pages = ph->p_offset / PAGE_SIZE;
 
 			int prot = 0;
 			if (ph->p_flags & PF_R)
@@ -135,9 +135,9 @@ int do_execve(const char *filename, int argc, char *argv[], int env_size, char *
 				prot |= PROT_WRITE;
 			if (ph->p_flags & PF_X)
 				prot |= PROT_EXEC;
-			void *mem = sys_mmap((void *)addr, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_FIXED | MAP_ANONYMOUS, -1, 0);
-			mm_update_brk((uint32_t)addr + size);
+			mm_mmap((void *)addr, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANONYMOUS | MAP_FIXED, NULL, 0);
 			f->op_vtable->pread(f, (char *)ph->p_vaddr, ph->p_filesz, ph->p_offset);
+			mm_update_brk((uint32_t)addr + size);
 		}
 	}
 	vfs_release(f);
