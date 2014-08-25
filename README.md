@@ -1,9 +1,9 @@
-Foreign Linux
+Foreign LINUX
 ======
 
-Foreign Linux is a Linux system call translator for the Windows platform. It can run *unmodified* Linux binaries on Windows without any drivers or modifications to the system. You can think it as [WINE](http://www.winehq.org) but in reverse. 
+Foreign LINUX is a Linux system call translator for the Windows platform. It can run *unmodified* Linux binaries on Windows without any drivers or modifications to the system. You can think it as [WINE](http://www.winehq.org) but in reverse. 
 
-This project is still in heavy development. It's still buggy and not meant for everyday use. On the other hand it already runs a lot of [busybox](http://busybox.net) utilities.
+This project is still in heavy development. It's still buggy and not meant for everyday use. On the other hand it already runs a lot of [busybox](http://busybox.net) utilities, including *ash*, *tar*, *grep*, etc.
 
 Feature highlights
 ======
