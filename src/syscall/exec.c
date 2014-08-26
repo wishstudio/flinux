@@ -93,7 +93,6 @@ static void run(struct elf_header *executable, struct elf_header *interpreter, i
 
 static int load_elf(const char *filename, struct elf_header **executable, struct elf_header **interpreter)
 {
-	struct elf_header *elf;
 	Elf32_Ehdr eh;
 	struct file *f;
 	int r = vfs_open(filename, O_RDONLY, 0, &f);
@@ -121,7 +120,10 @@ static int load_elf(const char *filename, struct elf_header **executable, struct
 
 	/* Load program header table */
 	uint32_t phsize = (uint32_t)eh.e_phentsize * (uint32_t)eh.e_phnum;
-	elf = kmalloc(sizeof(struct elf_header) + phsize); /* TODO: Free it at execve */
+	struct elf_header *elf = kmalloc(sizeof(struct elf_header) + phsize); /* TODO: Free it at execve */
+	*executable = elf;
+	if (interpreter)
+		*interpreter = NULL;
 	elf->eh = eh;
 	f->op_vtable->pread(f, elf->pht, phsize, eh.e_phoff);
 
@@ -163,8 +165,6 @@ static int load_elf(const char *filename, struct elf_header **executable, struct
 		}
 	}
 	vfs_release(f);
-
-	*executable = elf;
 	return 0;
 }
 
