@@ -12,6 +12,12 @@
 
 #include <Windows.h>
 
+struct elf_header
+{
+	Elf32_Ehdr eh;
+	char pht[];
+};
+
 __declspec(noreturn) static void goto_entrypoint(const char *stack, void *entrypoint)
 {
 	__asm
@@ -31,7 +37,7 @@ __declspec(noreturn) static void goto_entrypoint(const char *stack, void *entryp
 	}
 }
 
-static void run(Elf32_Ehdr *eh, void *pht, int argc, char *argv[], int env_size, char *envp[], PCONTEXT context)
+static void run(struct elf_header *executable, struct elf_header *interpreter, int argc, char *argv[], int env_size, char *envp[], PCONTEXT context)
 {
 	/* Generate initial stack */
 	int aux_size = 7;
@@ -51,23 +57,23 @@ static void run(Elf32_Ehdr *eh, void *pht, int argc, char *argv[], int env_size,
 	stack[idx++] = NULL;
 	/* auxiliary vector */
 	stack[idx++] = (const char *)AT_PHDR;
-	stack[idx++] = (const char *)pht;
+	stack[idx++] = (const char *)executable->pht;
 	stack[idx++] = (const char *)AT_PHENT;
-	stack[idx++] = (const char *)eh->e_phentsize;
+	stack[idx++] = (const char *)executable->eh.e_phentsize;
 	stack[idx++] = (const char *)AT_PHNUM;
-	stack[idx++] = (const char *)eh->e_phnum;
+	stack[idx++] = (const char *)executable->eh.e_phnum;
 	stack[idx++] = (const char *)AT_PAGESZ;
 	stack[idx++] = (const char *)PAGE_SIZE;
 	stack[idx++] = (const char *)AT_BASE;
-	stack[idx++] = (const char *)NULL;
+	stack[idx++] = (const char *)(interpreter? interpreter->eh.e_entry: NULL);
 	stack[idx++] = (const char *)AT_FLAGS;
 	stack[idx++] = (const char *)0;
 	stack[idx++] = (const char *)AT_ENTRY;
-	stack[idx++] = (const char *)eh->e_entry;
+	stack[idx++] = (const char *)executable->eh.e_entry;
 	stack[idx++] = NULL;
 
 	/* Call executable entrypoint */
-	uint32_t entrypoint = eh->e_entry;
+	uint32_t entrypoint = interpreter? interpreter->eh.e_entry: executable->eh.e_entry;
 	log_debug("Entrypoint: %x\n", entrypoint);
 	/* If we're starting from main(), just jump to entrypoint */
 	if (!context)
@@ -85,24 +91,23 @@ static void run(Elf32_Ehdr *eh, void *pht, int argc, char *argv[], int env_size,
 	context->Eip = entrypoint;
 }
 
-int do_execve(const char *filename, int argc, char *argv[], int env_size, char *envp[], PCONTEXT context)
+static int load_elf(const char *filename, struct elf_header **executable, struct elf_header **interpreter)
 {
+	struct elf_header *elf;
+	Elf32_Ehdr eh;
 	struct file *f;
 	int r = vfs_open(filename, O_RDONLY, 0, &f);
 	if (r < 0)
 		return r;
 
 	if (!winfs_is_winfile(f))
-	{
 		return -EACCES;
-	}
 
 	/* Load ELF header */
-	Elf32_Ehdr eh;
 	f->op_vtable->pread(f, &eh, sizeof(eh), 0);
-	if (eh.e_type != ET_EXEC)
+	if (eh.e_type != ET_EXEC && eh.e_type != ET_DYN)
 	{
-		log_debug("Not an executable!\n");
+		log_debug("Only ET_EXEC and ET_DYN executables can be loaded.\n");
 		vfs_release(f);
 		return -EACCES;
 	}
@@ -116,12 +121,13 @@ int do_execve(const char *filename, int argc, char *argv[], int env_size, char *
 
 	/* Load program header table */
 	uint32_t phsize = (uint32_t)eh.e_phentsize * (uint32_t)eh.e_phnum;
-	void *pht = kmalloc(phsize); /* TODO: Free it at execve */
-	f->op_vtable->pread(f, pht, phsize, eh.e_phoff);
+	elf = kmalloc(sizeof(struct elf_header) + phsize); /* TODO: Free it at execve */
+	elf->eh = eh;
+	f->op_vtable->pread(f, elf->pht, phsize, eh.e_phoff);
 
 	for (int i = 0; i < eh.e_phnum; i++)
 	{
-		Elf32_Phdr *ph = (Elf32_Phdr *)((uint8_t *)pht + (eh.e_phentsize * i));
+		Elf32_Phdr *ph = (Elf32_Phdr *)((uint8_t *)elf->pht + (eh.e_phentsize * i));
 		if (ph->p_type == PT_LOAD)
 		{
 			uint32_t addr = ph->p_vaddr & 0xFFFFF000;
@@ -139,9 +145,36 @@ int do_execve(const char *filename, int argc, char *argv[], int env_size, char *
 			f->op_vtable->pread(f, (char *)ph->p_vaddr, ph->p_filesz, ph->p_offset);
 			mm_update_brk((uint32_t)addr + size);
 		}
+		else if (ph->p_type == PT_INTERP)
+		{
+			if (interpreter == NULL)
+			{
+				vfs_release(f);
+				return -EACCES; /* Bad interpreter */
+			}
+			char path[MAX_PATH];
+			f->op_vtable->pread(f, path, ph->p_filesz, ph->p_offset);
+			path[ph->p_filesz] = 0;
+			if (load_elf(path, interpreter, NULL) < 0)
+			{
+				vfs_release(f);
+				return -EACCES; /* Bad interpreter */
+			}
+		}
 	}
 	vfs_release(f);
-	run(&eh, pht, argc, argv, env_size, envp, context);
+
+	*executable = elf;
+	return 0;
+}
+
+int do_execve(const char *filename, int argc, char *argv[], int env_size, char *envp[], PCONTEXT context)
+{
+	struct elf_header *executable, *interpreter;
+	int r = load_elf(filename, &executable, &interpreter);
+	if (r < 0)
+		return r;
+	run(executable, interpreter, argc, argv, env_size, envp, context);
 	return 0;
 }
 
