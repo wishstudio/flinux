@@ -206,7 +206,7 @@ static int is_pages_free(uint32_t start_page, uint32_t end_page)
 	return 1;
 }
 
-/* Find 'count' consecutive free pages in range [low, high), return 0 if not found */
+/* Find 'count' consecutive free pages in address range [low, high), return 0 if not found */
 static uint32_t find_free_pages(uint32_t count, uint32_t low, uint32_t high)
 {
 	uint32_t last = GET_PAGE(low);
@@ -220,6 +220,11 @@ static uint32_t find_free_pages(uint32_t count, uint32_t low, uint32_t high)
 		return last;
 	else
 		return 0;
+}
+
+uint32_t mm_find_free_pages(uint32_t count_bytes)
+{
+	return find_free_pages(GET_PAGE(ALIGN_TO_PAGE(count_bytes)), ADDRESS_ALLOCATION_LOW, ADDRESS_ALLOCATION_HIGH);
 }
 
 /* Find map entry of given address, also return the preceding entry (NULL if first) */

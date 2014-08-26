@@ -14,6 +14,7 @@
 
 struct elf_header
 {
+	uint32_t load_base;
 	Elf32_Ehdr eh;
 	char pht[];
 };
@@ -73,7 +74,7 @@ static void run(struct elf_header *executable, struct elf_header *interpreter, i
 	stack[idx++] = NULL;
 
 	/* Call executable entrypoint */
-	uint32_t entrypoint = interpreter? interpreter->eh.e_entry: executable->eh.e_entry;
+	uint32_t entrypoint = interpreter? interpreter->load_base + interpreter->eh.e_entry: executable->load_base + executable->eh.e_entry;
 	log_debug("Entrypoint: %x\n", entrypoint);
 	/* If we're starting from main(), just jump to entrypoint */
 	if (!context)
@@ -127,9 +128,34 @@ static int load_elf(const char *filename, struct elf_header **executable, struct
 	elf->eh = eh;
 	f->op_vtable->pread(f, elf->pht, phsize, eh.e_phoff);
 
+	/* Find virtual address range for ET_DYN executable */
+	elf->load_base = 0;
+	if (eh.e_type == ET_DYN)
+	{
+		uint32_t low = 0xFFFFFFFF, high = 0;
+		for (int i = 0; i < eh.e_phnum; i++)
+		{
+			Elf32_Phdr *ph = (Elf32_Phdr *)&elf->pht[eh.e_phentsize * i];
+			if (ph->p_type == PT_LOAD)
+			{
+				low = min(low, ph->p_vaddr);
+				high = max(high, ph->p_vaddr + ph->p_memsz);
+			}
+		}
+		uint32_t free_addr = mm_find_free_pages(high - low) * PAGE_SIZE;
+		if (!free_addr)
+		{
+			vfs_release(f);
+			return -ENOMEM;
+		}
+		elf->load_base = free_addr - low;
+		log_debug("ET_DYN load base: %x, real range [%x, %x)\n", elf->load_base, elf->load_base + low, elf->load_base + high);
+	}
+
+	/* Map executable segments */
 	for (int i = 0; i < eh.e_phnum; i++)
 	{
-		Elf32_Phdr *ph = (Elf32_Phdr *)((uint8_t *)elf->pht + (eh.e_phentsize * i));
+		Elf32_Phdr *ph = (Elf32_Phdr *)&elf->pht[eh.e_phentsize * i];
 		if (ph->p_type == PT_LOAD)
 		{
 			uint32_t addr = ph->p_vaddr & 0xFFFFF000;
@@ -143,11 +169,17 @@ static int load_elf(const char *filename, struct elf_header **executable, struct
 				prot |= PROT_WRITE;
 			if (ph->p_flags & PF_X)
 				prot |= PROT_EXEC;
-			mm_mmap((void *)addr, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANONYMOUS | MAP_FIXED, NULL, 0);
-			f->op_vtable->pread(f, (char *)ph->p_vaddr, ph->p_filesz, ph->p_offset);
+			mm_mmap(elf->load_base + addr, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANONYMOUS | MAP_FIXED, NULL, 0);
+			f->op_vtable->pread(f, (char *)(elf->load_base + ph->p_vaddr), ph->p_filesz, ph->p_offset);
 			mm_update_brk((uint32_t)addr + size);
 		}
-		else if (ph->p_type == PT_INTERP)
+	}
+
+	/* Load interpreter if present */
+	for (int i = 0; i < eh.e_phnum; i++)
+	{
+		Elf32_Phdr *ph = (Elf32_Phdr *)&elf->pht[eh.e_phentsize * i];
+		if (ph->p_type == PT_INTERP)
 		{
 			if (interpreter == NULL)
 			{
