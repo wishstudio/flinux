@@ -14,7 +14,7 @@
 
 struct elf_header
 {
-	uint32_t load_base;
+	uint32_t load_base, low, high;
 	Elf32_Ehdr eh;
 	char pht[];
 };
@@ -41,7 +41,7 @@ __declspec(noreturn) static void goto_entrypoint(const char *stack, void *entryp
 static void run(struct elf_header *executable, struct elf_header *interpreter, int argc, char *argv[], int env_size, char *envp[], PCONTEXT context)
 {
 	/* Generate initial stack */
-	int aux_size = 7;
+	int aux_size = 8;
 	int initial_stack_size = argc + 1 + env_size + 1 + aux_size * 2 + 1;
 	char *stack_base = process_get_stack_base();
 	const char **stack = (const char **)(stack_base + STACK_SIZE - initial_stack_size * sizeof(const char *) - sizeof(argc));
@@ -66,8 +66,10 @@ static void run(struct elf_header *executable, struct elf_header *interpreter, i
 	stack[idx++] = (const char *)AT_PAGESZ;
 	stack[idx++] = (const char *)PAGE_SIZE;
 	stack[idx++] = (const char *)AT_BASE;
-	stack[idx++] = (const char *)(interpreter? interpreter->eh.e_entry: NULL);
+	stack[idx++] = (const char *)(interpreter? interpreter->load_base - interpreter->low: NULL);
 	stack[idx++] = (const char *)AT_FLAGS;
+	stack[idx++] = (const char *)0;
+	stack[idx++] = (const char *)AT_SECURE;
 	stack[idx++] = (const char *)0;
 	stack[idx++] = (const char *)AT_ENTRY;
 	stack[idx++] = (const char *)executable->eh.e_entry;
@@ -128,28 +130,31 @@ static int load_elf(const char *filename, struct elf_header **executable, struct
 	elf->eh = eh;
 	f->op_vtable->pread(f, elf->pht, phsize, eh.e_phoff);
 
+	/* Find virtual address range */
+	elf->low = 0xFFFFFFFF;
+	elf->high = 0;
+	for (int i = 0; i < eh.e_phnum; i++)
+	{
+		Elf32_Phdr *ph = (Elf32_Phdr *)&elf->pht[eh.e_phentsize * i];
+		if (ph->p_type == PT_LOAD)
+		{
+			elf->low = min(elf->low, ph->p_vaddr);
+			elf->high = max(elf->high, ph->p_vaddr + ph->p_memsz);
+		}
+	}
+
 	/* Find virtual address range for ET_DYN executable */
 	elf->load_base = 0;
 	if (eh.e_type == ET_DYN)
 	{
-		uint32_t low = 0xFFFFFFFF, high = 0;
-		for (int i = 0; i < eh.e_phnum; i++)
-		{
-			Elf32_Phdr *ph = (Elf32_Phdr *)&elf->pht[eh.e_phentsize * i];
-			if (ph->p_type == PT_LOAD)
-			{
-				low = min(low, ph->p_vaddr);
-				high = max(high, ph->p_vaddr + ph->p_memsz);
-			}
-		}
-		uint32_t free_addr = mm_find_free_pages(high - low) * PAGE_SIZE;
+		uint32_t free_addr = mm_find_free_pages(elf->high - elf->low) * PAGE_SIZE;
 		if (!free_addr)
 		{
 			vfs_release(f);
 			return -ENOMEM;
 		}
-		elf->load_base = free_addr - low;
-		log_debug("ET_DYN load base: %x, real range [%x, %x)\n", elf->load_base, elf->load_base + low, elf->load_base + high);
+		elf->load_base = free_addr - elf->low;
+		log_debug("ET_DYN load offset: %x, real range [%x, %x)\n", elf->load_base, elf->load_base + elf->low, elf->load_base + elf->high);
 	}
 
 	/* Map executable segments */

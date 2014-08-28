@@ -28,3 +28,5 @@
 #define AT_HWCAP2			26	/* extension of AT_HWCAP */
 
 #define AT_EXECFN			31	/* filename of program */
+#define AT_SYSINFO			32
+#define AT_SYSINFO_EHDR		33
