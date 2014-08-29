@@ -72,7 +72,7 @@ static void run(struct elf_header *executable, struct elf_header *interpreter, i
 	stack[idx++] = (const char *)AT_SECURE;
 	stack[idx++] = (const char *)0;
 	stack[idx++] = (const char *)AT_ENTRY;
-	stack[idx++] = (const char *)executable->eh.e_entry;
+	stack[idx++] = (const char *)executable->load_base + executable->eh.e_entry;
 	stack[idx++] = NULL;
 
 	/* Call executable entrypoint */
@@ -141,6 +141,10 @@ static int load_elf(const char *filename, struct elf_header **executable, struct
 			elf->low = min(elf->low, ph->p_vaddr);
 			elf->high = max(elf->high, ph->p_vaddr + ph->p_memsz);
 		}
+		else if (ph->p_type == PT_DYNAMIC)
+			log_debug("PT_DYNAMIC: vaddr %x, size %x\n", ph->p_vaddr, ph->p_memsz);
+		else if (ph->p_type == PT_PHDR) /* Patch phdr pointer in PT_PHDR, glibc uses it to determine load offset */
+			ph->p_vaddr = elf->pht;
 	}
 
 	/* Find virtual address range for ET_DYN executable */
@@ -174,7 +178,7 @@ static int load_elf(const char *filename, struct elf_header **executable, struct
 				prot |= PROT_WRITE;
 			if (ph->p_flags & PF_X)
 				prot |= PROT_EXEC;
-			mm_mmap(elf->load_base + addr, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANONYMOUS | MAP_FIXED, NULL, 0);
+			mm_mmap(elf->load_base + addr, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED, NULL, 0);
 			f->op_vtable->pread(f, (char *)(elf->load_base + ph->p_vaddr), ph->p_filesz, ph->p_offset);
 			mm_update_brk((uint32_t)addr + size);
 		}
