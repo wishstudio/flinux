@@ -195,20 +195,6 @@ void mm_update_brk(void *brk)
 	mm->brk = max(mm->brk, brk);
 }
 
-/* Determine if range [start_page, end_page] of pages are all free */
-static int is_pages_free(uint32_t start_page, uint32_t end_page)
-{
-	for (struct map_entry *e = mm->map_list; e; e = e->next)
-		if (e->start_page > end_page)
-			return 1;
-		else if (e->end_page >= start_page)
-		{
-			log_debug("is_pages_free: conflict with mapping [%x, %x)\n", e->start_page * PAGE_SIZE, (e->end_page + 1) * PAGE_SIZE);
-			return 0;
-		}
-	return 1;
-}
-
 /* Find 'count' consecutive free pages in address range [low, high), return 0 if not found */
 static uint32_t find_free_pages(uint32_t count, uint32_t low, uint32_t high)
 {
