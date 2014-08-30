@@ -201,8 +201,11 @@ static int is_pages_free(uint32_t start_page, uint32_t end_page)
 	for (struct map_entry *e = mm->map_list; e; e = e->next)
 		if (e->start_page > end_page)
 			return 1;
-		else if (e->start_page >= start_page || e->end_page >= start_page)
+		else if (e->end_page >= start_page)
+		{
+			log_debug("is_pages_free: conflict with mapping [%x, %x)\n", e->start_page * PAGE_SIZE, (e->end_page + 1) * PAGE_SIZE);
 			return 0;
+		}
 	return 1;
 }
 
@@ -225,23 +228,6 @@ static uint32_t find_free_pages(uint32_t count, uint32_t low, uint32_t high)
 uint32_t mm_find_free_pages(uint32_t count_bytes)
 {
 	return find_free_pages(GET_PAGE(ALIGN_TO_PAGE(count_bytes)), ADDRESS_ALLOCATION_LOW, ADDRESS_ALLOCATION_HIGH);
-}
-
-/* Find map entry of given address, also return the preceding entry (NULL if first) */
-static int find_entry(void *addr, struct map_entry **entry, struct map_entry **pred)
-{
-	uint32_t page = GET_PAGE(addr);
-	struct map_entry *p = NULL;
-	for (struct map_entry *e = mm->map_list; e; p = e, e = e->next)
-		if (page < e->start_page)
-			return 0;
-		else if (page >= e->start_page && page <= e->end_page)
-		{
-			*entry = e;
-			*pred = p;
-			return 1;
-		}
-	return 0;
 }
 
 static DWORD prot_linux2win(int prot)
@@ -478,14 +464,12 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, struct file *f, of
 	uint16_t start_block = GET_BLOCK(addr);
 	uint16_t end_block = GET_BLOCK((size_t)addr + length - 1);
 
-	/* If address are given, test whether all pages are free.
-	* Otherwise the pages are found by find_free_pages() thus are guaranteed free.
+	/*
+	If address are fixed, unmap conflicting pages,
+	Otherwise the pages are found by find_free_pages() thus are guaranteed free.
 	*/
-	if ((flags & MAP_FIXED) && !is_pages_free(start_page, end_page))
-	{
-		log_debug("Address conflict with existing mapping.");
-		return -EINVAL; /* TODO: Correct flag in this case? */
-	}
+	if ((flags & MAP_FIXED))
+		mm_munmap(addr, length);
 
 	if (!(flags & MAP_ANONYMOUS))
 		prot |= PROT_WRITE; /* TODO: Fix at end */
@@ -594,40 +578,78 @@ int mm_munmap(void *addr, size_t length)
 		return -EINVAL;
 	}
 
-	struct map_entry *entry, *pred;
-	if (!find_entry(addr, &entry, &pred))
-	{
-		return -EINVAL;
-	}
-	uint32_t start_page = entry->start_page;
-	uint32_t end_page = entry->end_page;
-	/* Don't allow partial free */
-	if (GET_PAGE((size_t)addr + length - 1) != end_page)
-	{
-		log_debug("Partial free not supported yet.\n");
-		return -EINVAL;
-	}
-	/* Remove entry from entry list */
-	if (pred == NULL)
-		mm->map_list = entry->next;
-	else
-		pred->next = entry->next;
-	/* Add entry to free list */
-	free_map_entry(entry);
-	for (uint32_t i = start_page; i <= end_page; i++)
-		mm->block_page_count[GET_BLOCK_OF_PAGE(i)]--; /* TODO: Optimization */
-	/* Free unused memory allocations */
-	uint16_t start_block = GET_BLOCK_OF_PAGE(start_page);
-	uint16_t end_block = GET_BLOCK_OF_PAGE(end_page);
-	for (uint16_t i = start_block; i <= end_block; i++)
-	{
-		if (mm->block_page_count[i] == 0)
+	uint32_t unmap_start_page = GET_PAGE(addr);
+	uint32_t unmap_end_page = GET_PAGE((size_t)addr + length - 1);
+	struct map_entry *pred = NULL;
+	for (struct map_entry *e = mm->map_list; e;)
+		if (e->start_page > unmap_end_page)
+			break;
+		else if (e->end_page >= unmap_start_page) /* Conflict found */
 		{
-			NtUnmapViewOfSection(NtCurrentProcess(), GET_BLOCK_ADDRESS(i));
-			NtClose(mm->block_section_handle[i]);
-			mm->block_section_handle[i] = NULL;
+			/* Determined overlapped pages */
+			uint32_t start_page = max(unmap_start_page, e->start_page);
+			uint32_t end_page = min(unmap_end_page, e->end_page);
+			/* Modify entry */
+			if (start_page > e->start_page && end_page < e->end_page)
+			{
+				/* Need to split entry */
+				struct map_entry *ne = new_map_entry();
+				ne->start_page = end_page + 1;
+				ne->end_page = e->end_page;
+				if (ne->f = e->f)
+					ne->offset_pages = e->offset_pages + (ne->start_page - e->start_page);
+				e->end_page = start_page - 1;
+				ne->next = e->next;
+				e->next = ne;
+				pred = e;
+				e = e->next;
+			}
+			else if (start_page > e->start_page)
+			{
+				e->end_page = start_page - 1;
+				pred = e;
+				e = e->next;
+			}
+			else if (end_page < e->end_page)
+			{
+				if (e->f)
+					e->offset_pages += end_page + 1 - e->start_page;
+				e->start_page = end_page + 1;
+				pred = e;
+				e = e->next;
+			}
+			else
+			{
+				/* Remove entry from entry list */
+				if (pred == NULL)
+					mm->map_list = e->next;
+				else
+					pred->next = e->next;
+				struct map_entry *tmp = e;
+				e = e->next;
+				/* Add entry to free list */
+				free_map_entry(tmp);
+			}
+			for (uint32_t i = start_page; i <= end_page; i++)
+				mm->block_page_count[GET_BLOCK_OF_PAGE(i)]--; /* TODO: Optimization */
+			/* Free unused memory allocations */
+			uint16_t start_block = GET_BLOCK_OF_PAGE(start_page);
+			uint16_t end_block = GET_BLOCK_OF_PAGE(end_page);
+			for (uint16_t i = start_block; i <= end_block; i++)
+			{
+				if (mm->block_page_count[i] == 0)
+				{
+					NtUnmapViewOfSection(NtCurrentProcess(), GET_BLOCK_ADDRESS(i));
+					NtClose(mm->block_section_handle[i]);
+					mm->block_section_handle[i] = NULL;
+				}
+			}
 		}
-	}
+		else
+		{
+			pred = e;
+			e = e->next;
+		}
 	return 0;
 }
 
