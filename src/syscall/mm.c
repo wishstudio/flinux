@@ -677,9 +677,51 @@ int sys_munmap(void *addr, size_t length)
 	return mm_munmap(addr, length);
 }
 
-int sys_mprotect(void *addr, size_t len, int prot)
+int sys_mprotect(void *addr, size_t length, int prot)
 {
-	/* TODO */
+	log_debug("mprotect(%x, %x, %x)\n", addr, length, prot);
+	if (!IS_ALIGNED(addr, PAGE_SIZE))
+		return -EINVAL;
+	length = ALIGN_TO_PAGE(length);
+	if ((size_t)addr < ADDRESS_SPACE_LOW || (size_t)addr >= ADDRESS_SPACE_HIGH
+		|| (size_t)addr + length < ADDRESS_SPACE_LOW || (size_t)addr + length >= ADDRESS_SPACE_HIGH
+		|| (size_t)addr + length < (size_t)addr)
+	{
+		return -EINVAL;
+	}
+	/* Validate all pages are mapped */
+	uint32_t start_page = GET_PAGE(addr);
+	uint32_t end_page = GET_PAGE((uint32_t)addr + length - 1);
+	uint32_t last_page = start_page - 1;
+	for (struct map_entry *e = mm->map_list; e; e = e->next)
+		if (e->start_page > end_page)
+			break;
+		else if (e->end_page >= start_page)
+		{
+			if (e->start_page == last_page + 1)
+				last_page = e->end_page;
+			else
+				break;
+		}
+	if (last_page != end_page)
+		return -ENOMEM;
+	;
+	/* Change protection flags */
+	uint32_t j = start_page;
+	for (uint32_t i = start_page; i <= end_page + 1; i++)
+		if (mm->page_prot[i] != mm->page_prot[j] || i == end_page + 1)
+		{
+			int old_prot = mm->page_prot[j];
+			DWORD protection, oldProtection;
+			if (old_prot & PROT_WRITE)
+				protection = prot_linux2win(prot);
+			else
+				protection = prot_linux2win(prot & ~PROT_WRITE);
+			VirtualProtect(GET_PAGE_ADDRESS(j), (i - j) * PAGE_SIZE, protection, &oldProtection);
+		}
+	for (uint32_t i = start_page; i <= end_page; i++)
+		mm->page_prot[i] = prot;
+	return 0;
 }
 
 int sys_msync(void *addr, size_t len, int flags)
