@@ -5,10 +5,10 @@
 #include <stdint.h>
 #include <Windows.h>
 
-typedef int syscall_fn(int ebx, int ecx, int edx, int esi, int edi);
+typedef int syscall_fn(int ebx, int ecx, int edx, int esi, int edi, int ebp);
 
 #define SYSCALL_COUNT 338
-#define SYSCALL(name) extern int name(int ebx, int ecx, int edx, int esi, int edi, PCONTEXT context);
+#define SYSCALL(name) extern int name(int ebx, int ecx, int edx, int esi, int edi, int ebp, PCONTEXT context);
 #include "syscall_table.h"
 #undef SYSCALL
 
@@ -23,7 +23,7 @@ static syscall_fn* syscall_table[SYSCALL_COUNT] =
 static void dispatch_syscall(PCONTEXT context)
 {
 	log_debug("EIP: %x\n", context->Eip);
-	context->Eax = (*syscall_table[context->Eax])(context->Ebx, context->Ecx, context->Edx, context->Esi, context->Edi, context);
+	context->Eax = (*syscall_table[context->Eax])(context->Ebx, context->Ecx, context->Edx, context->Esi, context->Edi, context->Ebp, context);
 }
 
 static LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
