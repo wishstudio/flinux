@@ -217,8 +217,9 @@ static int winfs_stat(struct file *f, struct stat64 *buf)
 		log_debug("GetFileInformationByHandle() failed.\n");
 		return -1;
 	}
+	/* Programs (ld.so) may use st_dev and st_ino to identity files so these must be unique for each file. */
 	buf->st_dev = mkdev(8, 0); // (8, 0): /dev/sda
-	buf->st_ino = ((uint64_t) info.nFileIndexHigh << 32ULL) + info.nFileIndexLow;
+	buf->st_ino = ((uint64_t)info.nFileIndexHigh << 32ULL) + info.nFileIndexLow;
 	if (info.dwFileAttributes & FILE_ATTRIBUTE_READONLY)
 		buf->st_mode = 0555;
 	else

@@ -790,8 +790,6 @@ void stat_from_stat64(struct stat *stat, struct stat64 *stat64)
 	stat->st_mtime_nsec = stat64->st_mtime_nsec;
 	stat->st_ctime = stat64->st_ctime;
 	stat->st_ctime_nsec = stat64->st_ctime_nsec;
-	stat->__unused1 = 0;
-	stat->__unused2 = 0;
 }
 
 int sys_stat(const char *pathname, struct stat *buf)

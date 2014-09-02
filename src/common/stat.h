@@ -37,7 +37,7 @@
 
 struct stat {
 	unsigned long st_dev;
-	unsigned long st_ino;
+	unsigned long __st_ino;
 	unsigned short st_mode;
 	unsigned short st_nlink;
 	unsigned short st_uid;
@@ -52,14 +52,14 @@ struct stat {
 	unsigned long st_mtime_nsec;
 	unsigned long st_ctime;
 	unsigned long st_ctime_nsec;
-	unsigned long __unused1;
-	unsigned long __unused2;
+	unsigned long long st_ino;
 };
 
 #pragma pack(push, 4)
 struct stat64 {
 	unsigned long long st_dev;
-	unsigned long long st_ino;
+	unsigned int __pad0;
+	unsigned long __st_ino;
 	unsigned int st_mode;
 	unsigned int st_nlink;
 	unsigned int st_uid;
@@ -75,8 +75,7 @@ struct stat64 {
 	unsigned int st_mtime_nsec;
 	int st_ctime;
 	unsigned int st_ctime_nsec;
-	unsigned int __unused4;
-	unsigned int __unused5;
+	unsigned long long st_ino;
 };
 #pragma pack(pop)
 
