@@ -381,7 +381,55 @@ static void console_update_termios(struct console_file *console)
 
 static int console_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 {
-	return 0;
+	struct console_file *console = (struct console_file *)f;
+	switch (cmd)
+	{
+	case TCGETS:
+	{
+		struct termios *t = (struct termios *)arg;
+		memcpy(t, &console->termios, sizeof(struct termios));
+		return 0;
+	}
+
+	case TCSETS:
+	case TCSETSW:
+	{
+		struct termios *t = (struct termios *)arg;
+		memcpy(&console->termios, t, sizeof(struct termios));
+		console_update_termios(console);
+		return 0;
+	}
+
+	case TIOCGPGRP:
+	{
+		log_debug("Unsupported TIOCGPGRP: Return fake result.\n");
+		*(pid_t *)arg = 0;
+		return 0;
+	}
+
+	case TIOCSPGRP:
+	{
+		log_debug("Unsupported TIOCSPGRP: Do nothing.\n");
+		return 0;
+	}
+
+	case TIOCGWINSZ:
+	{
+		struct winsize *win = (struct winsize *)arg;
+		CONSOLE_SCREEN_BUFFER_INFO info;
+		GetConsoleScreenBufferInfo(console->out, &info);
+
+		win->ws_col = info.srWindow.Right - info.srWindow.Left + 1;
+		win->ws_row = info.srWindow.Bottom - info.srWindow.Top + 1;
+		win->ws_xpixel = 0;
+		win->ws_ypixel = 0;
+		return 0;
+	}
+
+	default:
+		log_debug("console: unknown ioctl command: %x\n", cmd);
+		return -EINVAL;
+	}
 }
 
 static const struct file_ops console_ops = {
