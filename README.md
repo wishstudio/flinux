@@ -9,6 +9,7 @@ Feature highlights
 ======
 
 * Copy-on-Write fork(2) implementation
+* Dynamically and statically compiled executables
 * NTFS native hardlink
 * Cygwin-style emulated symlink
 * Interprocess pipes
