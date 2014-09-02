@@ -607,6 +607,8 @@ int mm_munmap(void *addr, size_t length)
 			else
 			{
 				/* Remove entry from entry list */
+				if (e->f) /* Release file handle if used */
+					vfs_release(e->f);
 				if (pred == NULL)
 					mm->map_list = e->next;
 				else
