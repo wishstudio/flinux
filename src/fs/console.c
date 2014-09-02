@@ -100,6 +100,38 @@ static WORD get_text_attribute(struct console_file *console)
 	return attr;
 }
 
+static void move_left(struct console_file *console, int count)
+{
+	CONSOLE_SCREEN_BUFFER_INFO info;
+	GetConsoleScreenBufferInfo(console->out, &info);
+	info.dwCursorPosition.X = max(info.dwCursorPosition.X - count, 0);
+	SetConsoleCursorPosition(console->out, info.dwCursorPosition);
+}
+
+static void move_right(struct console_file *console, int count)
+{
+	CONSOLE_SCREEN_BUFFER_INFO info;
+	GetConsoleScreenBufferInfo(console->out, &info);
+	info.dwCursorPosition.X = min(info.dwCursorPosition.X + count, info.dwSize.X - 1);
+	SetConsoleCursorPosition(console->out, info.dwCursorPosition);
+}
+
+static void move_up(struct console_file *console, int count)
+{
+	CONSOLE_SCREEN_BUFFER_INFO info;
+	GetConsoleScreenBufferInfo(console->out, &info);
+	info.dwCursorPosition.Y = max(info.dwCursorPosition.Y - count, 0);
+	SetConsoleCursorPosition(console->out, info.dwCursorPosition);
+}
+
+static void move_down(struct console_file *console, int count)
+{
+	CONSOLE_SCREEN_BUFFER_INFO info;
+	GetConsoleScreenBufferInfo(console->out, &info);
+	info.dwCursorPosition.Y = min(info.dwCursorPosition.Y + count, info.dwSize.Y - 1);
+	SetConsoleCursorPosition(console->out, info.dwCursorPosition);
+}
+
 static void control_escape_param(struct console_file *console, char ch)
 {
 	switch (ch)
@@ -129,19 +161,38 @@ static void control_escape_param(struct console_file *console, char ch)
 			console->params[console->param_count++] = 0;
 		break;
 
+	case 'A':
+		if (console->param_count == 1)
+			move_up(console, console->params[0]);
+		console->processor = NULL;
+		break;
+
+	case 'B':
+		if (console->param_count == 1)
+			move_down(console, console->params[0]);
+		console->processor = NULL;
+		break;
+
+	case 'C':
+		if (console->param_count == 1)
+			move_right(console, console->params[0]);
+		console->processor = NULL;
+		break;
+
+	case 'D':
+		if (console->param_count == 1)
+			move_left(console, console->params[0]);
+		console->processor = NULL;
+		break;
 
 	case 'h':
-		if (console->param_count != 1)
-			log_debug("Too many console parameters.\n");
-		else
+		if (console->param_count == 1)
 			log_debug("console: fake disabling mode %d\n", console->params[0]);
 		console->processor = NULL;
 		break;
 
 	case 'l':
-		if (console->param_count != 1)
-			log_debug("Too many console parameters.\n");
-		else
+		if (console->param_count == 1)
 			log_debug("console: fake disabling mode %d\n", console->params[0]);
 		console->processor = NULL;
 		break;
