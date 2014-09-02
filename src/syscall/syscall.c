@@ -20,9 +20,14 @@ static syscall_fn* syscall_table[SYSCALL_COUNT] =
 };
 #undef SYSCALL
 
+int sys_unimplemented(int _1, int _2, int _3, int _4, int _5, int _6, PCONTEXT context)
+{
+	log_debug("FATAL: Unimplemented syscall: %d\n", context->Eax);
+	ExitProcess(1);
+}
+
 static void dispatch_syscall(PCONTEXT context)
 {
-	log_debug("EIP: %x\n", context->Eip);
 	context->Eax = (*syscall_table[context->Eax])(context->Ebx, context->Ecx, context->Edx, context->Esi, context->Edi, context->Ebp, context);
 }
 
@@ -35,6 +40,7 @@ static LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
 		{
 			if (code[0] == 0xCD && code[1] == 0x80) /* INT 80h */
 			{
+				log_debug("EIP: 0x%x\n", ep->ContextRecord->Eip);
 				ep->ContextRecord->Eip += 2;
 				dispatch_syscall(ep->ContextRecord);
 				return EXCEPTION_CONTINUE_EXECUTION;

@@ -39,7 +39,6 @@
     <ClInclude Include="src\log.h" />
     <ClInclude Include="src\ntdll.h" />
     <ClInclude Include="src\str.h" />
-    <ClInclude Include="src\syscall\err.h" />
     <ClInclude Include="src\syscall\exec.h" />
     <ClInclude Include="src\syscall\fork.h" />
     <ClInclude Include="src\syscall\mm.h" />
@@ -59,7 +58,6 @@
     <ClCompile Include="src\log.c" />
     <ClCompile Include="src\main.c" />
     <ClCompile Include="src\str.c" />
-    <ClCompile Include="src\syscall\err.c" />
     <ClCompile Include="src\syscall\exec.c" />
     <ClCompile Include="src\syscall\fork.c" />
     <ClCompile Include="src\syscall\mm.c" />
