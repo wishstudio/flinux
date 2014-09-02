@@ -129,6 +129,23 @@ static void control_escape_param(struct console_file *console, char ch)
 			console->params[console->param_count++] = 0;
 		break;
 
+
+	case 'h':
+		if (console->param_count != 1)
+			log_debug("Too many console parameters.\n");
+		else
+			log_debug("console: fake disabling mode %d\n", console->params[0]);
+		console->processor = NULL;
+		break;
+
+	case 'l':
+		if (console->param_count != 1)
+			log_debug("Too many console parameters.\n");
+		else
+			log_debug("console: fake disabling mode %d\n", console->params[0]);
+		console->processor = NULL;
+		break;
+
 	case 'm':
 		for (int i = 0; i < console->param_count; i++)
 		{
@@ -182,6 +199,10 @@ static void control_escape_param(struct console_file *console, char ch)
 		/* Set updated text attribute */
 		SetConsoleTextAttribute(console->out, get_text_attribute(console));
 		console->processor = NULL;
+		break;
+
+	case '?':
+		log_debug("warning: ignored '?'.\n");
 		break;
 
 	default:
