@@ -221,7 +221,7 @@ int do_execve(const char *filename, int argc, char *argv[], int env_size, char *
 
 static char *const startup = (char *)STARTUP_DATA_BASE;
 
-int sys_execve(const char *filename, char *argv[], char *envp[], int _4, int _5, PCONTEXT context)
+int sys_execve(const char *filename, char *argv[], char *envp[], int _4, int _5, int _6, PCONTEXT context)
 {
 	/* TODO: Deal with argv/envp == NULL */
 	/* TODO: Don't destroy things on failure */
