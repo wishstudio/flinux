@@ -155,6 +155,96 @@ size_t sys_pwrite64(int fd, const char *buf, size_t count, loff_t offset)
 		return -EBADF;
 }
 
+size_t sys_readv(int fd, const struct iovec *iov, int iovcnt)
+{
+	log_debug("readv(%d, 0x%x, %d)\n", fd, iov, iovcnt);
+	struct file *f = vfs->fds[fd];
+	if (f && f->op_vtable->read)
+	{
+		size_t count = 0;
+		for (int i = 0; i < iovcnt; i++)
+		{
+			int r = f->op_vtable->read(f, iov[i].iov_base, iov[i].iov_len);
+			if (r < 0)
+				return r;
+			count += r;
+			if (r < iov[i].iov_len)
+				return count;
+		}
+		return count;
+	}
+	else
+		return -EBADF;
+}
+
+size_t sys_writev(int fd, const struct iovec *iov, int iovcnt)
+{
+	log_debug("writev(%d, 0x%x, %d)\n", fd, iov, iovcnt);
+	struct file *f = vfs->fds[fd];
+	if (f && f->op_vtable->write)
+	{
+		size_t count = 0;
+		for (int i = 0; i < iovcnt; i++)
+		{
+			int r = f->op_vtable->write(f, iov[i].iov_base, iov[i].iov_len);
+			if (r < 0)
+				return r;
+			count += r;
+			if (r < iov[i].iov_len)
+				return count;
+		}
+		return count;
+	}
+	else
+		return -EBADF;
+}
+
+size_t sys_preadv(int fd, const struct iovec *iov, int iovcnt, off_t offset)
+{
+	log_debug("preadv(%d, 0x%x, %d, 0x%x)\n", fd, iov, iovcnt, offset);
+	struct file *f = vfs->fds[fd];
+	if (f && f->op_vtable->pread)
+	{
+		size_t count = 0;
+		for (int i = 0; i < iovcnt; i++)
+		{
+			int r = f->op_vtable->pread(f, iov[i].iov_base, iov[i].iov_len, offset);
+			if (r < 0)
+				return r;
+			count += r;
+			offset += r;
+			if (r < iov[i].iov_len)
+				return count;
+		}
+		return count;
+	}
+	else
+		return -EBADF;
+}
+
+size_t sys_pwritev(int fd, const struct iovec *iov, int iovcnt, off_t offset)
+{
+	log_debug("pwritev(%d, 0x%x, %d, 0x%x)\n", fd, iov, iovcnt, offset);
+	struct file *f = vfs->fds[fd];
+	if (f && f->op_vtable->pwrite)
+	{
+		size_t count = 0;
+		for (int i = 0; i < iovcnt; i++)
+		{
+			int r = f->op_vtable->pwrite(f, iov[i].iov_base, iov[i].iov_len, offset);
+			if (r < 0)
+				return r;
+			count += r;
+			offset += r;
+			if (r < iov[i].iov_len)
+				return count;
+		}
+		return count;
+	}
+	else
+		return -EBADF;
+}
+
 off_t sys_lseek(int fd, off_t offset, int whence)
 {
 	log_debug("lseek(%d, %d, %d)\n", fd, offset, whence);

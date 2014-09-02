@@ -2,6 +2,7 @@
 
 #include <common/stat.h>
 #include <common/dirent.h>
+#include <common/uio.h>
 #include <fs/file.h>
 
 #include <stdint.h>
@@ -21,6 +22,10 @@ size_t sys_read(int fd, char *buf, size_t count);
 size_t sys_write(int fd, const char *buf, size_t count);
 size_t sys_pread64(int fd, char *buf, size_t count, loff_t offset);
 size_t sys_pwrite64(int fd, const char *buf, size_t count, loff_t offset);
+size_t sys_readv(int fd, const struct iovec *iov, int iovcnt);
+size_t sys_writev(int fd, const struct iovec *iov, int iovcnt);
+size_t sys_preadv(int fd, const struct iovec *iov, int iovcnt, off_t offset);
+size_t sys_pwritev(int fd, const struct iovec *iov, int iovcnt, off_t offset);
 off_t sys_lseek(int fd, off_t offset, int whence);
 int sys_llseek(unsigned long offset_high, unsigned long offset_low, loff_t *result, int whence);
 

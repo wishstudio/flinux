@@ -121,6 +121,9 @@
     <ClInclude Include="src\common\utime.h">
       <Filter>common</Filter>
     </ClInclude>
+    <ClInclude Include="src\common\uio.h">
+      <Filter>common</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
