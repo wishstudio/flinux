@@ -1,6 +1,7 @@
 #include <common/errno.h>
 #include <common/fcntl.h>
 #include <fs/console.h>
+#include <fs/devfs.h>
 #include <fs/pipe.h>
 #include <fs/winfs.h>
 #include <syscall/mm.h>
@@ -76,6 +77,7 @@ void vfs_init()
 	vfs->fds[1] = console;
 	vfs->fds[2] = console;
 	vfs_add(winfs_alloc());
+	vfs_add(devfs_alloc());
 	/* Initialize CWD */
 	//static wchar_t wcwd[PATH_MAX];
 	//int len = GetCurrentDirectoryW(PATH_MAX, wcwd);
@@ -457,6 +459,8 @@ int vfs_open(const char *pathname, int flags, int mode, struct file **f)
 		struct file_system *fs;
 		char *subpath;
 		if (!find_filesystem(path, &fs, &subpath))
+			return -ENOENT;
+		if (!fs->open)
 			return -ENOENT;
 		/* Try opening the file directly */
 		log_debug("Try opening %s\n", path);
@@ -944,4 +948,12 @@ int sys_chown(const char *pathname, uid_t owner, gid_t group)
 {
 	log_debug("chown(\"%s\", %d, %d)\n", pathname, owner, group);
 	return 0;
+}
+
+int sys_openat(int dirfd, const char *pathname, int flags)
+{
+	log_debug("openat(%d, %s, 0x%x)\n", dirfd, pathname, flags);
+	/* TODO */
+	log_debug("Returning -ENOENT\n");
+	return -ENOENT;
 }

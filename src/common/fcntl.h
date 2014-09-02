@@ -25,3 +25,10 @@
 #define O_TMPFILE		(__O_TMPFILE | O_DIRECTORY)
 #define O_TMPFILE_MASK	(__O_TMPFILE | O_DIRECTORY | O_CREAT)
 #define O_NDELAY		O_NONBLOCK
+
+#define AT_FDCWD				-100    /* Special value used to indicate openat should use the current working directory. */
+#define AT_SYMLINK_NOFOLLOW     0x100   /* Do not follow symbolic links.  */
+#define AT_REMOVEDIR            0x200   /* Remove directory instead of unlinking file.  */
+#define AT_SYMLINK_FOLLOW       0x400   /* Follow symbolic links.  */
+#define AT_NO_AUTOMOUNT         0x800   /* Suppress terminal automount traversal */
+#define AT_EMPTY_PATH           0x1000  /* Allow empty relative pathname */

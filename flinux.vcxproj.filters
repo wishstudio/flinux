@@ -121,6 +121,9 @@
     <ClInclude Include="src\common\uio.h">
       <Filter>common</Filter>
     </ClInclude>
+    <ClInclude Include="src\fs\devfs.h">
+      <Filter>fs</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
@@ -158,6 +161,9 @@
       <Filter>fs</Filter>
     </ClCompile>
     <ClCompile Include="src\fs\console.c">
+      <Filter>fs</Filter>
+    </ClCompile>
+    <ClCompile Include="src\fs\devfs.c">
       <Filter>fs</Filter>
     </ClCompile>
   </ItemGroup>
