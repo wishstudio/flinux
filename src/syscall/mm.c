@@ -703,7 +703,7 @@ int sys_mprotect(void *addr, size_t length, int prot)
 			else
 				break;
 		}
-	if (last_page != end_page)
+	if (last_page < end_page)
 		return -ENOMEM;
 	;
 	/* Change protection flags */
