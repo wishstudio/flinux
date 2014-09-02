@@ -307,24 +307,28 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 			return 0;
 		}
 		struct instruction_desc *desc;
-		int modrm_offset;
+		int inst_len;
 		if (code[prefix_end] == 0x0F)
 		{
 			log_debug("Opcode: 0x0F%02x\n", code[prefix_end + 1]);
 			desc = &two_byte_inst[code[prefix_end + 1]];
-			modrm_offset = 2;
+			inst_len = 2;
 		}
 		else
 		{
 			log_debug("Opcode: 0x%02x\n", code[prefix_end]);
 			desc = &one_byte_inst[code[prefix_end]];
-			modrm_offset = 1;
+			inst_len = 1;
 		}
 
 		int idx = 0;
+		#define JUMP_TO_TRAMPOLINE() \
+			context->Eip = tls->trampoline; \
+			log_debug("Building trampoline successfully at %x\n", tls->trampoline)
 		#define GEN_BYTE(x)		tls->trampoline[idx++] = (x)
 		#define GEN_WORD(x)		*(uint16_t *)&tls->trampoline[(idx += 2) - 2] = (x)
 		#define GEN_DWORD(x)	*(uint32_t *)&tls->trampoline[(idx += 4) - 4] = (x)
+		#define PATCH_DWORD(idx, x)		*(uint32_t *)&tls->trampoline[idx] = (x)
 		#define COPY_PREFIX() \
 			/* Copy prefixes */ \
 			for (int i = 0; i < prefix_end; i++) \
@@ -335,9 +339,49 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 		#define GEN_EPILOGUE(inst_len) \
 			GEN_BYTE(0x68); /* PUSH imm32 */ \
 			GEN_DWORD(context->Eip + prefix_end + (inst_len)); \
-			GEN_BYTE(0xC3); /* RET */ \
-			context->Eip = tls->trampoline; \
-			log_debug("Building trampoline successfully at %x\n", tls->trampoline)
+			GEN_BYTE(0xC3); /* RET */
+		#define GEN_MODRM_R(changed_r) \
+			{ \
+				uint8_t modrm = code[prefix_end + inst_len]; \
+				if (changed_r != -1) \
+					modrm = (modrm & 0xC7) | (changed_r << 3);; \
+				uint8_t mod = MODRM_MOD(modrm); \
+				if (mod == 3) \
+				{ \
+					log_debug("ModR/M: Pure register access."); \
+					return 0; \
+				} \
+				inst_len++; \
+				int sib = (MODRM_M(modrm) == 4); \
+				int addr_bytes = 0; \
+				uint32_t base_addr = 0; \
+				if (mod == 1) /* disp8 (sign-extended) */ \
+				{ \
+					base_addr = (int8_t)code[prefix_end + inst_len + sib]; \
+					addr_bytes = 1; \
+				} \
+				else if (mod == 2 /* disp32 */ \
+					|| (mod == 0 && MODRM_M(modrm) == 5)) /* special case: immediate disp32 */ \
+				{ \
+					base_addr = *(uint32_t *)&code[prefix_end + inst_len + sib]; \
+					addr_bytes = 4; \
+				} \
+				base_addr += tls->gs_addr; \
+				if (mod == 0 && MODRM_M(modrm) == 5) /* special case: immediate disp32 */ \
+				{ \
+					GEN_BYTE(modrm); \
+					GEN_DWORD(base_addr); \
+				} \
+				else \
+				{ \
+					GEN_BYTE((modrm & 0x3F) | 0x80); /* Mod == 10: [...] + disp32 */ \
+					if (sib) \
+						GEN_BYTE(code[prefix_end + inst_len]); \
+					GEN_DWORD(base_addr); \
+				} \
+				inst_len += sib + addr_bytes; \
+			}
+		#define GEN_MODRM() GEN_MODRM_R(-1)
 
 		switch (desc->type)
 		{
@@ -349,52 +393,21 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 			COPY_PREFIX();
 
 			/* Copy opcode */
-			for (int i = prefix_end; i < prefix_end + modrm_offset; i++)
+			for (int i = prefix_end; i < prefix_end + inst_len; i++)
 				GEN_BYTE(code[i]);
 
 			/* Patch ModR/M */
-			uint8_t modrm = code[prefix_end + modrm_offset];
-			uint8_t mod = MODRM_MOD(modrm);
-			if (mod == 3)
-			{
-				log_debug("ModR/M: Pure register access.");
-				return 0;
-			}
-			int sib = (MODRM_M(modrm) == 4);
-			int addr_bytes = 0;
-			uint32_t base_addr = 0;
-			if (mod == 1) /* disp8 (sign-extended) */
-			{
-				base_addr = (int8_t) code[prefix_end + modrm_offset + 1 + sib];
-				addr_bytes = 1;
-			}
-			else if (mod == 2 /* disp32 */
-				|| (mod == 0 && MODRM_M(modrm) == 5)) /* special case: immediate disp32 */
-			{
-				base_addr = *(uint32_t *) &code[prefix_end + modrm_offset + 1 + sib];
-				addr_bytes = 4;
-			}
-			base_addr += tls->gs_addr;
-			if (mod == 0 && MODRM_M(modrm) == 5) /* special case: immediate disp32 */
-			{
-				GEN_BYTE(modrm);
-				GEN_DWORD(base_addr);
-			}
-			else
-			{
-				GEN_BYTE((modrm & 0x3F) | 0x80); /* Mod == 10: [...] + disp32 */
-				if (sib)
-					GEN_BYTE(code[prefix_end + modrm_offset + 1]);
-				GEN_DWORD(base_addr);
-			}
+			GEN_MODRM();
+
 			/* Copy immediate value */
 			int imm_bytes = desc->imm_bytes;
 			if (imm_bytes == SIZE_DEPENDS_ON_PREFIX)
 				imm_bytes = operand_size_prefix? 2: 4;
 			for (int i = 0; i < imm_bytes; i++)
-				GEN_BYTE(code[prefix_end + modrm_offset + 1 + sib + addr_bytes + i]);
+				GEN_BYTE(code[prefix_end + inst_len + i]);
 
-			GEN_EPILOGUE(modrm_offset + 1 + sib + addr_bytes + imm_bytes);
+			GEN_EPILOGUE(inst_len + imm_bytes);
+			JUMP_TO_TRAMPOLINE();
 			return 1;
 		}
 
@@ -412,8 +425,28 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 			GEN_BYTE(code[prefix_end]);
 			GEN_DWORD(addr);
 			GEN_EPILOGUE(5);
+			JUMP_TO_TRAMPOLINE();
 			return 1;
 		}
+
+		case INST_TYPE_EXTENSION(5):
+			if (MODRM_CODE(code[prefix_end + inst_len]) == 2)
+			{
+				/* CALL r/m16; CALL r/m32; */
+				/* Push return address */
+				GEN_BYTE(0x68); /* PUSH imm32 */
+				int patch_idx = idx;
+				GEN_DWORD(0); /* Patch later */
+				COPY_PREFIX();
+				/* Change to JMP r/m16; JMP r/m32; */
+				GEN_BYTE(0xFF);
+				GEN_MODRM_R(4);
+				/* Patch return address */
+				PATCH_DWORD(patch_idx, context->Eip + prefix_end + (inst_len));
+				JUMP_TO_TRAMPOLINE();
+				return 1;
+			}
+			/* Fall through */
 
 		default: log_debug("Unhandled instruction type: %d\n", desc->type); return 0;
 		}
