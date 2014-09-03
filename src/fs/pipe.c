@@ -10,6 +10,12 @@ struct pipe_file
 	int is_read;
 };
 
+static HANDLE pipe_get_handle(struct file *f)
+{
+	struct pipe_file *pipe = (struct pipe_file *) f;
+	return pipe->handle;
+}
+
 static int pipe_close(struct file *f)
 {
 	struct pipe_file *pipe = (struct pipe_file *)f;

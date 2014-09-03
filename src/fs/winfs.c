@@ -95,7 +95,7 @@ static int winfs_close(struct file *f)
 		return -1;
 }
 
-static size_t winfs_get_handle(struct file *f)
+static HANDLE winfs_get_handle(struct file *f)
 {
 	return ((struct winfs_file *)f)->handle;
 }
