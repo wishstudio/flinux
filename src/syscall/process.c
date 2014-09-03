@@ -3,6 +3,7 @@
 #include <common/wait.h>
 #include <syscall/mm.h>
 #include <syscall/process.h>
+#include <datetime.h>
 #include <log.h>
 
 #include <Windows.h>
@@ -227,6 +228,21 @@ int sys_time(int *c)
 	if (c)
 		*c = (int)t;
 	return t;
+}
+
+int sys_gettimeofday(struct timeval *tv, struct timezone *tz)
+{
+	log_debug("gettimeofday(0x%x, 0x%x)\n", tv, tz);
+	if (tz)
+		log_debug("warning: timezone is not NULL\n");
+	if (tv)
+	{
+		/* TODO: Use GetSystemTimePreciseAsFileTime() on Windows 8 */
+		FILETIME system_time;
+		GetSystemTimeAsFileTime(&system_time);
+		filetime_to_unix_timeval(&system_time, &tv);
+	}
+	return 0;
 }
 
 int sys_getrlimit(int resource, struct rlimit *rlim)

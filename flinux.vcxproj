@@ -31,6 +31,7 @@
     <ClInclude Include="src\common\utime.h" />
     <ClInclude Include="src\common\utsname.h" />
     <ClInclude Include="src\common\wait.h" />
+    <ClInclude Include="src\datetime.h" />
     <ClInclude Include="src\fs\console.h" />
     <ClInclude Include="src\fs\devfs.h" />
     <ClInclude Include="src\fs\file.h" />
@@ -52,6 +53,7 @@
     <ClInclude Include="src\syscall\x86_inst.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\datetime.c" />
     <ClCompile Include="src\fs\console.c" />
     <ClCompile Include="src\fs\devfs.c" />
     <ClCompile Include="src\fs\pipe.c" />

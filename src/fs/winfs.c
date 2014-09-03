@@ -3,8 +3,9 @@
 #include <fs/winfs.h>
 #include <syscall/mm.h>
 #include <syscall/vfs.h>
-#include <log.h>
+#include <datetime.h>
 #include <heap.h>
+#include <log.h>
 #include <str.h>
 
 #include <Windows.h>
@@ -44,48 +45,6 @@ static int filename_to_nt_pathname(const char *filename, WCHAR *buf, int buf_siz
 	if (fl == 0)
 		return 0;
 	return out_size + fl;
-}
-
-#define NANOSECONDS_PER_TICK	100ULL
-#define NANOSECONDS_PER_SECOND	1000000000ULL
-#define TICKS_PER_SECOND		10000000ULL
-#define SEC_TO_UNIX_EPOCH		11644473600ULL
-
-static uint64_t filetime_to_unix(FILETIME *filetime)
-{
-	uint64_t ticks = ((uint64_t)filetime->dwHighDateTime << 32ULL) + filetime->dwLowDateTime;
-	if (ticks < SEC_TO_UNIX_EPOCH * TICKS_PER_SECOND) /* Out of range */
-		return -1;
-	ticks -= SEC_TO_UNIX_EPOCH * TICKS_PER_SECOND;
-	return ticks * NANOSECONDS_PER_TICK;
-}
-
-static uint64_t filetime_to_unix_sec(FILETIME *filetime)
-{
-	uint64_t nsec = filetime_to_unix(filetime);
-	if (nsec == -1)
-		return -1;
-	return nsec / NANOSECONDS_PER_SECOND;
-}
-
-static uint64_t filetime_to_unix_nsec(FILETIME *filetime)
-{
-	uint64_t nsec = filetime_to_unix(filetime);
-	if (nsec == -1)
-		return -1;
-	return nsec % NANOSECONDS_PER_SECOND;
-}
-
-static void unix_to_filetime(uint64_t nsec, FILETIME *filetime)
-{
-	uint64_t ticks = nsec / NANOSECONDS_PER_TICK;
-	filetime->dwLowDateTime = (DWORD)(ticks % 32ULL);
-	filetime->dwHighDateTime = (DWORD)(ticks / 32ULL);
-}
-
-static void unix_timeval_to_filetime(const struct timeval *time, FILETIME *filetime)
-{
-	unix_to_filetime((uint64_t)time->tv_sec * 1000000 + (uint64_t)time->tv_usec, filetime);
 }
 
 /*

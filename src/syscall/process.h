@@ -32,6 +32,7 @@ int sys_olduname(struct old_utsname *buf);
 int sys_uname(struct utsname *buf);
 
 int sys_time(int *r);
+int sys_gettimeofday(struct timeval *tv, struct timezone *tz);
 
 int sys_getrlimit(int resource, struct rlimit *rlim);
 int sys_setrlimit(int resource, const struct rlimit *rlim);

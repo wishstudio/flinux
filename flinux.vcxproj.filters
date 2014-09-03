@@ -124,6 +124,7 @@
     <ClInclude Include="src\fs\devfs.h">
       <Filter>fs</Filter>
     </ClInclude>
+    <ClInclude Include="src\datetime.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
@@ -166,6 +167,7 @@
     <ClCompile Include="src\fs\devfs.c">
       <Filter>fs</Filter>
     </ClCompile>
+    <ClCompile Include="src\datetime.c" />
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="src\ntdll.def" />
