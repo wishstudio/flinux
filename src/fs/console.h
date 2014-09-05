@@ -2,4 +2,4 @@
 
 #include <fs/file.h>
 
-struct file *console_alloc();
+int console_alloc(struct file **in_file, struct file **out_file);

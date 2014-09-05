@@ -71,11 +71,12 @@ void vfs_close(int fd)
 void vfs_init()
 {
 	mm_mmap(VFS_DATA_BASE, sizeof(struct vfs_data), PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, NULL, 0);
-	struct file *console = console_alloc();
-	console->ref = 3;
-	vfs->fds[0] = console;
-	vfs->fds[1] = console;
-	vfs->fds[2] = console;
+	struct file *console_in, *console_out;
+	console_alloc(&console_in, &console_out);
+	console_out->ref++;
+	vfs->fds[0] = console_in;
+	vfs->fds[1] = console_out;
+	vfs->fds[2] = console_out;
 	vfs_add(winfs_alloc());
 	vfs_add(devfs_alloc());
 	/* Initialize CWD */
@@ -956,4 +957,10 @@ int sys_openat(int dirfd, const char *pathname, int flags)
 	/* TODO */
 	log_debug("Returning -ENOENT\n");
 	return -ENOENT;
+}
+
+int sys_poll(struct pollfd *fds, int nfds, int timeout)
+{
+	log_debug("poll(0x%x, %d, %d)\n", fds, nfds, timeout);
+	return 0;
 }

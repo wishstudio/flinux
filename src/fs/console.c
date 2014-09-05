@@ -13,9 +13,9 @@
 #define MAX_INPUT			256
 #define MAX_CANON			256
 
-struct console_file
+struct console_state
 {
-	struct file base_file;
+	int ref;
 	HANDLE in, out;
 	int params[CONSOLE_MAX_PARAMS];
 	int param_count;
@@ -26,7 +26,14 @@ struct console_file
 	void (*processor)(struct console_file *console, char ch);
 };
 
-static WORD get_text_attribute(struct console_file *console)
+struct console_file
+{
+	struct file base_file;
+	struct console_state *state;
+	int is_read;
+};
+
+static WORD get_text_attribute(struct console_state *console)
 {
 	WORD attr = 0;
 	if (console->bright)
@@ -100,7 +107,7 @@ static WORD get_text_attribute(struct console_file *console)
 	return attr;
 }
 
-static void move_left(struct console_file *console, int count)
+static void move_left(struct console_state *console, int count)
 {
 	CONSOLE_SCREEN_BUFFER_INFO info;
 	GetConsoleScreenBufferInfo(console->out, &info);
@@ -108,7 +115,7 @@ static void move_left(struct console_file *console, int count)
 	SetConsoleCursorPosition(console->out, info.dwCursorPosition);
 }
 
-static void move_right(struct console_file *console, int count)
+static void move_right(struct console_state *console, int count)
 {
 	CONSOLE_SCREEN_BUFFER_INFO info;
 	GetConsoleScreenBufferInfo(console->out, &info);
@@ -116,7 +123,7 @@ static void move_right(struct console_file *console, int count)
 	SetConsoleCursorPosition(console->out, info.dwCursorPosition);
 }
 
-static void move_up(struct console_file *console, int count)
+static void move_up(struct console_state *console, int count)
 {
 	CONSOLE_SCREEN_BUFFER_INFO info;
 	GetConsoleScreenBufferInfo(console->out, &info);
@@ -124,7 +131,7 @@ static void move_up(struct console_file *console, int count)
 	SetConsoleCursorPosition(console->out, info.dwCursorPosition);
 }
 
-static void move_down(struct console_file *console, int count)
+static void move_down(struct console_state *console, int count)
 {
 	CONSOLE_SCREEN_BUFFER_INFO info;
 	GetConsoleScreenBufferInfo(console->out, &info);
@@ -132,7 +139,7 @@ static void move_down(struct console_file *console, int count)
 	SetConsoleCursorPosition(console->out, info.dwCursorPosition);
 }
 
-static void control_escape_param(struct console_file *console, char ch)
+static void control_escape_param(struct console_state *console, char ch)
 {
 	switch (ch)
 	{
@@ -262,7 +269,7 @@ static void control_escape_param(struct console_file *console, char ch)
 	}
 }
 
-static void control_escape(struct console_file *console, char ch)
+static void control_escape(struct console_state *console, char ch)
 {
 	switch (ch)
 	{
@@ -277,7 +284,7 @@ static void control_escape(struct console_file *console, char ch)
 	}
 }
 
-static void console_add_input(struct console_file *console, char *str, size_t size)
+static void console_add_input(struct console_state *console, char *str, size_t size)
 {
 	/* TODO: Detect input buffer wrapping */
 	for (size_t i = 0; i < size; i++)
@@ -290,14 +297,23 @@ static void console_add_input(struct console_file *console, char *str, size_t si
 int console_close(struct file *f)
 {
 	struct console_file *console = (struct console_file *)f;
-	CloseHandle(console->in);
-	CloseHandle(console->out);
+	if (--console->state->ref == 0)
+	{
+		CloseHandle(console->state->in);
+		CloseHandle(console->state->out);
+		kfree(console->state, sizeof(struct console_state));
+	}
+	kfree(console, sizeof(struct console_file));
 	return 0;
 }
 
 size_t console_read(struct file *f, char *buf, size_t count)
 {
-	struct console_file *console = (struct console_file *)f;
+	struct console_file *console_file = (struct console_file *)f;
+	if (!console_file->is_read)
+		return -EBADF;
+	;
+	struct console_state *console = (struct console_state *) console_file->state;
 	size_t bytes_read = 0;
 	while (console->input_buffer_head != console->input_buffer_tail && count > 0)
 	{
@@ -397,7 +413,11 @@ size_t console_read(struct file *f, char *buf, size_t count)
 
 size_t console_write(struct file *f, const char *buf, size_t count)
 {
-	struct console_file *console = (struct console_file *)f;
+	struct console_file *console_file = (struct console_file *)f;
+	if (console_file->is_read)
+		return -EBADF;
+	;
+	struct console_state *console = (struct console_state *) console_file->state;
 	size_t last = -1;
 	for (size_t i = 0; i < count; i++)
 	{
@@ -453,7 +473,7 @@ static void console_update_termios(struct console_file *console)
 
 static int console_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 {
-	struct console_file *console = (struct console_file *)f;
+	struct console_state *console = ((struct console_file *) f)->state;
 	switch (cmd)
 	{
 	case TCGETS:
@@ -512,7 +532,17 @@ static const struct file_ops console_ops = {
 	.ioctl = console_ioctl,
 };
 
-struct file *console_alloc()
+static struct file *console_alloc_file(struct console_state *console, int is_read)
+{
+	struct console_file *f = (struct console_file *)kmalloc(sizeof(struct console_file));
+	f->base_file.op_vtable = &console_ops;
+	f->base_file.ref = 1;
+	f->is_read = is_read;
+	f->state = console;
+	return f;
+}
+
+int console_alloc(struct file **in_file, struct file **out_file)
 {
 	SECURITY_ATTRIBUTES attr;
 	attr.nLength = sizeof(SECURITY_ATTRIBUTES);
@@ -522,18 +552,17 @@ struct file *console_alloc()
 	if (in == INVALID_HANDLE_VALUE)
 	{
 		log_debug("CreateFile(\"CONIN$\") failed, error code: %d\n", GetLastError());
-		return NULL;
+		return -EIO;
 	}
 	HANDLE out = CreateFileA("CONOUT$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &attr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (out == INVALID_HANDLE_VALUE)
 	{
 		CloseHandle(in);
 		log_debug("CreateFile(\"CONOUT$\") failed, error code: %d\n", GetLastError());
-		return NULL;
+		return -EIO;
 	}
-	struct console_file *console = (struct console_file *)kmalloc(sizeof(struct console_file));
-	console->base_file.op_vtable = &console_ops;
-	console->base_file.ref = 1;
+	struct console_state *console = (struct console_state *)kmalloc(sizeof(struct console_state));
+	console->ref = 2;
 	console->in = in;
 	console->out = out;
 	console->bright = 0;
@@ -551,5 +580,8 @@ struct file *console_alloc()
 	console->termios.c_cc[VSUSP] = 26;
 	SetConsoleMode(in, 0);
 	SetConsoleMode(out, ENABLE_PROCESSED_OUTPUT | ENABLE_WRAP_AT_EOL_OUTPUT);
-	return console;
+
+	*in_file = console_alloc_file(console, 1);
+	*out_file = console_alloc_file(console, 0);
+	return 0;
 }
