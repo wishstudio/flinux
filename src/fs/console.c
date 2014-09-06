@@ -108,6 +108,27 @@ static WORD get_text_attribute(struct console_state *console)
 	return attr;
 }
 
+static void backspace(struct console_state *console)
+{
+	CONSOLE_SCREEN_BUFFER_INFO info;
+	GetConsoleScreenBufferInfo(console->out, &info);
+	if (info.dwCursorPosition.X == 0)
+	{
+		if (info.dwCursorPosition.Y > 0)
+		{
+			info.dwCursorPosition.X = info.dwSize.X - 1;
+			info.dwCursorPosition.Y--;
+		}
+		else
+			return;
+	}
+	else
+		info.dwCursorPosition.X--;
+	DWORD bytes_written;
+	WriteConsoleOutputCharacterA(console->out, " ", 1, info.dwCursorPosition, &bytes_written);
+	SetConsoleCursorPosition(console->out, info.dwCursorPosition);
+}
+
 static void move_left(struct console_state *console, int count)
 {
 	CONSOLE_SCREEN_BUFFER_INFO info;
@@ -350,32 +371,13 @@ size_t console_read(struct file *f, char *buf, size_t count)
 		if (ir.EventType == KEY_EVENT && ir.Event.KeyEvent.bKeyDown)
 		{
 			char ch = ir.Event.KeyEvent.uChar.AsciiChar;
-			if (ch >= 0x20)
-			{
-				if (console->termios.c_lflag & ICANON)
-				{
-					if (len < MAX_CANON)
-					{
-						line[len++] = ch;
-						if (console->termios.c_lflag & ECHO)
-							WriteConsoleA(console->out, &ch, 1, NULL, NULL);
-					}
-				}
-				else
-				{
-					count--;
-					buf[bytes_read++] = ch;
-					if (console->termios.c_lflag & ECHO)
-						WriteConsoleA(console->out, &ch, 1, NULL, NULL);
-				}
-			}
-			else if (console->termios.c_lflag & ICANON)
+			if (console->termios.c_lflag & ICANON)
 			{
 				switch (ir.Event.KeyEvent.wVirtualKeyCode)
 				{
 				case VK_RETURN:
 				{
-					line[len++] = console->termios.c_iflag & ICRNL? '\n': '\r';
+					line[len++] = console->termios.c_iflag & ICRNL ? '\n' : '\r';
 					size_t r = min(count, len);
 					memcpy(buf + bytes_read, line, r);
 					bytes_read += r;
@@ -397,29 +399,27 @@ size_t console_read(struct file *f, char *buf, size_t count)
 					{
 						len--;
 						if (console->termios.c_lflag & ECHO)
+							backspace(console);
+					}
+				}
+				default:
+					if (ch >= 0x20)
+					{
+						if (len < MAX_CANON)
 						{
-							/* If we're in echo mode, erase deleted characters */
-							CONSOLE_SCREEN_BUFFER_INFO info;
-							GetConsoleScreenBufferInfo(console->out, &info);
-							if (info.dwCursorPosition.X == 0)
-							{
-								if (info.dwCursorPosition.Y > 0)
-								{
-									info.dwCursorPosition.X = info.dwSize.X - 1;
-									info.dwCursorPosition.Y--;
-								}
-								else
-									break; /* switch */
-							}
-							else
-								info.dwCursorPosition.X--;
-							DWORD bytes_written;
-							WriteConsoleOutputCharacterA(console->out, " ", 1, info.dwCursorPosition, &bytes_written);
-							SetConsoleCursorPosition(console->out, info.dwCursorPosition);
+							line[len++] = ch;
+							if (console->termios.c_lflag & ECHO)
+								WriteConsoleA(console->out, &ch, 1, NULL, NULL);
 						}
 					}
 				}
-				}
+			}
+			else /* ICANON */
+			{
+				count--;
+				buf[bytes_read++] = ch;
+				if (console->termios.c_lflag & ECHO)
+					WriteConsoleA(console->out, &ch, 1, NULL, NULL);
 			}
 		}
 		else
@@ -436,31 +436,35 @@ size_t console_write(struct file *f, const char *buf, size_t count)
 	if (console_file->is_read)
 		return -EBADF;
 	;
+	#define OUTPUT() \
+		if (last != -1) \
+		{ \
+			DWORD bytes_written; \
+			WriteConsoleA(console->out, buf + last, i - last, &bytes_written, NULL); \
+			last = -1; \
+		}
 	struct console_state *console = (struct console_state *) console_file->state;
 	size_t last = -1;
-	for (size_t i = 0; i < count; i++)
+	size_t i;
+	for (i = 0; i < count; i++)
 	{
 		char ch = buf[i];
 		if (console->processor)
 			console->processor(console, ch);
 		else if (ch == 0x1B) /* Escape */
 		{
-			if (last != -1)
-			{
-				DWORD bytes_written;
-				WriteConsoleA(console->out, buf + last, i - last, &bytes_written, NULL);
-				last = -1;
-			}
+			OUTPUT();
 			console->processor = control_escape;
+		}
+		else if (ch == 0x08) /* Backspace */
+		{
+			OUTPUT();
+			backspace(console);
 		}
 		else if (last == -1)
 			last = i;
 	}
-	if (last != -1)
-	{
-		DWORD bytes_written;
-		WriteConsoleA(console->out, buf + last, count - last, &bytes_written, NULL);
-	}
+	OUTPUT();
 	return count;
 }
 
