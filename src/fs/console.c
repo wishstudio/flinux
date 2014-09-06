@@ -161,6 +161,39 @@ static void move_down(struct console_state *console, int count)
 	SetConsoleCursorPosition(console->out, info.dwCursorPosition);
 }
 
+static void erase_line(struct console_state *console, int mode)
+{
+	CONSOLE_SCREEN_BUFFER_INFO info;
+	GetConsoleScreenBufferInfo(console->out, &info);
+	COORD start;
+	start.Y = info.dwCursorPosition.Y;
+	int count;
+	if (mode == 0)
+	{
+		/* Erase to end */
+		start.X = info.dwCursorPosition.X;
+		count = info.dwSize.X - start.X;
+	}
+	else if (mode == 1)
+	{
+		/* Erase to begin */
+		start.X = 0;
+		count = info.dwCursorPosition.X;
+	}
+	else if (mode == 2)
+	{
+		/* Erase whole line */
+		start.X = 0;
+		count = info.dwSize.X;
+	}
+	else
+		return;
+	;
+	DWORD num_written;
+	FillConsoleOutputAttribute(console->out, get_text_attribute(console), count, start, &num_written);
+	FillConsoleOutputCharacterW(console->out, L' ', count, start, &num_written);
+}
+
 static void control_escape_param(struct console_state *console, char ch)
 {
 	switch (ch)
@@ -217,6 +250,15 @@ static void control_escape_param(struct console_state *console, char ch)
 	case 'h':
 		if (console->param_count == 1)
 			log_debug("console: fake disabling mode %d\n", console->params[0]);
+		console->processor = NULL;
+		break;
+
+	case 'K':
+		if (console->param_count == 0)
+			erase_line(console, 0);
+		else if (console->param_count == 1)
+			if (console->params[0] == 1 || console->params[0] == 2)
+				erase_line(console, console->params[0]);
 		console->processor = NULL;
 		break;
 
