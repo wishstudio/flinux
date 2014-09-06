@@ -968,7 +968,11 @@ int sys_openat(int dirfd, const char *pathname, int flags)
 int sys_select(int nfds, struct fdset *readfds, struct fdset *writefds, struct fdset *exceptfds, struct timeval *timeout)
 {
 	log_debug("select(%d, 0x%x, 0x%x, 0x%x, 0x%x)\n", nfds, readfds, writefds, exceptfds, timeout);
-	int time = timeout->tv_sec * 1000 + timeout->tv_usec / 1000;
+	int time;
+	if (timeout)
+		time = timeout->tv_sec * 1000 + timeout->tv_usec / 1000;
+	else
+		time = -1;
 	int cnt = 0;
 	struct pollfd *fds = (struct pollfd *)alloca(sizeof(struct pollfd) * nfds);
 	for (int i = 0; i < nfds; i++)

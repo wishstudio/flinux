@@ -240,7 +240,7 @@ int sys_gettimeofday(struct timeval *tv, struct timezone *tz)
 		/* TODO: Use GetSystemTimePreciseAsFileTime() on Windows 8 */
 		FILETIME system_time;
 		GetSystemTimeAsFileTime(&system_time);
-		filetime_to_unix_timeval(&system_time, &tv);
+		filetime_to_unix_timeval(&system_time, tv);
 	}
 	return 0;
 }
