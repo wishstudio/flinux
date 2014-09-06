@@ -5,6 +5,7 @@
 #include <syscall/process.h>
 #include <datetime.h>
 #include <log.h>
+#include <ntdll.h>
 
 #include <Windows.h>
 
@@ -271,4 +272,13 @@ int sys_setrlimit(int resource, const struct rlimit *rlim)
 		log_debug("Unsupported resource: %d\n", resource);
 		return -EINVAL;
 	}
+}
+
+int sys_nanosleep(const struct timespec *req, struct timespec *rem)
+{
+	log_debug("nanospeep(0x%x, 0x%x)\n", req, rem);
+	LARGE_INTEGER delay_interval;
+	delay_interval.QuadPart = ((uint64_t)req->tv_sec * 1000000000ULL + req->tv_nsec) / 100ULL;
+	NtDelayExecution(FALSE, &delay_interval);
+	return 0;
 }

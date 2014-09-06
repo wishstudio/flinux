@@ -281,3 +281,9 @@ NTSYSAPI NTSTATUS NTAPI NtUnmapViewOfSection(
 	_In_		HANDLE ProcessHandle,
 	_In_opt_	PVOID BaseAddress
 	);
+
+/* Thread */
+NTSYSAPI NTSTATUS NTAPI NtDelayExecution(
+	_In_		BOOLEAN Alertable,
+	_In_		PLARGE_INTEGER DelayInterval
+	);

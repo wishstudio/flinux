@@ -36,3 +36,11 @@ int sys_gettimeofday(struct timeval *tv, struct timezone *tz);
 
 int sys_getrlimit(int resource, struct rlimit *rlim);
 int sys_setrlimit(int resource, const struct rlimit *rlim);
+
+struct timespec
+{
+	long tv_sec;
+	long tv_nsec;
+};
+
+int sys_nanosleep(const struct timespec *req, struct timespec *rem);
