@@ -3,6 +3,7 @@
 #include <common/stat.h>
 #include <common/dirent.h>
 #include <common/poll.h>
+#include <common/select.h>
 #include <common/uio.h>
 #include <fs/file.h>
 
@@ -73,4 +74,5 @@ int sys_chown(const char *pathname, uid_t owner, gid_t group);
 
 int sys_openat(int dirfd, const char *pathname, int flags);
 
+int sys_select(int nfds, struct fdset *readfds, struct fdset *writefds, struct fdset *exceptfds, struct timeval *timeout);
 int sys_poll(struct pollfd *fds, int nfds, int timeout);

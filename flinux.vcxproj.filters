@@ -128,6 +128,9 @@
     <ClInclude Include="src\common\poll.h">
       <Filter>common</Filter>
     </ClInclude>
+    <ClInclude Include="src\common\select.h">
+      <Filter>common</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
