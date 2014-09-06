@@ -316,6 +316,19 @@ static void console_add_input(struct console_state *console, char *str, size_t s
 	}
 }
 
+static void console_buffer_add_string(struct console_state *console, char *buf, size_t *bytes_read, size_t *count, char *str, size_t size)
+{
+	while (*count > 0 && size > 0)
+	{
+		buf[(*bytes_read)++] = *str;
+		(*count)--;
+		str++;
+		size--;
+	}
+	if (size > 0)
+		console_add_input(console, str, size);
+}
+
 HANDLE console_get_poll_handle(struct file *f, int **poll_flags)
 {
 	struct console_file *console = (struct console_file *)f;
@@ -416,12 +429,32 @@ size_t console_read(struct file *f, char *buf, size_t count)
 			}
 			else /* ICANON */
 			{
-				if (ch > 0)
+				switch (ir.Event.KeyEvent.wVirtualKeyCode)
 				{
-					count--;
-					buf[bytes_read++] = ch;
-					if (console->termios.c_lflag & ECHO)
-						WriteConsoleA(console->out, &ch, 1, NULL, NULL);
+				case VK_UP:
+					console_buffer_add_string(console, buf, &bytes_read, &count, "\x1B[A", 3);
+					break;
+
+				case VK_DOWN:
+					console_buffer_add_string(console, buf, &bytes_read, &count, "\x1B[B", 3);
+					break;
+
+				case VK_RIGHT:
+					console_buffer_add_string(console, buf, &bytes_read, &count, "\x1B[C", 3);
+					break;
+
+				case VK_LEFT:
+					console_buffer_add_string(console, buf, &bytes_read, &count, "\x1B[D", 3);
+					break;
+					
+				default:
+					if (ch > 0)
+					{
+						count--;
+						buf[bytes_read++] = ch;
+						if (console->termios.c_lflag & ECHO)
+							WriteConsoleA(console->out, &ch, 1, NULL, NULL);
+					}
 				}
 			}
 		}
@@ -458,11 +491,6 @@ size_t console_write(struct file *f, const char *buf, size_t count)
 		{
 			OUTPUT();
 			console->processor = control_escape;
-		}
-		else if (ch == 0x08) /* Backspace */
-		{
-			OUTPUT();
-			backspace(console);
 		}
 		else if (last == -1)
 			last = i;
