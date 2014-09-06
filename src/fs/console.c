@@ -416,10 +416,13 @@ size_t console_read(struct file *f, char *buf, size_t count)
 			}
 			else /* ICANON */
 			{
-				count--;
-				buf[bytes_read++] = ch;
-				if (console->termios.c_lflag & ECHO)
-					WriteConsoleA(console->out, &ch, 1, NULL, NULL);
+				if (ch > 0)
+				{
+					count--;
+					buf[bytes_read++] = ch;
+					if (console->termios.c_lflag & ECHO)
+						WriteConsoleA(console->out, &ch, 1, NULL, NULL);
+				}
 			}
 		}
 		else
