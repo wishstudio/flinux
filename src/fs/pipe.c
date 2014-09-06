@@ -1,4 +1,5 @@
 #include <common/errno.h>
+#include <common/poll.h>
 #include <fs/pipe.h>
 #include <syscall/mm.h>
 #include <log.h>
@@ -10,9 +11,13 @@ struct pipe_file
 	int is_read;
 };
 
-static HANDLE pipe_get_handle(struct file *f)
+static HANDLE pipe_get_poll_handle(struct file *f, int **poll_flags)
 {
 	struct pipe_file *pipe = (struct pipe_file *) f;
+	if (pipe->is_read)
+		*poll_flags = POLLIN;
+	else
+		*poll_flags = POLLOUT;
 	return pipe->handle;
 }
 
@@ -73,6 +78,7 @@ static int pipe_llseek(struct file *f, loff_t offset, loff_t *newoffset, int whe
 }
 
 static const struct file_ops pipe_ops = {
+	.get_poll_handle = pipe_get_poll_handle,
 	.close = pipe_close,
 	.read = pipe_read,
 	.write = pipe_write,

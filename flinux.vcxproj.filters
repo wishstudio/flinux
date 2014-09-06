@@ -125,6 +125,9 @@
       <Filter>fs</Filter>
     </ClInclude>
     <ClInclude Include="src\datetime.h" />
+    <ClInclude Include="src\common\poll.h">
+      <Filter>common</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />

@@ -1,5 +1,6 @@
 #include <common/errno.h>
 #include <common/fcntl.h>
+#include <common/poll.h>
 #include <fs/console.h>
 #include <fs/devfs.h>
 #include <fs/pipe.h>
@@ -9,6 +10,7 @@
 #include <log.h>
 #include <Windows.h>
 #include <limits.h>
+#include <malloc.h>
 
 /* Notes on symlink solving:
 
@@ -962,5 +964,59 @@ int sys_openat(int dirfd, const char *pathname, int flags)
 int sys_poll(struct pollfd *fds, int nfds, int timeout)
 {
 	log_debug("poll(0x%x, %d, %d)\n", fds, nfds, timeout);
-	return 0;
+
+	/* Count of handles to be waited on */
+	int cnt = 0;
+	/* Handles to be waited on */
+	HANDLE *handles = (HANDLE *)alloca(nfds * sizeof(HANDLE));
+	/* Indices of handles in the original fds[] array */
+	int *indices = (int *)alloca(nfds * sizeof(int));
+
+	if (timeout < 0)
+		timeout = INFINITE;
+	for (int i = 0; i < nfds; i++)
+		fds[i].revents = 0;
+	int num_result = 0;
+	for (int i = 0; i < nfds; i++)
+	{
+		if (fds[i].fd < 0)
+			continue;
+		struct file *f = vfs->fds[fds[i].fd];
+		/* TODO: Support for regular file */
+		if (!f)
+		{
+			fds[i].revents = POLLNVAL;
+			num_result++;
+		}
+		else if (f->op_vtable->get_poll_handle)
+		{
+			int e;
+			HANDLE handle = f->op_vtable->get_poll_handle(f, &e);
+			if (fds[i].events & e != 0)
+			{
+				handles[cnt] = handle;
+				indices[cnt] = i;
+				cnt++;
+			}
+		}
+	}
+	if (cnt)
+	{
+		DWORD result = WaitForMultipleObjects(cnt, handles, FALSE, timeout);
+		if (result == WAIT_TIMEOUT)
+			return 0;
+		else if (result < WAIT_OBJECT_0 || result >= WAIT_OBJECT_0 + cnt)
+			return -ENOMEM; /* TODO: Find correct values */
+		else
+		{
+			/* Wait successfully, fill in the revents field of that handle */
+			int id = indices[result - WAIT_OBJECT_0];
+			struct file *f = vfs->fds[fds[id].fd];
+			int e;
+			f->op_vtable->get_poll_handle(f, &e);
+			fds[id].revents = e;
+			num_result++;
+		}
+	}
+	return num_result;
 }

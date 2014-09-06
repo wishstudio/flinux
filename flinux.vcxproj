@@ -18,6 +18,7 @@
     <ClInclude Include="src\common\fcntl.h" />
     <ClInclude Include="src\common\ioctls.h" />
     <ClInclude Include="src\common\ldt.h" />
+    <ClInclude Include="src\common\poll.h" />
     <ClInclude Include="src\common\ptrace.h" />
     <ClInclude Include="src\common\resource.h" />
     <ClInclude Include="src\common\sched.h" />

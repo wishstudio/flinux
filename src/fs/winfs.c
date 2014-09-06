@@ -95,11 +95,6 @@ static int winfs_close(struct file *f)
 		return -1;
 }
 
-static HANDLE winfs_get_handle(struct file *f)
-{
-	return ((struct winfs_file *)f)->handle;
-}
-
 static size_t winfs_read(struct file *f, char *buf, size_t count)
 {
 	struct winfs_file *winfile = (struct winfs_file *) f;
@@ -281,7 +276,6 @@ static int winfs_getdents(struct file *f, struct linux_dirent64 *dirent, int cou
 
 static struct file_ops winfs_ops = 
 {
-	.get_handle = winfs_get_handle,
 	.close = winfs_close,
 	.read = winfs_read,
 	.write = winfs_write,

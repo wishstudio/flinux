@@ -1,5 +1,6 @@
 #include <common/errno.h>
 #include <common/ioctls.h>
+#include <common/poll.h>
 #include <common/termios.h>
 #include <fs/console.h>
 #include <heap.h>
@@ -294,6 +295,21 @@ static void console_add_input(struct console_state *console, char *str, size_t s
 	}
 }
 
+HANDLE console_get_poll_handle(struct file *f, int **poll_flags)
+{
+	struct console_file *console = (struct console_file *)f;
+	if (console->is_read)
+	{
+		*poll_flags = POLLIN;
+		return console->state->in;
+	}
+	else
+	{
+		*poll_flags = POLLOUT;
+		return console->state->out;
+	}
+}
+
 int console_close(struct file *f)
 {
 	struct console_file *console = (struct console_file *)f;
@@ -525,6 +541,7 @@ static int console_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 }
 
 static const struct file_ops console_ops = {
+	.get_poll_handle = console_get_poll_handle,
 	.close = console_close,
 	.read = console_read,
 	.write = console_write,
