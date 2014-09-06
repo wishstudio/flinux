@@ -1064,21 +1064,35 @@ int sys_poll(struct pollfd *fds, int nfds, int timeout)
 	}
 	if (cnt && !done)
 	{
-		DWORD result = WaitForMultipleObjects(cnt, handles, FALSE, timeout);
-		if (result == WAIT_TIMEOUT)
-			return 0;
-		else if (result < WAIT_OBJECT_0 || result >= WAIT_OBJECT_0 + cnt)
-			return -ENOMEM; /* TODO: Find correct values */
-		else
+		do
 		{
-			/* Wait successfully, fill in the revents field of that handle */
-			int id = indices[result - WAIT_OBJECT_0];
-			struct file *f = vfs->fds[fds[id].fd];
-			int e;
-			f->op_vtable->get_poll_handle(f, &e);
-			fds[id].revents = e;
-			num_result++;
+			DWORD result = WaitForMultipleObjects(cnt, handles, FALSE, timeout);
+			if (result == WAIT_TIMEOUT)
+				return 0;
+			else if (result < WAIT_OBJECT_0 || result >= WAIT_OBJECT_0 + cnt)
+				return -ENOMEM; /* TODO: Find correct values */
+			else
+			{
+				/* Wait successfully, fill in the revents field of that handle */
+				int id = indices[result - WAIT_OBJECT_0];
+				struct file *f = vfs->fds[fds[id].fd];
+				int e;
+				f->op_vtable->get_poll_handle(f, &e);
+				/*
+				Special case: console may be not readable even if it is signaled
+				Query the state using console_is_ready() utility function
+				*/
+				if (e == POLLIN && console_is_console_file(f))
+				{
+					if (!console_is_ready(f))
+						continue;
+				}
+				fds[id].revents = e;
+				num_result++;
+				break;
+			}
 		}
+		while (timeout > 0);
 	}
 	return num_result;
 }

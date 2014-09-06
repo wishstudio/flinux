@@ -371,13 +371,45 @@ static void console_buffer_add_string(struct console_state *console, char *buf, 
 		console_add_input(console, str, size);
 }
 
-HANDLE console_get_poll_handle(struct file *f, int **poll_flags)
+/*
+Called after WaitForMultipleObjects() in poll() to determine whether
+we're really ready to be read or written.
+This is needed because we may need to filter out mouse or other events,
+which means even the input buffer object is signaled, there may still
+be nothing to be read.
+*/
+int console_is_ready(struct file *f)
+{
+	struct console_file *console_file = (struct console_file *) f;
+	/* If it's a writing fd, already return true */
+	if (!console_file->is_read)
+		return 1;
+	;
+	struct console_state *console = console_file->state;
+	if (console->input_buffer_head != console->input_buffer_tail)
+		return 1;
+	;
+	INPUT_RECORD ir;
+	DWORD num_read;
+	while (PeekConsoleInputW(console->in, &ir, 1, &num_read) && num_read > 0)
+	{
+		/* Test if the event will be discarded */
+		if (ir.EventType == KEY_EVENT && ir.Event.KeyEvent.bKeyDown)
+			return 1;
+		/* Discard the event */
+		ReadConsoleInputW(console->in, &ir, 1, &num_read);
+	}
+	/* We don't find any readable events */
+	return 0;
+}
+
+static HANDLE console_get_poll_handle(struct file *f, int **poll_flags)
 {
 	struct console_file *console = (struct console_file *)f;
 	if (console->is_read)
 	{
 		*poll_flags = POLLIN;
-		if (console->state->input_buffer_head != console->state->input_buffer_tail)
+		if (console_is_ready(f))
 			return NULL;
 		else
 			return console->state->in;
@@ -389,7 +421,7 @@ HANDLE console_get_poll_handle(struct file *f, int **poll_flags)
 	}
 }
 
-int console_close(struct file *f)
+static int console_close(struct file *f)
 {
 	struct console_file *console = (struct console_file *)f;
 	if (--console->state->ref == 0)
@@ -402,7 +434,7 @@ int console_close(struct file *f)
 	return 0;
 }
 
-size_t console_read(struct file *f, char *buf, size_t count)
+static size_t console_read(struct file *f, char *buf, size_t count)
 {
 	struct console_file *console_file = (struct console_file *)f;
 	if (!console_file->is_read)
@@ -514,7 +546,7 @@ size_t console_read(struct file *f, char *buf, size_t count)
 	return bytes_read;
 }
 
-size_t console_write(struct file *f, const char *buf, size_t count)
+static size_t console_write(struct file *f, const char *buf, size_t count)
 {
 	struct console_file *console_file = (struct console_file *)f;
 	if (console_file->is_read)
@@ -687,4 +719,9 @@ int console_alloc(struct file **in_file, struct file **out_file)
 	*in_file = console_alloc_file(console, 1);
 	*out_file = console_alloc_file(console, 0);
 	return 0;
+}
+
+int console_is_console_file(struct file *f)
+{
+	return f->op_vtable == &console_ops;
 }
