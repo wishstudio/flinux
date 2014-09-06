@@ -301,7 +301,10 @@ HANDLE console_get_poll_handle(struct file *f, int **poll_flags)
 	if (console->is_read)
 	{
 		*poll_flags = POLLIN;
-		return console->state->in;
+		if (console->state->input_buffer_head != console->state->input_buffer_tail)
+			return NULL;
+		else
+			return console->state->in;
 	}
 	else
 	{

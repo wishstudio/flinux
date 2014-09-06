@@ -977,6 +977,7 @@ int sys_poll(struct pollfd *fds, int nfds, int timeout)
 	for (int i = 0; i < nfds; i++)
 		fds[i].revents = 0;
 	int num_result = 0;
+	int done = 0;
 	for (int i = 0; i < nfds; i++)
 	{
 		if (fds[i].fd < 0)
@@ -994,13 +995,23 @@ int sys_poll(struct pollfd *fds, int nfds, int timeout)
 			HANDLE handle = f->op_vtable->get_poll_handle(f, &e);
 			if (fds[i].events & e != 0)
 			{
-				handles[cnt] = handle;
-				indices[cnt] = i;
-				cnt++;
+				if (!handle)
+				{
+					/* It is already readable/writeable at this moment */
+					fds[i].revents = e;
+					num_result++;
+					done = 1;
+				}
+				else
+				{
+					handles[cnt] = handle;
+					indices[cnt] = i;
+					cnt++;
+				}
 			}
 		}
 	}
-	if (cnt)
+	if (cnt && !done)
 	{
 		DWORD result = WaitForMultipleObjects(cnt, handles, FALSE, timeout);
 		if (result == WAIT_TIMEOUT)
