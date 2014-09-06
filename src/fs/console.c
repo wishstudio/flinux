@@ -390,7 +390,7 @@ size_t console_read(struct file *f, char *buf, size_t count)
 				{
 				case VK_RETURN:
 				{
-					line[len++] = console->termios.c_iflag & ICRNL ? '\n' : '\r';
+					line[len++] = console->termios.c_iflag & INLCR ? '\r' : '\n';
 					size_t r = min(count, len);
 					memcpy(buf + bytes_read, line, r);
 					bytes_read += r;
@@ -448,6 +448,12 @@ size_t console_read(struct file *f, char *buf, size_t count)
 					break;
 					
 				default:
+					if (ch == '\r' && console->termios.c_iflag & IGNCR)
+						break;
+					if (ch == '\r')
+						ch = '\n';
+					else if (ch == '\n' && console->termios.c_iflag & ICRNL)
+						ch = '\r';
 					if (ch > 0)
 					{
 						count--;
