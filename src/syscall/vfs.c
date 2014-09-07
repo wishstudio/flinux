@@ -1064,9 +1064,13 @@ int sys_poll(struct pollfd *fds, int nfds, int timeout)
 	}
 	if (cnt && !done)
 	{
+		LARGE_INTEGER frequency, start;
+		QueryPerformanceFrequency(&frequency);
+		QueryPerformanceCounter(&start);
+		int remain = timeout;
 		do
 		{
-			DWORD result = WaitForMultipleObjects(cnt, handles, FALSE, timeout);
+			DWORD result = WaitForMultipleObjects(cnt, handles, FALSE, remain);
 			if (result == WAIT_TIMEOUT)
 				return 0;
 			else if (result < WAIT_OBJECT_0 || result >= WAIT_OBJECT_0 + cnt)
@@ -1085,14 +1089,19 @@ int sys_poll(struct pollfd *fds, int nfds, int timeout)
 				if (e == POLLIN && console_is_console_file(f))
 				{
 					if (!console_is_ready(f))
+					{
+						LARGE_INTEGER current;
+						QueryPerformanceCounter(&current);
+						remain = timeout - (current.QuadPart - start.QuadPart) / (frequency.QuadPart * 1000LL);
 						continue;
+					}
 				}
 				fds[id].revents = e;
 				num_result++;
 				break;
 			}
 		}
-		while (timeout > 0);
+		while (remain > 0);
 	}
 	return num_result;
 }
