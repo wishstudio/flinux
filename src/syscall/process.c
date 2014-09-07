@@ -139,6 +139,13 @@ pid_t sys_getpgrp()
 	return 0;
 }
 
+pid_t sys_gettid()
+{
+	int tid = GetCurrentThreadId();
+	log_debug("gettid(): %d\n", tid);
+	return tid;
+}
+
 uid_t sys_getuid()
 {
 	log_debug("getuid(): %d\n", 0);

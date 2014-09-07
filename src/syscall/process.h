@@ -19,6 +19,7 @@ pid_t sys_getppid();
 int setpgid(pid_t pid, pid_t pgid);
 pid_t sys_getpgid(pid_t pid);
 pid_t sys_getpgrp();
+pid_t gettid();
 
 uid_t sys_getuid();
 gid_t sys_getgid();
