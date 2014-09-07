@@ -719,7 +719,16 @@ int sys_mprotect(void *addr, size_t length, int prot)
 				protection = prot_linux2win(prot);
 			else
 				protection = prot_linux2win(prot & ~PROT_WRITE);
-			VirtualProtect(GET_PAGE_ADDRESS(j), (i - j) * PAGE_SIZE, protection, &oldProtection);
+			/* Change protection flags for pages in [j, i) */
+			uint32_t start_block = GET_BLOCK_OF_PAGE(j);
+			uint32_t end_block = GET_BLOCK_OF_PAGE(i - 1);
+			for (uint32_t k = start_block; k < end_block; k++)
+			{
+				VirtualProtect(GET_PAGE_ADDRESS(j), (PAGES_PER_BLOCK - GET_PAGE_IN_BLOCK(j)) * PAGE_SIZE, protection, &oldProtection);
+				j = (k + 1) * PAGES_PER_BLOCK;
+			}
+			if (i > j)
+				VirtualProtect(GET_PAGE_ADDRESS(j), (i - j) * PAGE_SIZE, protection, &oldProtection);
 		}
 	for (uint32_t i = start_page; i <= end_page; i++)
 		mm->page_prot[i] = prot;
