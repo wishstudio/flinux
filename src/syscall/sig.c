@@ -1,7 +1,15 @@
+#include <common/errno.h>
 #include <syscall/sig.h>
 #include <log.h>
 
 #include <Windows.h>
+
+int sys_alarm(unsigned int seconds)
+{
+	log_debug("alarm(%d)\n", seconds);
+	/* TODO */
+	return 0;
+}
 
 int sys_personality(unsigned long persona)
 {
@@ -9,8 +17,7 @@ int sys_personality(unsigned long persona)
 	if (persona != 0 && persona != 0xFFFFFFFFU)
 	{
 		log_debug("ERROR: persona != 0");
-		/* TODO: Set errno */
-		return -1;
+		return -EINVAL;
 	}
 	return 0;
 }
