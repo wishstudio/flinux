@@ -187,8 +187,10 @@ static void erase_line(struct console_state *console, int mode)
 		count = info.dwSize.X;
 	}
 	else
+	{
+		log_debug("erase_lise(): Invalid mode %d\n", mode);
 		return;
-	;
+	}
 	DWORD num_written;
 	FillConsoleOutputAttribute(console->out, get_text_attribute(console), count, start, &num_written);
 	FillConsoleOutputCharacterW(console->out, L' ', count, start, &num_written);
@@ -208,68 +210,53 @@ static void control_escape_param(struct console_state *console, char ch)
 	case '7':
 	case '8':
 	case '9':
-		if (console->param_count == 0)
-		{
-			console->params[0] = 0;
-			console->param_count++;
-		}
-		console->params[console->param_count - 1] = 10 * console->params[console->param_count - 1] + (ch - '0');
+		console->params[console->param_count] = 10 * console->params[console->param_count] + (ch - '0');
 		break;
 
 	case ';':
 		if (console->param_count + 1 == CONSOLE_MAX_PARAMS)
 			log_debug("Too many console parameters.\n");
 		else
-			console->params[console->param_count++] = 0;
+			console->param_count++;
 		break;
 
 	case 'A':
-		if (console->param_count == 1)
-			move_up(console, console->params[0]);
+		move_up(console, console->params[0]);
 		console->processor = NULL;
 		break;
 
 	case 'B':
-		if (console->param_count == 1)
-			move_down(console, console->params[0]);
+		move_down(console, console->params[0]);
 		console->processor = NULL;
 		break;
 
 	case 'C':
-		if (console->param_count == 1)
-			move_right(console, console->params[0]);
+		move_right(console, console->params[0]);
 		console->processor = NULL;
 		break;
 
 	case 'D':
-		if (console->param_count == 1)
-			move_left(console, console->params[0]);
+		move_left(console, console->params[0]);
 		console->processor = NULL;
 		break;
 
 	case 'h':
-		if (console->param_count == 1)
-			log_debug("console: fake disabling mode %d\n", console->params[0]);
+		log_debug("console: fake disabling mode %d\n", console->params[0]);
 		console->processor = NULL;
 		break;
 
 	case 'K':
-		if (console->param_count == 0)
-			erase_line(console, 0);
-		else if (console->param_count == 1)
-			if (console->params[0] == 1 || console->params[0] == 2)
-				erase_line(console, console->params[0]);
+		erase_line(console, console->params[0]);
 		console->processor = NULL;
 		break;
 
 	case 'l':
-		if (console->param_count == 1)
-			log_debug("console: fake disabling mode %d\n", console->params[0]);
+		log_debug("console: fake disabling mode %d\n", console->params[0]);
 		console->processor = NULL;
 		break;
 
 	case 'm':
-		for (int i = 0; i < console->param_count; i++)
+		for (int i = 0; i <= console->param_count; i++)
 		{
 			switch (console->params[i])
 			{
@@ -338,6 +325,8 @@ static void control_escape(struct console_state *console, char ch)
 	switch (ch)
 	{
 	case '[':
+		for (int i = 0; i < CONSOLE_MAX_PARAMS; i++)
+			console->params[i] = 0;
 		console->param_count = 0;
 		console->processor = control_escape_param;
 		break;
