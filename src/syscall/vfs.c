@@ -721,6 +721,23 @@ int sys_pipe2(int pipefd[2], int flags)
 	return 0;
 }
 
+int sys_dup(int fd)
+{
+	log_debug("dup(%d)\n", fd);
+	struct file *f = vfs->fds[fd];
+	if (!f)
+		return -EBADF;
+	for (int i = 0; i < MAX_FD_COUNT; i++)
+		if (vfs->fds[i] == NULL)
+		{
+			vfs->fds[i] = f;
+			vfs->fds_cloexec[i] = 0;
+			f->ref++;
+			return i;
+		}
+	return -EMFILE;
+}
+
 int sys_dup2(int fd, int newfd)
 {
 	log_debug("dup2(%d, %d)\n", fd, newfd);

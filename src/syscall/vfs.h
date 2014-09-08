@@ -45,6 +45,7 @@ size_t sys_readlink(const char *pathname, char *buf, size_t bufsize);
 int sys_pipe(int pipefd[2]);
 int sys_pipe2(int pipefd[2], int flags);
 
+int sys_dup(int fd);
 int sys_dup2(int fd, int newfd);
 
 int sys_mkdir(const char *pathname, int mode);
