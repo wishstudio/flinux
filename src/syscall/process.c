@@ -135,13 +135,14 @@ pid_t sys_getpgid(pid_t pid)
 
 pid_t sys_getpgrp()
 {
-	log_debug("getpgrp(): %d\n", 0);
-	return 0;
+	pid_t pgrp = GetCurrentProcessId();
+	log_debug("getpgrp(): %d\n", pgrp);
+	return pgrp;
 }
 
 pid_t sys_gettid()
 {
-	int tid = GetCurrentThreadId();
+	pid_t tid = GetCurrentThreadId();
 	log_debug("gettid(): %d\n", tid);
 	return tid;
 }
