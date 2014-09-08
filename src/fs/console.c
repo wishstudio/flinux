@@ -618,7 +618,7 @@ static int console_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 	case TIOCGPGRP:
 	{
 		log_debug("Unsupported TIOCGPGRP: Return fake result.\n");
-		*(pid_t *)arg = 0;
+		*(pid_t *)arg = GetCurrentProcessId();
 		return 0;
 	}
 

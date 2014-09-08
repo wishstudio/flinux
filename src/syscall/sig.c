@@ -11,6 +11,13 @@ int sys_alarm(unsigned int seconds)
 	return 0;
 }
 
+int sys_kill(pid_t pid, int sig)
+{
+	log_debug("kill(%d, %d)\n", pid, sig);
+	/* TODO */
+	return 0;
+}
+
 int sys_personality(unsigned long persona)
 {
 	log_debug("personality(%d)\n", persona);
