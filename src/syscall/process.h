@@ -26,6 +26,8 @@ gid_t sys_getgid();
 uid_t sys_geteuid();
 gid_t sys_getegid();
 
+int sys_setuid(uid_t uid);
+
 void sys_exit(int status);
 void sys_exit_group(int status);
 int sys_oldolduname(struct oldold_utsname *buf);

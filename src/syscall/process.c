@@ -171,6 +171,12 @@ gid_t sys_getegid()
 	return 0;
 }
 
+int sys_setuid(uid_t uid)
+{
+	log_debug("setuid(%d)\n", uid);
+	return -EPERM;
+}
+
 void sys_exit(int status)
 {
 	log_debug("exit(%d)\n", status);
