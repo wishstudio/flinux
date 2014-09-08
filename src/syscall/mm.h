@@ -33,6 +33,8 @@ void mm_reset();
 void mm_shutdown();
 void mm_update_brk(void *brk);
 
+void mm_dump_stack_trace(PCONTEXT context);
+
 int mm_handle_page_fault(void *addr);
 int mm_fork(HANDLE process);
 

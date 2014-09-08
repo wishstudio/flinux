@@ -251,6 +251,19 @@ static void dump_virtual_memory(HANDLE process)
 	} while ((uint32_t)addr < 0x7FFF0000);
 }
 
+void mm_dump_stack_trace(PCONTEXT context)
+{
+	log_debug("Stack trace:\n");
+	uint32_t esp = context->Esp;
+	for (uint32_t i = (esp - 256) & ~15; i < esp; i += 16)
+	{
+		log_debug("%08x ", i);
+		for (uint32_t j = i; j < i + 16 && j < esp; j++)
+			log_debug("%02x ", *(unsigned char *)i);
+		log_debug("\n");
+	}
+}
+
 static HANDLE duplicate_section(HANDLE source, void *source_addr)
 {
 	HANDLE dest;
