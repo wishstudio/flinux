@@ -346,7 +346,7 @@ int mm_handle_page_fault(void *addr)
 		DWORD oldProtect;
 		if (!VirtualProtect(GET_PAGE_ADDRESS(page), PAGE_SIZE, prot_linux2win(mm->page_prot[page]), &oldProtect))
 		{
-			log_debug("VirtualProtect(%x) failed.\n", GET_PAGE_ADDRESS(page));
+			log_debug("VirtualProtect(0x%x) failed, error code: %d.\n", GET_PAGE_ADDRESS(page), GetLastError());
 			return 0;
 		}
 	}
@@ -488,7 +488,7 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, struct file *f, of
 			/* Map section */
 			PVOID base_addr = GET_BLOCK_ADDRESS(i);
 			SIZE_T view_size = BLOCK_SIZE;
-			status = NtMapViewOfSection(handle, NtCurrentProcess(), &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, prot_linux2win(prot));
+			status = NtMapViewOfSection(handle, NtCurrentProcess(), &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, PAGE_EXECUTE_READWRITE);
 			if (status != STATUS_SUCCESS)
 			{
 				log_debug("NtMapViewOfSection() failed. Address: %x, Status: %x\n", base_addr, status);
@@ -543,8 +543,15 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, struct file *f, of
 	}
 	for (uint32_t i = start_page; i <= end_page; i++)
 	{
+		/* TODO: Optimization */
 		mm->page_prot[i] = prot;
-		mm->block_page_count[GET_BLOCK_OF_PAGE(i)]++; /* TODO: Optimization */
+		mm->block_page_count[GET_BLOCK_OF_PAGE(i)]++;
+		DWORD old;
+		if (!VirtualProtect(GET_PAGE_ADDRESS(i), PAGE_SIZE, prot_linux2win(prot), &old))
+		{
+			log_debug("VirtualProtect() failed, error code: %d\n", GetLastError());
+			return -ENOMEM; /* TODO */
+		}
 	}
 	log_debug("Allocated memory: %x\n", addr);
 	return addr;
