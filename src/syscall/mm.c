@@ -29,38 +29,40 @@
  *
  * FFFFFFFF ------------------------------
  * ...        Win32 kernel address space
+ * ...         (unused if 4gt enabled)
  * 80000000 ------------------------------
  * ...                win32 dlls
- * 75000000 ------------------------------
+ * 72000000 ------------------------------
+ * ...        Foreign Linux kernel data
+ * 70000000 ------------------------------
  * ...
  * ...          Application code/data
  * ...
  * 04000000 ------------------------------
- * ...        Foreign Linux kernel data
- * 02000000 ------------------------------
+ * ...            Win32 system heaps
  * ...        Foreign Linux kernel code
  * 00000000 ------------------------------
  *
  *
  * Foreign Linux kernel data memory layout
  *
- * 04000000 ------------------------------
+ * 72000000 ------------------------------
  *                    kernel heap
- * 03000000 ------------------------------
+ * 71000000 ------------------------------
  *                fork_info structure
- * 02FF0000 ------------------------------
+ * 70FF0000 ------------------------------
  *             startup (argv, env) data
- * 02FE0000 ------------------------------
+ * 70FE0000 ------------------------------
  *                tls_data structure
- * 02FD0000 ------------------------------
+ * 70FD0000 ------------------------------
  *                vfs_data structure
- * 02900000 ------------------------------
+ * 70900000 ------------------------------
  *              mm_heap_data structure
- * 02800000 ------------------------------
+ * 70800000 ------------------------------
  *        process_data structure(unmappable)
- * 02700000 ------------------------------
+ * 70700000 ------------------------------
  *           mm_data structure(unmappable)
- * 02000000 ------------------------------
+ * 70000000 ------------------------------
  */
 
 /* Hard limits */
@@ -75,7 +77,7 @@
 /* The lowest non fixed allocation address we can make */
 #define ADDRESS_ALLOCATION_LOW 0x04000000U
 /* The highest non fixed allocation address we can make */
-#define ADDRESS_ALLOCATION_HIGH 0x80000000U
+#define ADDRESS_ALLOCATION_HIGH 0x70000000U
 
 #define BLOCK_COUNT 0x00010000U
 #define PAGE_COUNT 0x00100000U
@@ -259,7 +261,7 @@ void mm_dump_stack_trace(PCONTEXT context)
 	{
 		log_debug("%08x ", i);
 		for (uint32_t j = i; j < i + 16 && j < esp; j++)
-			log_debug("%02x ", *(unsigned char *)i);
+			log_debug("%02x ", *(unsigned char *)j);
 		log_debug("\n");
 	}
 }
