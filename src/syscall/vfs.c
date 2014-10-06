@@ -1085,7 +1085,7 @@ int sys_poll(struct pollfd *fds, int nfds, int timeout)
 		QueryPerformanceFrequency(&frequency);
 		QueryPerformanceCounter(&start);
 		int remain = timeout;
-		do
+		for (;;)
 		{
 			DWORD result = WaitForMultipleObjects(cnt, handles, FALSE, remain);
 			if (result == WAIT_TIMEOUT)
@@ -1109,7 +1109,12 @@ int sys_poll(struct pollfd *fds, int nfds, int timeout)
 					{
 						LARGE_INTEGER current;
 						QueryPerformanceCounter(&current);
-						remain = timeout - (current.QuadPart - start.QuadPart) / (frequency.QuadPart * 1000LL);
+						if (timeout != INFINITE)
+						{
+							remain = timeout - (current.QuadPart - start.QuadPart) / (frequency.QuadPart * 1000LL);
+							if (remain < 0)
+								break;
+						}
 						continue;
 					}
 				}
@@ -1118,7 +1123,6 @@ int sys_poll(struct pollfd *fds, int nfds, int timeout)
 				break;
 			}
 		}
-		while (remain > 0);
 	}
 	return num_result;
 }
