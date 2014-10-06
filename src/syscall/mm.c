@@ -257,10 +257,11 @@ void mm_dump_stack_trace(PCONTEXT context)
 {
 	log_debug("Stack trace:\n");
 	uint32_t esp = context->Esp;
-	for (uint32_t i = (esp - 256) & ~15; i < esp; i += 16)
+	log_debug("ESP: 0x%x\n", esp);
+	for (uint32_t i = esp & ~15; i < ((esp + 256) & ~15); i += 16)
 	{
 		log_debug("%08x ", i);
-		for (uint32_t j = i; j < i + 16 && j < esp; j++)
+		for (uint32_t j = i; j < i + 16 && j < ((esp + 256) & ~15); j++)
 			log_debug("%02x ", *(unsigned char *)j);
 		log_debug("\n");
 	}
