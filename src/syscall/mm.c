@@ -529,6 +529,8 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, struct file *f, of
 		}
 	}
 
+	RtlSecureZeroMemory(addr, length); /* TODO: Optimization? */
+
 	/* Set up all kinds of flags */
 	struct map_entry *entry = new_map_entry();
 	entry->start_page = start_page;
