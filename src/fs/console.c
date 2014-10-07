@@ -161,6 +161,49 @@ static void move_down(struct console_state *console, int count)
 	SetConsoleCursorPosition(console->out, info.dwCursorPosition);
 }
 
+static void set_cursor_pos(struct console_state *console, int row, int column)
+{
+	COORD pos;
+	pos.X = column;
+	pos.Y = row;
+	SetConsoleCursorPosition(console->out, pos);
+}
+
+static void erase_screen(struct console_state *console, int mode)
+{
+	CONSOLE_SCREEN_BUFFER_INFO info;
+	GetConsoleScreenBufferInfo(console->out, &info);
+	COORD start;
+	start.X = 0;
+	int count;
+	if (mode == 0)
+	{
+		/* Erase current line to bottom */
+		start.Y = info.dwCursorPosition.Y;
+		count = (info.srWindow.Bottom - info.dwCursorPosition.Y + 1) * info.dwSize.X;
+	}
+	else if (mode == 1)
+	{
+		/* Erase top to current line */
+		start.Y = info.srWindow.Top;
+		count = (info.dwCursorPosition.Y - info.srWindow.Top + 1) * info.dwSize.X;
+	}
+	else if (mode == 2)
+	{
+		/* Erase entire screen */
+		start.Y = info.srWindow.Top;
+		count = (info.srWindow.Bottom - info.srWindow.Top + 1) * info.dwSize.X;
+	}
+	else
+	{
+		log_debug("erase_screen(): Invalid mode %d\n", mode);
+		return;
+	}
+	DWORD num_written;
+	FillConsoleOutputAttribute(console->out, get_text_attribute(console), count, start, &num_written);
+	FillConsoleOutputCharacterW(console->out, L' ', count, start, &num_written);
+}
+
 static void erase_line(struct console_state *console, int mode)
 {
 	CONSOLE_SCREEN_BUFFER_INFO info;
@@ -188,7 +231,7 @@ static void erase_line(struct console_state *console, int mode)
 	}
 	else
 	{
-		log_debug("erase_lise(): Invalid mode %d\n", mode);
+		log_debug("erase_line(): Invalid mode %d\n", mode);
 		return;
 	}
 	DWORD num_written;
@@ -240,8 +283,18 @@ static void control_escape_param(struct console_state *console, char ch)
 		console->processor = NULL;
 		break;
 
+	case 'H':
+		set_cursor_pos(console, console->params[0], console->params[1]);
+		console->processor = NULL;
+		break;
+
 	case 'h':
 		log_debug("console: fake disabling mode %d\n", console->params[0]);
+		console->processor = NULL;
+		break;
+
+	case 'J':
+		erase_screen(console, console->params[0]);
 		console->processor = NULL;
 		break;
 
@@ -329,6 +382,16 @@ static void control_escape(struct console_state *console, char ch)
 			console->params[i] = 0;
 		console->param_count = 0;
 		console->processor = control_escape_param;
+		break;
+
+	case '(':
+		log_debug("Set default font: ignored.\n");
+		console->processor = NULL;
+		break;
+
+	case ')':
+		log_debug("Set alternate font: ignored.\n");
+		console->processor = NULL;
 		break;
 
 	default:
