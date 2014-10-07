@@ -15,6 +15,8 @@
 
 static char *const startup = (char *)STARTUP_DATA_BASE;
 
+#define ALIGN_TO(x, a) ((uintptr_t)((x) + (a) - 1) & -(a))
+
 void main()
 {
 	log_init();
@@ -38,8 +40,21 @@ void main()
 
 	mm_mmap(STARTUP_DATA_BASE, BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, NULL, 0);
 	memcpy(startup, cmdline, len + 1);
+	/* TODO: This works now, but looks too ugly */
+	char *envbuf = ALIGN_TO(startup + len + 1, sizeof(void*));
+	envbuf[0] = 'T';
+	envbuf[1] = 'E';
+	envbuf[2] = 'R';
+	envbuf[3] = 'M';
+	envbuf[4] = '=';
+	envbuf[5] = 'v';
+	envbuf[6] = 't';
+	envbuf[7] = '1';
+	envbuf[8] = '0';
+	envbuf[9] = '0';
+	envbuf[10] = 0;
 	int argc = 0;
-	const char **argv = (const char **)((uintptr_t)(startup + len + 1 + sizeof(void*) - 1) & -sizeof(void*));
+	const char **argv = (const char **)(envbuf + 16);
 
 	int in_quote = 0;
 	const char *j = startup;
@@ -60,8 +75,10 @@ void main()
 			j = i + 1;
 		}
 	argv[argc] = NULL;
-	const char **envp = argv + argc + 1;
-	envp[0] = NULL;
+	const char **envp = argv + argc + 2;
+	int env_size = 1;
+	envp[0] = envbuf;
+	envp[1] = NULL;
 
 	const char *filename = NULL;
 	for (int i = 1; i < argc; i++)
@@ -74,7 +91,7 @@ void main()
 	}
 	install_syscall_handler();
 	if (filename)
-		do_execve(filename, argc - 1, argv + 1, 0, envp, NULL);
+		do_execve(filename, argc - 1, argv + 1, env_size, envp, NULL);
 	kprintf("Execution failed.\n");
 	ExitProcess(1);
 }
