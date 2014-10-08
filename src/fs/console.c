@@ -624,6 +624,20 @@ static size_t console_write(struct file *f, const char *buf, size_t count)
 			OUTPUT();
 			console->processor = control_escape;
 		}
+		/* TODO: Untested
+		else if (ch == '\t')
+		{
+			OUTPUT();
+			CONSOLE_SCREEN_BUFFER_INFO info;
+			GetConsoleScreenBufferInfo(console->out, &info);
+			info.dwCursorPosition.X = (info.dwCursorPosition.X + 8) & -8;
+			SetConsoleCursorPosition(console->out, info.dwCursorPosition);
+		}*/
+		else if (ch == 0x0E || ch == 0x0F)
+		{
+			/* Shift In and Shift Out */
+			OUTPUT();
+		}
 		else if (last == -1)
 			last = i;
 	}
