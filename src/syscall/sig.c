@@ -6,24 +6,24 @@
 
 int sys_alarm(unsigned int seconds)
 {
-	log_debug("alarm(%d)\n", seconds);
+	log_info("alarm(%d)\n", seconds);
 	/* TODO */
 	return 0;
 }
 
 int sys_kill(pid_t pid, int sig)
 {
-	log_debug("kill(%d, %d)\n", pid, sig);
+	log_info("kill(%d, %d)\n", pid, sig);
 	/* TODO */
 	return 0;
 }
 
 int sys_personality(unsigned long persona)
 {
-	log_debug("personality(%d)\n", persona);
+	log_info("personality(%d)\n", persona);
 	if (persona != 0 && persona != 0xFFFFFFFFU)
 	{
-		log_debug("ERROR: persona != 0");
+		log_error("ERROR: persona != 0");
 		return -EINVAL;
 	}
 	return 0;
@@ -31,14 +31,14 @@ int sys_personality(unsigned long persona)
 
 int sys_rt_sigaction(int signum, const struct sigaction *act, struct sigaction *oldact)
 {
-	log_debug("rt_sigaction(%d, %x, %x)\n", signum, act, oldact);
+	log_info("rt_sigaction(%d, %x, %x)\n", signum, act, oldact);
 	/* TODO */
 	return 0;
 }
 
 int sys_rt_sigprocmask(int how, const sigset_t *set, sigset_t *oldset)
 {
-	log_debug("rt_sigprocmask(%d, 0x%x, 0x%x)\n", how, set, oldset);
+	log_info("rt_sigprocmask(%d, 0x%x, 0x%x)\n", how, set, oldset);
 	/* TODO */
 	return 0;
 }

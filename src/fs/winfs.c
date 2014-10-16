@@ -168,8 +168,8 @@ static int winfs_stat(struct file *f, struct stat64 *buf)
 	BY_HANDLE_FILE_INFORMATION info;
 	if (!GetFileInformationByHandle(winfile->handle, &info))
 	{
-		log_debug("GetFileInformationByHandle() failed.\n");
-		return -1;
+		log_warning("GetFileInformationByHandle() failed.\n");
+		return -1; /* TODO */
 	}
 	/* Programs (ld.so) may use st_dev and st_ino to identity files so these must be unique for each file. */
 	buf->st_dev = mkdev(8, 0); // (8, 0): /dev/sda
@@ -295,30 +295,30 @@ static int winfs_symlink(const char *target, const char *linkpath)
 	if (utf8_to_utf16_filename(linkpath, strlen(linkpath) + 1, wlinkpath, PATH_MAX) <= 0)
 		return -ENOENT;
 
-	log_debug("CreateFileW(): %s\n", linkpath);
+	log_info("CreateFileW(): %s\n", linkpath);
 	handle = CreateFileW(wlinkpath, GENERIC_WRITE, FILE_SHARE_DELETE, NULL, CREATE_NEW, FILE_ATTRIBUTE_SYSTEM, NULL);
 	if (handle == INVALID_HANDLE_VALUE)
 	{
 		DWORD err = GetLastError();
 		if (err == ERROR_FILE_EXISTS || err == ERROR_ALREADY_EXISTS)
 		{
-			log_debug("File already exists.\n");
+			log_warning("File already exists.\n");
 			return -EEXIST;
 		}
-		log_debug("CreateFileW() failed, error code: %d.\n", GetLastError());
+		log_warning("CreateFileW() failed, error code: %d.\n", GetLastError());
 		return -ENOENT;
 	}
 	size_t num_written;
 	if (!WriteFile(handle, WINFS_SYMLINK_HEADER, WINFS_SYMLINK_HEADER_LEN, &num_written, NULL) || num_written < WINFS_SYMLINK_HEADER_LEN)
 	{
-		log_debug("WriteFile() failed, error code: %d.\n", GetLastError());
+		log_warning("WriteFile() failed, error code: %d.\n", GetLastError());
 		CloseHandle(handle);
 		return -EIO;
 	}
 	size_t targetlen = strlen(target);
 	if (!WriteFile(handle, target, targetlen, &num_written, NULL) || num_written < targetlen)
 	{
-		log_debug("WriteFile() failed, error code: %d.\n", GetLastError());
+		log_warning("WriteFile() failed, error code: %d.\n", GetLastError());
 		CloseHandle(handle);
 		return -EIO;
 	}
@@ -364,7 +364,7 @@ static int winfs_link(struct file *f, const char *newpath)
 	status = NtSetInformationFile(winfile->handle, &status_block, info, info->FileNameLength + sizeof(FILE_LINK_INFORMATION), FileLinkInformation);
 	if (status != STATUS_SUCCESS)
 	{
-		log_debug("NtSetInformationFile() failed, status: %x.\n", status);
+		log_warning("NtSetInformationFile() failed, status: %x.\n", status);
 		return -EMLINK;
 	}
 	return 0;
@@ -378,7 +378,7 @@ static int winfs_unlink(const char *pathname)
 		return -ENOENT;
 	if (!DeleteFileW(wpathname))
 	{
-		log_debug("DeleteFile() failed.\n");
+		log_warning("DeleteFile() failed.\n");
 		return -ENOENT;
 	}
 	return 0;
@@ -395,10 +395,10 @@ static int winfs_mkdir(const char *pathname, int mode)
 		DWORD err = GetLastError();
 		if (err == ERROR_FILE_EXISTS || err == ERROR_ALREADY_EXISTS)
 		{
-			log_debug("File already exists.\n");
+			log_warning("File already exists.\n");
 			return -EEXIST;
 		}
-		log_debug("CreateDirectoryW() failed, error code: %d\n", GetLastError());
+		log_warning("CreateDirectoryW() failed, error code: %d\n", GetLastError());
 		return -ENOENT;
 	}
 	return 0;
@@ -439,7 +439,7 @@ static int winfs_open(const char *pathname, int flags, int mode, struct file **f
 		creationDisposition = TRUNCATE_EXISTING;
 	else
 		creationDisposition = OPEN_EXISTING;
-	log_debug("CreateFileW(): %s\n", pathname);
+	log_info("CreateFileW(): %s\n", pathname);
 	SECURITY_ATTRIBUTES attr;
 	attr.nLength = sizeof(SECURITY_ATTRIBUTES);
 	attr.lpSecurityDescriptor = NULL;
@@ -450,12 +450,12 @@ static int winfs_open(const char *pathname, int flags, int mode, struct file **f
 		DWORD err = GetLastError();
 		if (err == ERROR_FILE_EXISTS || err == ERROR_ALREADY_EXISTS)
 		{
-			log_debug("File already exists.\n");
+			log_warning("File already exists.\n");
 			return -EEXIST;
 		}
 		else
 		{
-			log_debug("Unhandled CreateFileW() failure, error code: %d, returning ENOENT.\n", GetLastError());
+			log_warning("Unhandled CreateFileW() failure, error code: %d, returning ENOENT.\n", GetLastError());
 			return -ENOENT;
 		}
 	}
@@ -467,19 +467,19 @@ static int winfs_open(const char *pathname, int flags, int mode, struct file **f
 	/* Test if the file is a symlink */
 	if (attributeInfo.FileAttributes != INVALID_FILE_ATTRIBUTES && (attributeInfo.FileAttributes & FILE_ATTRIBUTE_SYSTEM))
 	{
-		log_debug("The file has system flag set.\n");
+		log_info("The file has system flag set.\n");
 		if (!(desiredAccess & GENERIC_READ))
 		{
 			/* We need to get a readable handle */
-			log_debug("But the handle does not have READ access, try reopening file...\n");
+			log_info("But the handle does not have READ access, try reopening file...\n");
 			HANDLE read_handle = ReOpenFile(handle, desiredAccess | GENERIC_READ, shareMode, FILE_FLAG_BACKUP_SEMANTICS);
 			if (read_handle == INVALID_HANDLE_VALUE)
 			{
-				log_debug("Reopen file failed, error code %d. Assume not symlink.\n", GetLastError());
+				log_warning("Reopen file failed, error code %d. Assume not symlink.\n", GetLastError());
 				goto after_symlink_test;
 			}
 			CloseHandle(handle);
-			log_debug("Reopen succeeded.\n");
+			log_info("Reopen succeeded.\n");
 			handle = read_handle;
 		}
 		if (winfs_read_symlink(handle, target, buflen) > 0)
@@ -492,15 +492,15 @@ static int winfs_open(const char *pathname, int flags, int mode, struct file **f
 			if (!(flags & O_PATH))
 			{
 				CloseHandle(handle);
-				log_debug("Specified O_NOFOLLOW but not O_PATH, returning ELOOP.\n");
+				log_info("Specified O_NOFOLLOW but not O_PATH, returning ELOOP.\n");
 				return -ELOOP;
 			}
 		}
-		log_debug("Opening file directly.\n");
+		log_info("Opening file directly.\n");
 	}
 	else if (attributeInfo.FileAttributes != INVALID_FILE_ATTRIBUTES && !(attributeInfo.FileAttributes & FILE_ATTRIBUTE_DIRECTORY) && (flags & O_DIRECTORY))
 	{
-		log_debug("Not a directory.\n");
+		log_warning("Not a directory.\n");
 		return -ENOTDIR;
 	}
 

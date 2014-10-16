@@ -36,6 +36,8 @@ void process_init(void *stack_base)
 		process->stack_base = stack_base;
 	else
 		process->stack_base = VirtualAlloc(NULL, STACK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+	log_info("Stack base: 0x%x\n", process->stack_base);
+	log_info("Stack top: 0x%x\n", (uint32_t)process->stack_base + STACK_SIZE);
 }
 
 void *process_get_stack_base()
@@ -52,13 +54,13 @@ void process_add_child(pid_t pid, HANDLE handle)
 
 pid_t sys_waitpid(pid_t pid, int *status, int options)
 {
-	log_debug("sys_waitpid(%d, %x, %d)\n", pid, status, options);
+	log_info("sys_waitpid(%d, %x, %d)\n", pid, status, options);
 	if (options & WNOHANG)
-		log_debug("Unhandled option WNOHANG\n");
+		log_error("Unhandled option WNOHANG\n");
 	if (options & WUNTRACED)
-		log_debug("Unhandled option WUNTRACED\n");
+		log_error("Unhandled option WUNTRACED\n");
 	if (options & WCONTINUED)
-		log_debug("Unhandled option WCONTINUED\n");
+		log_error("Unhandled option WCONTINUED\n");
 	int id = -1;
 	if (pid > 0)
 	{
@@ -71,7 +73,7 @@ pid_t sys_waitpid(pid_t pid, int *status, int options)
 			}
 		if (id == -1)
 		{
-			log_debug("pid %d is not a child.\n", pid);
+			log_warning("pid %d is not a child.\n", pid);
 			return -ECHILD;
 		}
 	}
@@ -79,20 +81,20 @@ pid_t sys_waitpid(pid_t pid, int *status, int options)
 	{
 		if (process->child_count == 0)
 		{
-			log_debug("No childs.\n");
+			log_warning("No childs.\n");
 			return -ECHILD;
 		}
 		DWORD result = WaitForMultipleObjects(process->child_count, process->child_handles, FALSE, INFINITE);
 		if (result < WAIT_OBJECT_0 || result >= WAIT_OBJECT_0 + process->child_count)
 		{
-			log_debug("WaitForMultipleObjects(): Unexpected return.\n");
+			log_error("WaitForMultipleObjects(): Unexpected return.\n");
 			return -1;
 		}
 		id = result - WAIT_OBJECT_0;
 	}
 	else
 	{
-		log_debug("pid != %d unhandled\n");
+		log_error("pid != %d unhandled\n");
 		return -EINVAL;
 	}
 	DWORD exitCode;
@@ -111,75 +113,75 @@ pid_t sys_waitpid(pid_t pid, int *status, int options)
 
 pid_t sys_getpid()
 {
-	log_debug("getpid(): %d\n", GetCurrentProcessId());
+	log_info("getpid(): %d\n", GetCurrentProcessId());
 	return GetCurrentProcessId();
 }
 
 pid_t sys_getppid()
 {
-	log_debug("getppid(): %d\n", 0);
+	log_info("getppid(): %d\n", 0);
 	return 0;
 }
 
 int sys_setpgid(pid_t pid, pid_t pgid)
 {
-	log_debug("setpgid(%d, %d)\n", pid, pgid);
+	log_info("setpgid(%d, %d)\n", pid, pgid);
 	return 0;
 }
 
 pid_t sys_getpgid(pid_t pid)
 {
-	log_debug("getpgid(%d): %d\n", pid, 0);
+	log_info("getpgid(%d): %d\n", pid, 0);
 	return 0;
 }
 
 pid_t sys_getpgrp()
 {
 	pid_t pgrp = GetCurrentProcessId();
-	log_debug("getpgrp(): %d\n", pgrp);
+	log_info("getpgrp(): %d\n", pgrp);
 	return pgrp;
 }
 
 pid_t sys_gettid()
 {
 	pid_t tid = GetCurrentThreadId();
-	log_debug("gettid(): %d\n", tid);
+	log_info("gettid(): %d\n", tid);
 	return tid;
 }
 
 uid_t sys_getuid()
 {
-	log_debug("getuid(): %d\n", 0);
+	log_info("getuid(): %d\n", 0);
 	return 0;
 }
 
 gid_t sys_getgid()
 {
-	log_debug("getgid(): %d\n", 0);
+	log_info("getgid(): %d\n", 0);
 	return 0;
 }
 
 uid_t sys_geteuid()
 {
-	log_debug("geteuid(): %d\n", 0);
+	log_info("geteuid(): %d\n", 0);
 	return 0;
 }
 
 gid_t sys_getegid()
 {
-	log_debug("getegid(): %d\n", 0);
+	log_info("getegid(): %d\n", 0);
 	return 0;
 }
 
 int sys_setuid(uid_t uid)
 {
-	log_debug("setuid(%d)\n", uid);
+	log_info("setuid(%d)\n", uid);
 	return -EPERM;
 }
 
 void sys_exit(int status)
 {
-	log_debug("exit(%d)\n", status);
+	log_info("exit(%d)\n", status);
 	/* TODO: Gracefully shutdown mm, vfs, etc. */
 	log_shutdown();
 	ExitProcess(status);
@@ -187,7 +189,7 @@ void sys_exit(int status)
 
 void sys_exit_group(int status)
 {
-	log_debug("exit_group(%d)\n", status);
+	log_info("exit_group(%d)\n", status);
 	/* TODO: Gracefully shutdown mm, vfs, etc. */
 	log_shutdown();
 	ExitProcess(status);
@@ -219,7 +221,7 @@ int sys_olduname(struct old_utsname *buf)
 
 int sys_uname(struct utsname *buf)
 {
-	log_debug("sys_uname(%x)\n", buf);
+	log_info("sys_uname(%x)\n", buf);
 	/* Just mimic a reasonable Linux uname */
 	strcpy(buf->sysname, "Linux");
 	strcpy(buf->nodename, "ForeignLinux");
@@ -232,7 +234,7 @@ int sys_uname(struct utsname *buf)
 
 int sys_time(int *c)
 {
-	log_debug("time(%x)\n", c);
+	log_info("time(%x)\n", c);
 	SYSTEMTIME systime;
 	GetSystemTime(&systime);
 	uint64_t t = (uint64_t)systime.wSecond + (uint64_t)systime.wMinute * 60
@@ -247,9 +249,9 @@ int sys_time(int *c)
 
 int sys_gettimeofday(struct timeval *tv, struct timezone *tz)
 {
-	log_debug("gettimeofday(0x%x, 0x%x)\n", tv, tz);
+	log_info("gettimeofday(0x%x, 0x%x)\n", tv, tz);
 	if (tz)
-		log_debug("warning: timezone is not NULL\n");
+		log_error("warning: timezone is not NULL\n");
 	if (tv)
 	{
 		/* TODO: Use GetSystemTimePreciseAsFileTime() on Windows 8 */
@@ -262,7 +264,7 @@ int sys_gettimeofday(struct timeval *tv, struct timezone *tz)
 
 int sys_getrlimit(int resource, struct rlimit *rlim)
 {
-	log_debug("getrlimit(%d, %x)\n", resource, rlim);
+	log_info("getrlimit(%d, %x)\n", resource, rlim);
 	switch (resource)
 	{
 	case RLIMIT_STACK:
@@ -271,7 +273,7 @@ int sys_getrlimit(int resource, struct rlimit *rlim)
 		break;
 
 	default:
-		log_debug("Unsupported resource: %d\n", resource);
+		log_error("Unsupported resource: %d\n", resource);
 		return -EINVAL;
 	}
 	return 0;
@@ -279,18 +281,18 @@ int sys_getrlimit(int resource, struct rlimit *rlim)
 
 int sys_setrlimit(int resource, const struct rlimit *rlim)
 {
-	log_debug("setrlimit(%d, %x)\n", resource, rlim);
+	log_info("setrlimit(%d, %x)\n", resource, rlim);
 	switch (resource)
 	{
 	default:
-		log_debug("Unsupported resource: %d\n", resource);
+		log_error("Unsupported resource: %d\n", resource);
 		return -EINVAL;
 	}
 }
 
 int sys_nanosleep(const struct timespec *req, struct timespec *rem)
 {
-	log_debug("nanospeep(0x%x, 0x%x)\n", req, rem);
+	log_info("nanospeep(0x%x, 0x%x)\n", req, rem);
 	LARGE_INTEGER delay_interval;
 	delay_interval.QuadPart = ((uint64_t)req->tv_sec * 1000000000ULL + req->tv_nsec) / 100ULL;
 	NtDelayExecution(FALSE, &delay_interval);

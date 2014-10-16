@@ -22,7 +22,7 @@ static syscall_fn* syscall_table[SYSCALL_COUNT] =
 
 int sys_unimplemented(int _1, int _2, int _3, int _4, int _5, int _6, PCONTEXT context)
 {
-	log_debug("FATAL: Unimplemented syscall: %d\n", context->Eax);
+	log_error("FATAL: Unimplemented syscall: %d\n", context->Eax);
 	ExitProcess(1);
 }
 
@@ -38,9 +38,9 @@ static LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
 		uint8_t* code = (uint8_t *)ep->ContextRecord->Eip;
 		if (code >= 0 && code < 0x80000000U)
 		{
+			log_info("EIP: 0x%x\n", ep->ContextRecord->Eip);
 			if (code[0] == 0xCD && code[1] == 0x80) /* INT 80h */
 			{
-				log_debug("EIP: 0x%x\n", ep->ContextRecord->Eip);
 				ep->ContextRecord->Eip += 2;
 				dispatch_syscall(ep->ContextRecord);
 				return EXCEPTION_CONTINUE_EXECUTION;
@@ -51,13 +51,24 @@ static LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
 				return EXCEPTION_CONTINUE_EXECUTION;
 		}
 		if (ep->ExceptionRecord->ExceptionInformation[0] == 0)
-			log_debug("Page fault(read): %x at %x\n", ep->ExceptionRecord->ExceptionInformation[1], ep->ContextRecord->Eip);
+			log_error("Page fault(read): %x at %x\n", ep->ExceptionRecord->ExceptionInformation[1], ep->ContextRecord->Eip);
 		else if (ep->ExceptionRecord->ExceptionInformation[0] == 1)
-			log_debug("Page fault(write): %x at %x\n", ep->ExceptionRecord->ExceptionInformation[1], ep->ContextRecord->Eip);
+			log_error("Page fault(write): %x at %x\n", ep->ExceptionRecord->ExceptionInformation[1], ep->ContextRecord->Eip);
 		else if (ep->ExceptionRecord->ExceptionInformation[0] == 2)
-			log_debug("Page fault(DEP): %x at %x\n", ep->ExceptionRecord->ExceptionInformation[1], ep->ContextRecord->Eip);
+			log_error("Page fault(DEP): %x at %x\n", ep->ExceptionRecord->ExceptionInformation[1], ep->ContextRecord->Eip);
 	}
+	log_info("Application crashed, dumping debug information...\n");
 	mm_dump_stack_trace(ep->ContextRecord);
+	//dump_virtual_memory(GetCurrentProcess());
+	mm_find_memory(GetCurrentProcess(), ep->ContextRecord->Eip);
+	log_info("EAX: 0x%x\n", ep->ContextRecord->Eax);
+	log_info("EBX: 0x%x\n", ep->ContextRecord->Ebx);
+	log_info("ECX: 0x%x\n", ep->ContextRecord->Ecx);
+	log_info("EDX: 0x%x\n", ep->ContextRecord->Edx);
+	log_info("ESI: 0x%x\n", ep->ContextRecord->Esi);
+	log_info("EDI: 0x%x\n", ep->ContextRecord->Edi);
+	log_info("EBP: 0x%x\n", ep->ContextRecord->Eax);
+	log_info("ESP: 0x%x\n", ep->ContextRecord->Esp);
 	/* If we come here we're sure to crash, so gracefully close logging */
 	log_shutdown();
 	return EXCEPTION_CONTINUE_SEARCH;

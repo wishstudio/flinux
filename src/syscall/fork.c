@@ -93,7 +93,7 @@ static pid_t fork_process(PCONTEXT context, unsigned long flags, void *ptid, voi
 	si.cb = sizeof(si);
 	if (!CreateProcessW(filename, L"/?/fork", NULL, NULL, TRUE, CREATE_SUSPENDED, NULL, NULL, &si, &info))
 	{
-		log_debug("fork(): CreateProcessW() failed.\n");
+		log_warning("fork(): CreateProcessW() failed.\n");
 		return -1;
 	}
 
@@ -116,7 +116,7 @@ static pid_t fork_process(PCONTEXT context, unsigned long flags, void *ptid, voi
 
 	CloseHandle(info.hThread);
 	/* Process handled will be used for wait() */
-	log_debug("Child pid: %d\n", info.dwProcessId);
+	log_info("Child pid: %d\n", info.dwProcessId);
 	process_add_child(info.dwProcessId, info.hProcess);
 	return info.dwProcessId;
 
@@ -129,22 +129,22 @@ fail:
 
 pid_t sys_fork(int _1, int _2, int _3, int _4, int _5, int _6, PCONTEXT context)
 {
-	log_debug("fork()\n");
+	log_info("fork()\n");
 	return fork_process(context, 0, NULL, NULL);
 }
 
 pid_t sys_vfork(int _1, int _2, int _3, int _4, int _5, int _6, PCONTEXT context)
 {
-	log_debug("vfork()\n");
+	log_info("vfork()\n");
 	return fork_process(context, 0, NULL, NULL);
 }
 
 pid_t sys_clone(unsigned long flags, void *child_stack, void *ptid, int tls, void *ctid, int _6, PCONTEXT context)
 {
-	log_debug("sys_clone(flags=%x, child_stack=%x, ptid=%x, ctid=%x)\n", flags, child_stack, ptid, ctid);
+	log_info("sys_clone(flags=%x, child_stack=%x, ptid=%x, ctid=%x)\n", flags, child_stack, ptid, ctid);
 	if (flags & CLONE_THREAD)
 	{
-		log_debug("Threads not supported.\n");
+		log_error("Threads not supported.\n");
 		return -1;
 	}
 	else

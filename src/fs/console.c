@@ -196,7 +196,7 @@ static void erase_screen(struct console_state *console, int mode)
 	}
 	else
 	{
-		log_debug("erase_screen(): Invalid mode %d\n", mode);
+		log_error("erase_screen(): Invalid mode %d\n", mode);
 		return;
 	}
 	DWORD num_written;
@@ -231,7 +231,7 @@ static void erase_line(struct console_state *console, int mode)
 	}
 	else
 	{
-		log_debug("erase_line(): Invalid mode %d\n", mode);
+		log_error("erase_line(): Invalid mode %d\n", mode);
 		return;
 	}
 	DWORD num_written;
@@ -258,7 +258,7 @@ static void control_escape_param(struct console_state *console, char ch)
 
 	case ';':
 		if (console->param_count + 1 == CONSOLE_MAX_PARAMS)
-			log_debug("Too many console parameters.\n");
+			log_error("Too many console parameters.\n");
 		else
 			console->param_count++;
 		break;
@@ -289,7 +289,7 @@ static void control_escape_param(struct console_state *console, char ch)
 		break;
 
 	case 'h':
-		log_debug("console: fake disabling mode %d\n", console->params[0]);
+		log_warning("console: fake disabling mode %d\n", console->params[0]);
 		console->processor = NULL;
 		break;
 
@@ -304,7 +304,7 @@ static void control_escape_param(struct console_state *console, char ch)
 		break;
 
 	case 'l':
-		log_debug("console: fake disabling mode %d\n", console->params[0]);
+		log_warning("console: fake disabling mode %d\n", console->params[0]);
 		console->processor = NULL;
 		break;
 
@@ -355,7 +355,7 @@ static void control_escape_param(struct console_state *console, char ch)
 				break;
 
 			default:
-				log_debug("Unknown console attribute: %d\n", console->params[i]);
+				log_error("Unknown console attribute: %d\n", console->params[i]);
 			}
 		}
 		/* Set updated text attribute */
@@ -364,11 +364,11 @@ static void control_escape_param(struct console_state *console, char ch)
 		break;
 
 	case '?':
-		log_debug("warning: ignored '?'.\n");
+		log_error("warning: ignored '?'.\n");
 		break;
 
 	default:
-		log_debug("control_escape_param(): Unhandled character %c\n", ch);
+		log_error("control_escape_param(): Unhandled character %c\n", ch);
 		console->processor = NULL;
 	}
 }
@@ -385,17 +385,17 @@ static void control_escape(struct console_state *console, char ch)
 		break;
 
 	case '(':
-		log_debug("Set default font: ignored.\n");
+		log_warning("Set default font: ignored.\n");
 		console->processor = NULL;
 		break;
 
 	case ')':
-		log_debug("Set alternate font: ignored.\n");
+		log_warning("Set alternate font: ignored.\n");
 		console->processor = NULL;
 		break;
 
 	default:
-		log_debug("control_escape(): Unhandled character %c\n", ch);
+		log_error("control_escape(): Unhandled character %c\n", ch);
 		console->processor = NULL;
 	}
 }
@@ -694,14 +694,14 @@ static int console_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 
 	case TIOCGPGRP:
 	{
-		log_debug("Unsupported TIOCGPGRP: Return fake result.\n");
+		log_warning("Unsupported TIOCGPGRP: Return fake result.\n");
 		*(pid_t *)arg = GetCurrentProcessId();
 		return 0;
 	}
 
 	case TIOCSPGRP:
 	{
-		log_debug("Unsupported TIOCSPGRP: Do nothing.\n");
+		log_warning("Unsupported TIOCSPGRP: Do nothing.\n");
 		return 0;
 	}
 
@@ -719,7 +719,7 @@ static int console_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 	}
 
 	default:
-		log_debug("console: unknown ioctl command: %x\n", cmd);
+		log_error("console: unknown ioctl command: %x\n", cmd);
 		return -EINVAL;
 	}
 }
@@ -752,14 +752,14 @@ int console_alloc(struct file **in_file, struct file **out_file)
 	HANDLE in = CreateFileA("CONIN$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &attr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (in == INVALID_HANDLE_VALUE)
 	{
-		log_debug("CreateFile(\"CONIN$\") failed, error code: %d\n", GetLastError());
+		log_error("CreateFile(\"CONIN$\") failed, error code: %d\n", GetLastError());
 		return -EIO;
 	}
 	HANDLE out = CreateFileA("CONOUT$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &attr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (out == INVALID_HANDLE_VALUE)
 	{
 		CloseHandle(in);
-		log_debug("CreateFile(\"CONOUT$\") failed, error code: %d\n", GetLastError());
+		log_error("CreateFile(\"CONOUT$\") failed, error code: %d\n", GetLastError());
 		return -EIO;
 	}
 	struct console_state *console = (struct console_state *)kmalloc(sizeof(struct console_state));

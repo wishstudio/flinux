@@ -109,7 +109,7 @@ void tls_shutdown()
 
 int sys_set_thread_area(struct user_desc *u_info)
 {
-	log_debug("set_thread_area(%x): entry=%d, base=%x, limit=%x\n", u_info, u_info->entry_number, u_info->base_addr, u_info->limit);
+	log_info("set_thread_area(%x): entry=%d, base=%x, limit=%x\n", u_info, u_info->entry_number, u_info->base_addr, u_info->limit);
 	if (u_info->entry_number == -1)
 	{
 		/* Find an empty entry */
@@ -117,7 +117,7 @@ int sys_set_thread_area(struct user_desc *u_info)
 			if (!tls->entries[i].allocated)
 			{
 				u_info->entry_number = VIRTUAL_GDT_BASE + i;
-				log_debug("allocated entry %d (%x)\n", i, u_info->entry_number);
+				log_info("allocated entry %d (%x)\n", i, u_info->entry_number);
 				break;
 			}
 		if (u_info->entry_number == -1)
@@ -194,9 +194,10 @@ static int handle_mov_gs_reg(PCONTEXT context, uint8_t modrm)
 #define MODRM_CODE(c)	MODRM_R(c)
 int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 {
+	log_info("TLS Emulation begin.\n");
 	if (context->Eip >= tls->trampoline && context->Eip < tls->trampoline + sizeof(tls->trampoline))
 	{
-		log_debug("EIP Inside TLS trampoline!!!!! Emulation skipped.\n");
+		log_warning("EIP Inside TLS trampoline!!!!! Emulation skipped.\n");
 		return 0;
 	}
 	if (code[0] == 0x8C)
@@ -241,7 +242,7 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 		 * any of them, instead we examine the address mode of the instruction
 		 * and patch it to use the base address.
 		 */
-		log_debug("TLS: Try emulating instruction at %x\n", context->Eip);
+		log_info("TLS: Try emulating instruction at %x\n", context->Eip);
 		/* First let's deal with instruction prefix.
 		 * According to x86 doc the prefixes can appear in any order.
 		 * We just loop over the prefixes and ensure it has the GS segment
@@ -259,27 +260,27 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 				prefix_end++;
 			else if (code[prefix_end] == 0x2E) /* CS segment override */
 			{
-				log_debug("Found CS segment override, skipped\n");
+				log_info("Found CS segment override, skipped\n");
 				return 0;
 			}
 			else if (code[prefix_end] == 0x36) /* SS segment override */
 			{
-				log_debug("Found SS segment override, skipped\n");
+				log_info("Found SS segment override, skipped\n");
 				return 0;
 			}
 			else if (code[prefix_end] == 0x3E) /* DS segment override */
 			{
-				log_debug("Found DS segment override, skipped\n");
+				log_info("Found DS segment override, skipped\n");
 				return 0;
 			}
 			else if (code[prefix_end] == 0x26) /* ES segment override */
 			{
-				log_debug("Found ES segment override, skipped\n");
+				log_info("Found ES segment override, skipped\n");
 				return 0;
 			}
 			else if (code[prefix_end] == 0x64) /* FS segment override */
 			{
-				log_debug("Found FS segment override, skipped\n");
+				log_info("Found FS segment override, skipped\n");
 				return 0;
 			}
 			else if (code[prefix_end] == 0x65) /* GS segment override <- we're interested */
@@ -295,7 +296,7 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 			else if (code[prefix_end] == 0x67) /* Address size prefix */
 			{
 				address_size_prefix = 1;
-				log_debug("Address size prefix not supported.\n");
+				log_warning("Address size prefix not supported.\n");
 				return 0;
 			}
 			else
@@ -303,20 +304,20 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 		}
 		if (!found_gs_override)
 		{
-			log_debug("Instruction has no gs override.\n");
+			log_warning("Instruction has no gs override.\n");
 			return 0;
 		}
 		struct instruction_desc *desc;
 		int inst_len;
 		if (code[prefix_end] == 0x0F)
 		{
-			log_debug("Opcode: 0x0F%02x\n", code[prefix_end + 1]);
+			log_info("Opcode: 0x0F%02x\n", code[prefix_end + 1]);
 			desc = &two_byte_inst[code[prefix_end + 1]];
 			inst_len = 2;
 		}
 		else
 		{
-			log_debug("Opcode: 0x%02x\n", code[prefix_end]);
+			log_info("Opcode: 0x%02x\n", code[prefix_end]);
 			desc = &one_byte_inst[code[prefix_end]];
 			inst_len = 1;
 		}
@@ -324,7 +325,7 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 		int idx = 0;
 		#define JUMP_TO_TRAMPOLINE() \
 			context->Eip = tls->trampoline; \
-			log_debug("Building trampoline successfully at %x\n", tls->trampoline)
+			log_info("Building trampoline successfully at %x\n", tls->trampoline)
 		#define GEN_BYTE(x)		tls->trampoline[idx++] = (x)
 		#define GEN_WORD(x)		*(uint16_t *)&tls->trampoline[(idx += 2) - 2] = (x)
 		#define GEN_DWORD(x)	*(uint32_t *)&tls->trampoline[(idx += 4) - 4] = (x)
@@ -348,7 +349,7 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 				uint8_t mod = MODRM_MOD(modrm); \
 				if (mod == 3) \
 				{ \
-					log_debug("ModR/M: Pure register access."); \
+					log_warning("ModR/M: Pure register access."); \
 					return 0; \
 				} \
 				inst_len++; \
@@ -386,7 +387,7 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 		switch (desc->type)
 		{
 		case INST_TYPE_NOP: return 0;
-		case INST_TYPE_UNKNOWN: log_debug("Unknown opcode.\n"); return 0;
+		case INST_TYPE_UNKNOWN: log_error("Unknown opcode.\n"); return 0;
 		case INST_TYPE_MODRM:
 		{
 			/* Generate equivalent trampoline code by patch ModR/M */
@@ -448,7 +449,7 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 			}
 			/* Fall through */
 
-		default: log_debug("Unhandled instruction type: %d\n", desc->type); return 0;
+		default: log_error("Unhandled instruction type: %d\n", desc->type); return 0;
 		}
 	}
 	return 0;

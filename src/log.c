@@ -26,11 +26,44 @@ void log_shutdown()
 	CloseHandle(hFile);
 }
 
-void log_debug(const char *format, ...)
+void log_raw(const char *format, ...)
 {
 	va_list ap;
 	va_start(ap, format);
 	int size = wvsprintfA(buffer, format, ap);
 	WriteFile(hFile, buffer, size, NULL, NULL);
 }
+
+static void log_internal(char *type, const char *format, va_list ap)
+{
+	buffer[0] = '(';
+	buffer[1] = type;
+	buffer[2] = type;
+	buffer[3] = ')';
+	buffer[4] = ' ';
+	int size = 5 + wvsprintfA(buffer + 5, format, ap);
+	WriteFile(hFile, buffer, size, NULL, NULL);
+}
+
+void log_info(const char *format, ...)
+{
+	va_list ap;
+	va_start(ap, format);
+	log_internal('I', format, ap);
+}
+
+void log_warning(const char *format, ...)
+{
+	va_list ap;
+	va_start(ap, format);
+	log_internal('W', format, ap);
+}
+
+void log_error(const char *format, ...)
+{
+	va_list ap;
+	va_start(ap, format);
+	log_internal('E', format, ap);
+}
+
 #endif

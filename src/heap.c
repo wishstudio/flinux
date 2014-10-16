@@ -81,7 +81,7 @@ void *kmalloc(int size)
 		}
 	if (p == -1)
 	{
-		log_debug("kmalloc(%d): size too large.\n", size);
+		log_error("kmalloc(%d): size too large.\n", size);
 		return NULL;
 	}
 	
@@ -94,7 +94,7 @@ void *kmalloc(int size)
 	{
 		if (!current)
 		{
-			log_debug("kmalloc(%d): out of memory\n", size);
+			log_error("kmalloc(%d): out of memory\n", size);
 			return NULL;
 		}
 
@@ -131,7 +131,7 @@ void kfree(void *mem, int size)
 		}
 	if (p == -1)
 	{
-		log_debug("kfree(): Invalid size: %x\n", mem);
+		log_error("kfree(): Invalid size: %x\n", mem);
 		return;
 	}
 
@@ -162,5 +162,5 @@ void kfree(void *mem, int size)
 		}
 		return;
 	}
-	log_debug("kfree(): Invalid memory pointer or size: (%x, %d)\n", mem, size);
+	log_error("kfree(): Invalid memory pointer or size: (%x, %d)\n", mem, size);
 }

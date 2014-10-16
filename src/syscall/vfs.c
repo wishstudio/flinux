@@ -121,7 +121,7 @@ static int alloc_fd_slot()
 
 size_t sys_read(int fd, char *buf, size_t count)
 {
-	log_debug("read(%d, %x, %d)\n", fd, buf, count);
+	log_info("read(%d, %x, %d)\n", fd, buf, count);
 	struct file *f = vfs->fds[fd];
 	if (f && f->op_vtable->read)
 		return f->op_vtable->read(f, buf, count);
@@ -131,7 +131,7 @@ size_t sys_read(int fd, char *buf, size_t count)
 
 size_t sys_write(int fd, const char *buf, size_t count)
 {
-	log_debug("write(%d, %x, %d)\n", fd, buf, count);
+	log_info("write(%d, %x, %d)\n", fd, buf, count);
 	struct file *f = vfs->fds[fd];
 	if (f && f->op_vtable->write)
 		return f->op_vtable->write(f, buf, count);
@@ -141,7 +141,7 @@ size_t sys_write(int fd, const char *buf, size_t count)
 
 size_t sys_pread64(int fd, char *buf, size_t count, loff_t offset)
 {
-	log_debug("pread64(%d, %x, %d, %lld)\n", fd, buf, count, offset);
+	log_info("pread64(%d, %x, %d, %lld)\n", fd, buf, count, offset);
 	struct file *f = vfs->fds[fd];
 	if (f && f->op_vtable->pread)
 		return f->op_vtable->pread(f, buf, count, offset);
@@ -151,7 +151,7 @@ size_t sys_pread64(int fd, char *buf, size_t count, loff_t offset)
 
 size_t sys_pwrite64(int fd, const char *buf, size_t count, loff_t offset)
 {
-	log_debug("pwrite64(%d, %x, %d, %lld)\n", fd, buf, count, offset);
+	log_info("pwrite64(%d, %x, %d, %lld)\n", fd, buf, count, offset);
 	struct file *f = vfs->fds[fd];
 	if (f && f->op_vtable->pwrite)
 		return f->op_vtable->pwrite(f, buf, count, offset);
@@ -161,7 +161,7 @@ size_t sys_pwrite64(int fd, const char *buf, size_t count, loff_t offset)
 
 size_t sys_readv(int fd, const struct iovec *iov, int iovcnt)
 {
-	log_debug("readv(%d, 0x%x, %d)\n", fd, iov, iovcnt);
+	log_info("readv(%d, 0x%x, %d)\n", fd, iov, iovcnt);
 	struct file *f = vfs->fds[fd];
 	if (f && f->op_vtable->read)
 	{
@@ -183,7 +183,7 @@ size_t sys_readv(int fd, const struct iovec *iov, int iovcnt)
 
 size_t sys_writev(int fd, const struct iovec *iov, int iovcnt)
 {
-	log_debug("writev(%d, 0x%x, %d)\n", fd, iov, iovcnt);
+	log_info("writev(%d, 0x%x, %d)\n", fd, iov, iovcnt);
 	struct file *f = vfs->fds[fd];
 	if (f && f->op_vtable->write)
 	{
@@ -205,7 +205,7 @@ size_t sys_writev(int fd, const struct iovec *iov, int iovcnt)
 
 size_t sys_preadv(int fd, const struct iovec *iov, int iovcnt, off_t offset)
 {
-	log_debug("preadv(%d, 0x%x, %d, 0x%x)\n", fd, iov, iovcnt, offset);
+	log_info("preadv(%d, 0x%x, %d, 0x%x)\n", fd, iov, iovcnt, offset);
 	struct file *f = vfs->fds[fd];
 	if (f && f->op_vtable->pread)
 	{
@@ -228,7 +228,7 @@ size_t sys_preadv(int fd, const struct iovec *iov, int iovcnt, off_t offset)
 
 size_t sys_pwritev(int fd, const struct iovec *iov, int iovcnt, off_t offset)
 {
-	log_debug("pwritev(%d, 0x%x, %d, 0x%x)\n", fd, iov, iovcnt, offset);
+	log_info("pwritev(%d, 0x%x, %d, 0x%x)\n", fd, iov, iovcnt, offset);
 	struct file *f = vfs->fds[fd];
 	if (f && f->op_vtable->pwrite)
 	{
@@ -251,7 +251,7 @@ size_t sys_pwritev(int fd, const struct iovec *iov, int iovcnt, off_t offset)
 
 off_t sys_lseek(int fd, off_t offset, int whence)
 {
-	log_debug("lseek(%d, %d, %d)\n", fd, offset, whence);
+	log_info("lseek(%d, %d, %d)\n", fd, offset, whence);
 	struct file *f = vfs->fds[fd];
 	if (f && f->op_vtable->llseek)
 	{
@@ -270,7 +270,7 @@ off_t sys_lseek(int fd, off_t offset, int whence)
 int sys_llseek(int fd, unsigned long offset_high, unsigned long offset_low, loff_t *result, int whence)
 {
 	loff_t offset = ((uint64_t) offset_high << 32ULL) + offset_low;
-	log_debug("llseek(%d, %lld, %x, %d)\n", fd, offset, result, whence);
+	log_info("llseek(%d, %lld, %x, %d)\n", fd, offset, result, whence);
 	struct file *f = vfs->fds[fd];
 	if (f && f->op_vtable->llseek)
 		return f->op_vtable->llseek(f, offset, result, whence);
@@ -366,17 +366,17 @@ static int resolve_symlink(struct file_system *fs, char *path, char *subpath, ch
 	/* Test from right to left */
 	/* Note: Currently we assume the symlink only appears in subpath */
 	int found = 0;
-	log_debug("PATH: %s\n", path);
+	log_info("PATH: %s\n", path);
 	for (char *p = subpath + strlen(subpath) - 1; p > subpath; p--)
 	{
 		if (*p == '/')
 		{
 			*p = 0;
-			log_debug("Testing %s\n", path);
+			log_info("Testing %s\n", path);
 			int r = fs->readlink(subpath, target, MAX_PATH);
 			if (r >= 0)
 			{
-				log_debug("It is a symlink, target: %s\n", target);
+				log_info("It is a symlink, target: %s\n", target);
 				found = 1;
 				/* Combine symlink target with remaining path */
 				char *q = p + 1;
@@ -403,7 +403,7 @@ static int resolve_symlink(struct file_system *fs, char *path, char *subpath, ch
 	}
 	if (!found)
 	{
-		log_debug("No component is a symlink.\n");
+		log_warning("No component is a symlink.\n");
 		return -ENOENT;
 	}
 	return 0;
@@ -439,12 +439,12 @@ int vfs_open(const char *pathname, int flags, int mode, struct file **f)
 		|| (flags & O_LARGEFILE) || (flags & O_NOATIME) || (flags & O_NOCTTY)
 		|| (flags & O_NONBLOCK) || (flags & O_SYNC) || (flags & O_TMPFILE))
 	{
-		log_debug("Unsupported flag combination.\n");
+		log_error("Unsupported flag combination found.\n");
 		//return -EINVAL;
 	}
 	if (mode != 0)
 	{
-		log_debug("mode != 0\n");
+		log_error("mode != 0\n");
 		//return -EINVAL;
 	}
 	/* Resolve path */
@@ -465,18 +465,18 @@ int vfs_open(const char *pathname, int flags, int mode, struct file **f)
 		if (!fs->open)
 			return -ENOENT;
 		/* Try opening the file directly */
-		log_debug("Try opening %s\n", path);
+		log_info("Try opening %s\n", path);
 		int ret = fs->open(*subpath ? subpath : ".", flags, mode, f, target, MAX_PATH);
 		if (ret == 0)
 		{
 			/* We're done opening the file */
-			log_debug("Open file succeeded.\n");
+			log_info("Open file succeeded.\n");
 			return 0;
 		}
 		else if (ret == 1)
 		{
 			/* The file is a symlink, continue symlink resolving */
-			log_debug("It is a symlink, target: %s\n", target);
+			log_info("It is a symlink, target: %s\n", target);
 			/* Remove basename */
 			char *p = path + strlen(path) - 1;
 			while (*p != '/')
@@ -488,13 +488,13 @@ int vfs_open(const char *pathname, int flags, int mode, struct file **f)
 		}
 		else if (ret == -ENOENT)
 		{
-			log_debug("Open file failed, testing whether a component is a symlink...\n");
+			log_info("Open file failed, testing whether a component is a symlink...\n");
 			if (resolve_symlink(fs, path, subpath, target) < 0)
 				return ret;
 		}
 		else
 		{
-			log_debug("Open file error.\n");
+			log_warning("Open file error.\n");
 			return ret;
 		}
 	}
@@ -502,7 +502,7 @@ int vfs_open(const char *pathname, int flags, int mode, struct file **f)
 
 int sys_open(const char *pathname, int flags, int mode)
 {
-	log_debug("open(%x: \"%s\", %x, %x)\n", pathname, pathname, flags, mode);
+	log_info("open(%x: \"%s\", %x, %x)\n", pathname, pathname, flags, mode);
 	struct file *f;
 	int r = vfs_open(pathname, flags, mode, &f);
 	if (r < 0)
@@ -520,7 +520,7 @@ int sys_open(const char *pathname, int flags, int mode)
 
 int sys_close(int fd)
 {
-	log_debug("close(%d)\n", fd);
+	log_info("close(%d)\n", fd);
 	struct file *f = vfs->fds[fd];
 	if (!f)
 		return -EBADF;
@@ -530,14 +530,14 @@ int sys_close(int fd)
 
 int sys_mknod(const char *pathname, int mode, unsigned int dev)
 {
-	log_debug("mknod(\"%s\", %x, (%d:%d))", pathname, mode, major(dev), minor(dev));
+	log_info("mknod(\"%s\", %x, (%d:%d))", pathname, mode, major(dev), minor(dev));
 	/* TODO: Touch that file */
 	return 0;
 }
 
 int sys_link(const char *oldpath, const char *newpath)
 {
-	log_debug("link(\"%s\", \"%s\")\n", oldpath, newpath);
+	log_info("link(\"%s\", \"%s\")\n", oldpath, newpath);
 	struct file *f;
 	char path[MAX_PATH], target[MAX_PATH];
 	if (!normalize_path(vfs->cwd, newpath, path))
@@ -560,7 +560,7 @@ int sys_link(const char *oldpath, const char *newpath)
 			vfs_release(f);
 			return -ENOENT;
 		}
-		log_debug("Try linking file...\n");
+		log_info("Try linking file...\n");
 		int ret;
 		if (!fs->link)
 			ret = -ENOENT;
@@ -568,13 +568,13 @@ int sys_link(const char *oldpath, const char *newpath)
 			ret = fs->link(f, subpath);
 		if (ret == 0)
 		{
-			log_debug("Link succeeded.\n");
+			log_info("Link succeeded.\n");
 			vfs_release(f);
 			return 0;
 		}
 		else if (ret == -ENOENT)
 		{
-			log_debug("Link failed, testing whether a component is a symlink...\n");
+			log_info("Link failed, testing whether a component is a symlink...\n");
 			if (resolve_symlink(fs, path, subpath, target) < 0)
 			{
 				vfs_release(f);
@@ -591,7 +591,7 @@ int sys_link(const char *oldpath, const char *newpath)
 
 int sys_unlink(const char *pathname)
 {
-	log_debug("unlink(\"%s\")\n", pathname);
+	log_info("unlink(\"%s\")\n", pathname);
 	char path[MAX_PATH], target[MAX_PATH];
 	if (!normalize_path(vfs->cwd, pathname, path))
 		return -ENOENT;
@@ -605,16 +605,16 @@ int sys_unlink(const char *pathname)
 		char *subpath;
 		if (!find_filesystem(path, &fs, &subpath))
 			return -ENOENT;
-		log_debug("Try unlinking file...\n");
+		log_info("Try unlinking file...\n");
 		int ret = fs->unlink(subpath);
 		if (ret == 0)
 		{
-			log_debug("Unlink succeeded.\n");
+			log_info("Unlink succeeded.\n");
 			return 0;
 		}
 		else if (ret == -ENOENT)
 		{
-			log_debug("Unlink failed, testing whether a component is a symlink...\n");
+			log_info("Unlink failed, testing whether a component is a symlink...\n");
 			if (resolve_symlink(fs, path, subpath, target) < 0)
 				return -ENOENT;
 		}
@@ -625,7 +625,7 @@ int sys_unlink(const char *pathname)
 
 int sys_symlink(const char *symlink_target, const char *linkpath)
 {
-	log_debug("symlink(\"%s\", \"%s\")\n", symlink_target, linkpath);
+	log_info("symlink(\"%s\", \"%s\")\n", symlink_target, linkpath);
 	char path[MAX_PATH], target[MAX_PATH];
 	if (!normalize_path(vfs->cwd, linkpath, path))
 		return -ENOENT;
@@ -639,16 +639,16 @@ int sys_symlink(const char *symlink_target, const char *linkpath)
 		char *subpath;
 		if (!find_filesystem(path, &fs, &subpath))
 			return -ENOENT;
-		log_debug("Try creating symlink...\n");
+		log_info("Try creating symlink...\n");
 		int ret = fs->symlink(symlink_target, subpath);
 		if (ret == 0)
 		{
-			log_debug("Symlink succeeded.\n");
+			log_info("Symlink succeeded.\n");
 			return 0;
 		}
 		else if (ret == -ENOENT)
 		{
-			log_debug("Create symlink failed, testing whether a component is a symlink...\n");
+			log_info("Create symlink failed, testing whether a component is a symlink...\n");
 			if (resolve_symlink(fs, path, subpath, target) < 0)
 				return -ENOENT;
 		}
@@ -659,7 +659,7 @@ int sys_symlink(const char *symlink_target, const char *linkpath)
 
 size_t sys_readlink(const char *pathname, char *buf, int bufsize)
 {
-	log_debug("readlink(\"%s\", %x, %d)\n", pathname, buf, bufsize);
+	log_info("readlink(\"%s\", %x, %d)\n", pathname, buf, bufsize);
 	char path[MAX_PATH], target[MAX_PATH];
 	if (!normalize_path(vfs->cwd, pathname, path))
 		return -ENOENT;
@@ -673,11 +673,11 @@ size_t sys_readlink(const char *pathname, char *buf, int bufsize)
 		char *subpath;
 		if (!find_filesystem(path, &fs, &subpath))
 			return -ENOENT;
-		log_debug("Try reading symlink...\n");
+		log_info("Try reading symlink...\n");
 		int ret = fs->readlink(subpath, buf, bufsize);
 		if (ret == -ENOENT)
 		{
-			log_debug("Symlink not found, testing whether a component is a symlink...\n");
+			log_info("Symlink not found, testing whether a component is a symlink...\n");
 			if (resolve_symlink(fs, path, subpath, target) < 0)
 				return -ENOENT;
 		}
@@ -699,10 +699,10 @@ int sys_pipe2(int pipefd[2], int flags)
 	o O_DIRECT
 	o O_NONBLOCK
 	*/
-	log_debug("pipe2(%x, %d)\n", pipefd, flags);
+	log_info("pipe2(%x, %d)\n", pipefd, flags);
 	if ((flags & O_DIRECT) || (flags & O_NONBLOCK))
 	{
-		log_debug("Unsupported flags combination: %x\n", flags);
+		log_error("Unsupported flags combination: %x\n", flags);
 		return -EINVAL;
 	}
 	struct file *fread, *fwrite;
@@ -723,7 +723,7 @@ int sys_pipe2(int pipefd[2], int flags)
 
 int sys_dup(int fd)
 {
-	log_debug("dup(%d)\n", fd);
+	log_info("dup(%d)\n", fd);
 	struct file *f = vfs->fds[fd];
 	if (!f)
 		return -EBADF;
@@ -740,7 +740,7 @@ int sys_dup(int fd)
 
 int sys_dup2(int fd, int newfd)
 {
-	log_debug("dup2(%d, %d)\n", fd, newfd);
+	log_info("dup2(%d, %d)\n", fd, newfd);
 	struct file *f = vfs->fds[fd];
 	if (!f)
 		return -EBADF;
@@ -756,9 +756,9 @@ int sys_dup2(int fd, int newfd)
 
 int sys_mkdir(const char *pathname, int mode)
 {
-	log_debug("mkdir(\"%s\", %x)\n", pathname, mode);
+	log_info("mkdir(\"%s\", %x)\n", pathname, mode);
 	if (mode != 0)
-		log_debug("mode != 0\n");
+		log_error("mode != 0\n");
 	char path[MAX_PATH], target[MAX_PATH];
 	if (!normalize_path(vfs->cwd, pathname, path))
 		return -ENOENT;
@@ -772,11 +772,11 @@ int sys_mkdir(const char *pathname, int mode)
 		char *subpath;
 		if (!find_filesystem(path, &fs, &subpath))
 			return -ENOENT;
-		log_debug("Try creating directory...\n");
+		log_info("Try creating directory...\n");
 		int ret = fs->mkdir(subpath, mode);
 		if (ret == -ENOENT)
 		{
-			log_debug("Creating directory failed, testing whether a component is a symlink...\n");
+			log_info("Creating directory failed, testing whether a component is a symlink...\n");
 			if (resolve_symlink(fs, path, subpath, target) < 0)
 				return -ENOENT;
 		}
@@ -787,7 +787,7 @@ int sys_mkdir(const char *pathname, int mode)
 
 int sys_getdents64(int fd, struct linux_dirent64 *dirent, unsigned int count)
 {
-	log_debug("getdents64(%d, %x, %d)\n", fd, dirent, count);
+	log_info("getdents64(%d, %x, %d)\n", fd, dirent, count);
 	struct file *f = vfs->fds[fd];
 	if (f && f->op_vtable->getdents)
 		return f->op_vtable->getdents(f, dirent, count);
@@ -844,7 +844,7 @@ int sys_fstat(int fd, struct stat *buf)
 
 int sys_stat64(const char *pathname, struct stat64 *buf)
 {
-	log_debug("stat64(\"%s\", %x)\n", pathname, buf);
+	log_info("stat64(\"%s\", %x)\n", pathname, buf);
 	int fd = sys_open(pathname, O_PATH, 0);
 	if (fd < 0)
 		return fd;
@@ -855,7 +855,7 @@ int sys_stat64(const char *pathname, struct stat64 *buf)
 
 int sys_lstat64(const char *pathname, struct stat64 *buf)
 {
-	log_debug("lstat64(\"%s\", %x)\n", pathname, buf);
+	log_info("lstat64(\"%s\", %x)\n", pathname, buf);
 	int fd = sys_open(pathname, O_PATH | O_NOFOLLOW, 0);
 	if (fd < 0)
 		return fd;
@@ -866,7 +866,7 @@ int sys_lstat64(const char *pathname, struct stat64 *buf)
 
 int sys_fstat64(int fd, struct stat64 *buf)
 {
-	log_debug("fstat64(%d, %x)\n", fd, buf);
+	log_info("fstat64(%d, %x)\n", fd, buf);
 	struct file *f = vfs->fds[fd];
 	if (f && f->op_vtable->stat)
 		return f->op_vtable->stat(f, buf);
@@ -876,7 +876,7 @@ int sys_fstat64(int fd, struct stat64 *buf)
 
 int sys_ioctl(int fd, unsigned int cmd, unsigned long arg)
 {
-	log_debug("ioctl(%d, %x, %x)\n", fd, cmd, arg);
+	log_info("ioctl(%d, %x, %x)\n", fd, cmd, arg);
 	struct file *f = vfs->fds[fd];
 	if (f && f->op_vtable->ioctl)
 		return f->op_vtable->ioctl(f, cmd, arg);
@@ -886,7 +886,7 @@ int sys_ioctl(int fd, unsigned int cmd, unsigned long arg)
 
 int sys_utime(const char *filename, const struct utimbuf *times)
 {
-	log_debug("sys_utime(\"%s\", %x)\n", filename, times);
+	log_info("sys_utime(\"%s\", %x)\n", filename, times);
 	struct file *f;
 	int r = vfs_open(filename, O_WRONLY, 0, &f);
 	if (r < 0)
@@ -905,7 +905,7 @@ int sys_utime(const char *filename, const struct utimbuf *times)
 
 int sys_utimes(const char *filename, const struct timeval times[2])
 {
-	log_debug("sys_utimes(\"%s\", %x)\n", filename, times);
+	log_info("sys_utimes(\"%s\", %x)\n", filename, times);
 	struct file *f;
 	int r = vfs_open(filename, O_WRONLY, 0, &f);
 	if (r < 0)
@@ -919,7 +919,7 @@ int sys_utimes(const char *filename, const struct timeval times[2])
 
 int sys_chdir(const char *pathname)
 {
-	log_debug("chdir(%s)\n", pathname);
+	log_info("chdir(%s)\n", pathname);
 	/* TODO: Check whether pathname is a directory */
 	int fd = sys_open(pathname, O_PATH, 0);
 	if (fd < 0)
@@ -931,7 +931,7 @@ int sys_chdir(const char *pathname)
 
 char *sys_getcwd(char *buf, size_t size)
 {
-	log_debug("getcwd(%x, %d): %s\n", buf, size, vfs->cwd);
+	log_info("getcwd(%x, %d): %s\n", buf, size, vfs->cwd);
 	if (size < strlen(vfs->cwd) + 1)
 		return -ERANGE;
 	strcpy(buf, vfs->cwd);
@@ -940,19 +940,19 @@ char *sys_getcwd(char *buf, size_t size)
 
 int sys_fcntl64(int fd, int cmd, ...)
 {
-	log_debug("fcntl64(%d, %d)\n", fd, cmd);
+	log_info("fcntl64(%d, %d)\n", fd, cmd);
 	return 0;
 }
 
 int sys_access(const char *pathname, int mode)
 {
-	log_debug("access(\"%s\", %d)\n", pathname, mode);
+	log_info("access(\"%s\", %d)\n", pathname, mode);
 	return 0;
 }
 
 int sys_chmod(const char *pathname, int mode)
 {
-	log_debug("chmod(\"%s\", %d)\n", pathname, mode);
+	log_info("chmod(\"%s\", %d)\n", pathname, mode);
 	return 0;
 }
 
@@ -965,15 +965,15 @@ int sys_umask(int mask)
 
 int sys_chown(const char *pathname, uid_t owner, gid_t group)
 {
-	log_debug("chown(\"%s\", %d, %d)\n", pathname, owner, group);
+	log_info("chown(\"%s\", %d, %d)\n", pathname, owner, group);
 	return 0;
 }
 
 int sys_openat(int dirfd, const char *pathname, int flags)
 {
-	log_debug("openat(%d, %s, 0x%x)\n", dirfd, pathname, flags);
+	log_info("openat(%d, %s, 0x%x)\n", dirfd, pathname, flags);
 	/* TODO */
-	log_debug("Returning -ENOENT\n");
+	log_error("Returning -ENOENT\n");
 	return -ENOENT;
 }
 
@@ -984,7 +984,7 @@ int sys_openat(int dirfd, const char *pathname, int flags)
 
 int sys_select(int nfds, struct fdset *readfds, struct fdset *writefds, struct fdset *exceptfds, struct timeval *timeout)
 {
-	log_debug("select(%d, 0x%x, 0x%x, 0x%x, 0x%x)\n", nfds, readfds, writefds, exceptfds, timeout);
+	log_info("select(%d, 0x%x, 0x%x, 0x%x, 0x%x)\n", nfds, readfds, writefds, exceptfds, timeout);
 	int time;
 	if (timeout)
 		time = timeout->tv_sec * 1000 + timeout->tv_usec / 1000;
@@ -1031,7 +1031,7 @@ int sys_select(int nfds, struct fdset *readfds, struct fdset *writefds, struct f
 
 int sys_poll(struct pollfd *fds, int nfds, int timeout)
 {
-	log_debug("poll(0x%x, %d, %d)\n", fds, nfds, timeout);
+	log_info("poll(0x%x, %d, %d)\n", fds, nfds, timeout);
 
 	/* Count of handles to be waited on */
 	int cnt = 0;

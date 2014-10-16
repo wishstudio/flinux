@@ -77,7 +77,7 @@ static void run(struct elf_header *executable, struct elf_header *interpreter, i
 
 	/* Call executable entrypoint */
 	uint32_t entrypoint = interpreter? interpreter->load_base + interpreter->eh.e_entry: executable->load_base + executable->eh.e_entry;
-	log_debug("Entrypoint: %x\n", entrypoint);
+	log_info("Entrypoint: %x\n", entrypoint);
 	/* If we're starting from main(), just jump to entrypoint */
 	if (!context)
 		goto_entrypoint(stack, entrypoint);
@@ -109,14 +109,14 @@ static int load_elf(const char *filename, struct elf_header **executable, struct
 	f->op_vtable->pread(f, &eh, sizeof(eh), 0);
 	if (eh.e_type != ET_EXEC && eh.e_type != ET_DYN)
 	{
-		log_debug("Only ET_EXEC and ET_DYN executables can be loaded.\n");
+		log_error("Only ET_EXEC and ET_DYN executables can be loaded.\n");
 		vfs_release(f);
 		return -EACCES;
 	}
 
 	if (eh.e_machine != EM_386)
 	{
-		log_debug("Not an i386 executable.\n");
+		log_error("Not an i386 executable.\n");
 		vfs_release(f);
 		return -EACCES;
 	}
@@ -142,7 +142,7 @@ static int load_elf(const char *filename, struct elf_header **executable, struct
 			elf->high = max(elf->high, ph->p_vaddr + ph->p_memsz);
 		}
 		else if (ph->p_type == PT_DYNAMIC)
-			log_debug("PT_DYNAMIC: vaddr %x, size %x\n", ph->p_vaddr, ph->p_memsz);
+			log_info("PT_DYNAMIC: vaddr %x, size %x\n", ph->p_vaddr, ph->p_memsz);
 		else if (ph->p_type == PT_PHDR) /* Patch phdr pointer in PT_PHDR, glibc uses it to determine load offset */
 			ph->p_vaddr = elf->pht;
 	}
@@ -158,7 +158,7 @@ static int load_elf(const char *filename, struct elf_header **executable, struct
 			return -ENOMEM;
 		}
 		elf->load_base = free_addr - elf->low;
-		log_debug("ET_DYN load offset: %x, real range [%x, %x)\n", elf->load_base, elf->load_base + elf->low, elf->load_base + elf->high);
+		log_info("ET_DYN load offset: %x, real range [%x, %x)\n", elf->load_base, elf->load_base + elf->low, elf->load_base + elf->high);
 	}
 
 	/* Map executable segments */
@@ -225,8 +225,8 @@ int sys_execve(const char *filename, char *argv[], char *envp[], int _4, int _5,
 {
 	/* TODO: Deal with argv/envp == NULL */
 	/* TODO: Don't destroy things on failure */
-	log_debug("execve(%s, %x, %x)\n", filename, argv, envp);
-	log_debug("Reinitializing...\n");
+	log_info("execve(%s, %x, %x)\n", filename, argv, envp);
+	log_info("Reinitializing...\n");
 
 	/* Copy argv[] and envp[] to startup data */
 	char *base = startup;
@@ -234,15 +234,15 @@ int sys_execve(const char *filename, char *argv[], char *envp[], int _4, int _5,
 	for (argc = 0; argv[argc]; argc++)
 	{
 		base += strlen(argv[argc]) + 1;
-		log_debug("argv[%d] = \"%s\"\n", argc, argv[argc]);
+		log_info("argv[%d] = \"%s\"\n", argc, argv[argc]);
 	}
-	log_debug("argc = %d\n", argc);
+	log_info("argc = %d\n", argc);
 	for (env_size = 0; envp[env_size]; env_size++)
 	{
 		base += strlen(envp[env_size]) + 1;
-		log_debug("envp[%d] = \"%s\"\n", env_size, envp[env_size]);
+		log_info("envp[%d] = \"%s\"\n", env_size, envp[env_size]);
 	}
-	log_debug("env_size = %d\n", env_size);
+	log_info("env_size = %d\n", env_size);
 
 	/* TODO: Test if we have enough size to hold the startup data */
 	
@@ -282,7 +282,7 @@ int sys_execve(const char *filename, char *argv[], char *envp[], int _4, int _5,
 	mm_reset();
 	if (do_execve(f, argc, new_argv, env_size, new_envp, context) != 0)
 	{
-		log_debug("execve() failed.\n");
+		log_warning("execve() failed.\n");
 		ExitProcess(0); /* TODO: Recover */
 	}
 	return 0;
