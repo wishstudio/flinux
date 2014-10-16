@@ -174,24 +174,25 @@ static void erase_screen(struct console_state *console, int mode)
 	CONSOLE_SCREEN_BUFFER_INFO info;
 	GetConsoleScreenBufferInfo(console->out, &info);
 	COORD start;
-	start.X = 0;
 	int count;
 	if (mode == 0)
 	{
 		/* Erase current line to bottom */
-		start.Y = info.dwCursorPosition.Y;
-		count = (info.srWindow.Bottom - info.dwCursorPosition.Y + 1) * info.dwSize.X;
+		start = info.dwCursorPosition;
+		count = (info.dwSize.X - info.dwCursorPosition.X) + (info.srWindow.Bottom - info.dwCursorPosition.Y) * info.dwSize.X;
 	}
 	else if (mode == 1)
 	{
 		/* Erase top to current line */
-		start.Y = info.srWindow.Top;
-		count = (info.dwCursorPosition.Y - info.srWindow.Top + 1) * info.dwSize.X;
+		start.X = 0;
+		start.Y = 0;
+		count = (info.dwCursorPosition.Y - info.srWindow.Top) * info.dwSize.X + info.dwCursorPosition.X;
 	}
 	else if (mode == 2)
 	{
 		/* Erase entire screen */
-		start.Y = info.srWindow.Top;
+		start.X = 0;
+		start.Y = 0;
 		count = (info.srWindow.Bottom - info.srWindow.Top + 1) * info.dwSize.X;
 	}
 	else
