@@ -45,6 +45,13 @@ static void log_internal(char *type, const char *format, va_list ap)
 	WriteFile(hFile, buffer, size, NULL, NULL);
 }
 
+void log_debug(const char *format, ...)
+{
+	va_list ap;
+	va_start(ap, format);
+	log_internal('D', format, ap);
+}
+
 void log_info(const char *format, ...)
 {
 	va_list ap;
