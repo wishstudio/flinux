@@ -25,8 +25,10 @@
 #define STARTUP_DATA_BASE	0x70FE0000
 /* Base address of fork_info structure */
 #define FORK_INFO_BASE		0x70FF0000
-/* Base address of kernel heap */
-#define HEAP_BASE			0x71000000
+/* Low address of kernel heap */
+#define ADDRESS_HEAP_LOW	0x71000000
+/* High address of kernel heap */
+#define ADDRESS_HEAP_HIGH	0x72000000
 
 void mm_init();
 void mm_reset();

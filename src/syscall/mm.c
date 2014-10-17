@@ -306,14 +306,31 @@ static HANDLE duplicate_section(HANDLE source, void *source_addr)
 
 	status = NtCreateSection(&dest, SECTION_MAP_READ | SECTION_MAP_WRITE | SECTION_MAP_EXECUTE, &attr, &max_size, PAGE_EXECUTE_READWRITE, SEC_COMMIT, NULL);
 	if (status != STATUS_SUCCESS)
+	{
+		log_error("NtCreateSection() failed, status: %x\n", status);
 		return NULL;
+	}
 	
-	NtMapViewOfSection(dest, NtCurrentProcess(), &dest_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, PAGE_READWRITE);
+	status = NtMapViewOfSection(dest, NtCurrentProcess(), &dest_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, PAGE_READWRITE);
+	if (status != STATUS_SUCCESS)
+	{
+		log_error("NtMapViewOfSection() failed, status: %x\n", status);
+		return NULL;
+	}
 	/* Mark source block entirely readable. TODO: Find a better way */
 	DWORD oldProtect;
-	VirtualProtect(source_addr, BLOCK_SIZE, PAGE_EXECUTE_READ, &oldProtect);
+	if (!VirtualProtect(source_addr, BLOCK_SIZE, PAGE_EXECUTE_READ, &oldProtect))
+	{
+		log_error("VirtualProtect() failed, status: %x\n", status);
+		return NULL;
+	}
 	CopyMemory(dest_addr, source_addr, BLOCK_SIZE);
-	NtUnmapViewOfSection(NtCurrentProcess(), dest_addr);
+	status = NtUnmapViewOfSection(NtCurrentProcess(), dest_addr);
+	if (status != STATUS_SUCCESS)
+	{
+		log_error("NtUnmapViewOfSection() failed, status: %x\n", status);
+		return NULL;
+	}
 	return dest;
 }
 
@@ -342,7 +359,7 @@ int mm_handle_page_fault(void *addr)
 	status = NtQueryObject(mm->block_section_handle[block], ObjectBasicInformation, &info, sizeof(OBJECT_BASIC_INFORMATION), NULL);
 	if (status != STATUS_SUCCESS)
 	{
-		log_error("NtQueryObject() on section %x failed.\n", block);
+		log_error("NtQueryObject() on block %x failed.\n", block);
 		return 0;
 	}
 	if (info.HandleCount == 1)
@@ -364,7 +381,12 @@ int mm_handle_page_fault(void *addr)
 			log_error("Unmapping failed, status: %x\n", status);
 			return 0;
 		}
-		NtClose(mm->block_section_handle[block]);
+		status = NtClose(mm->block_section_handle[block]);
+		if (status != STATUS_SUCCESS)
+		{
+			log_error("NtClose() failed, status: %x\n", status);
+			return 0;
+		}
 		mm->block_section_handle[block] = section;
 		PVOID base_addr = GET_BLOCK_ADDRESS(block);
 		SIZE_T view_size = BLOCK_SIZE;
@@ -403,6 +425,7 @@ int mm_fork(HANDLE process)
 		return 0;
 	}
 	/* Map sections */
+	/* TODO: Optimization */
 	for (uint32_t i = 0; i < BLOCK_COUNT; i++)
 		if (mm->block_section_handle[i])
 		{
@@ -429,7 +452,7 @@ int mm_fork(HANDLE process)
 			}
 			if (!VirtualProtect(GET_PAGE_ADDRESS(j), PAGE_SIZE, prot_linux2win(mm->page_prot[j] & ~PROT_WRITE), &oldProtect))
 			{
-				log_error("VirtualProtect(%x) failed.\n", GET_PAGE_ADDRESS(j));
+				log_error("VirtualProtect(%x) on parent failed.\n", GET_PAGE_ADDRESS(j));
 				return 0;
 			}
 		}
@@ -464,7 +487,7 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, struct file *f, of
 	{
 		uint32_t alloc_page;
 		if (flags & __MAP_HEAP)
-			alloc_page = find_free_pages(GET_PAGE(ALIGN_TO_PAGE(length)), HEAP_BASE, ADDRESS_ALLOCATION_LOW);
+			alloc_page = find_free_pages(GET_PAGE(ALIGN_TO_PAGE(length)), ADDRESS_HEAP_LOW, ADDRESS_HEAP_HIGH);
 		else
 			alloc_page = find_free_pages(GET_PAGE(ALIGN_TO_PAGE(length)), ADDRESS_ALLOCATION_LOW, ADDRESS_ALLOCATION_HIGH);
 		if (!alloc_page)
@@ -565,8 +588,7 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, struct file *f, of
 	}
 	if (!mm->map_list || mm->map_list->start_page > end_page)
 	{
-		if (mm->map_list)
-			entry->next = mm->map_list->next;
+		entry->next = mm->map_list;
 		mm->map_list = entry;
 	}
 	else
@@ -591,7 +613,7 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, struct file *f, of
 			return -ENOMEM; /* TODO */
 		}
 	}
-	log_info("Allocated memory: %x\n", addr);
+	log_info("Allocated memory: [%x, %x)\n", addr, (uint32_t)addr + length);
 	return addr;
 }
 

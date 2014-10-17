@@ -50,6 +50,7 @@ void fork_init()
 	if (!strcmp(GetCommandLineA(), "/?/fork"))
 	{
 		/* We're a fork child */
+		log_info("We're a fork child.\n");
 		restore_fork_context();
 	}
 	else
@@ -105,7 +106,7 @@ static pid_t fork_process(PCONTEXT context, unsigned long flags, void *ptid, voi
 	VirtualAllocEx(info.hProcess, FORK_INFO_BASE, BLOCK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 	WriteProcessMemory(info.hProcess, FORK_INFO_BASE, context, sizeof(CONTEXT), NULL);
 	WriteProcessMemory(info.hProcess, FORK_INFO_BASE + sizeof(CONTEXT), &stack_base, sizeof(stack_base), NULL);
-	if (flags & CLONE_CHILD_SETTID)
+	if (flags & CLONE_CHILD_SETTID) /* TODO: Why not directly do it here? */
 		WriteProcessMemory(info.hProcess, FORK_INFO_BASE + sizeof(CONTEXT) + sizeof(stack_base), &ctid, sizeof(void*), NULL);
 
 	/* Copy stack */

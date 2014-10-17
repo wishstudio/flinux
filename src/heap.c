@@ -2,8 +2,6 @@
 #include <heap.h>
 #include <log.h>
 
-#include <stdlib.h>
-
 /* Fast kernel heap management for Foreign Linux
  *
  * We set up a memory pool for each power-of-two size.
@@ -37,20 +35,21 @@ void heap_init()
 {
 	mm_mmap(MM_HEAP_BASE, sizeof(struct heap_data), PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, NULL, 0);
 	heap->pools[0].objsize = 16;   heap->pools[0].first = NULL;
-	heap->pools[1].objsize = 32;   heap->pools[0].first = NULL;
-	heap->pools[2].objsize = 64;   heap->pools[0].first = NULL;
-	heap->pools[3].objsize = 128;  heap->pools[0].first = NULL;
-	heap->pools[4].objsize = 256;  heap->pools[0].first = NULL;
-	heap->pools[5].objsize = 512;  heap->pools[0].first = NULL;
-	heap->pools[6].objsize = 1024; heap->pools[0].first = NULL;
-	heap->pools[7].objsize = 2048; heap->pools[0].first = NULL;
-	heap->pools[8].objsize = 4096; heap->pools[0].first = NULL;
+	heap->pools[1].objsize = 32;   heap->pools[1].first = NULL;
+	heap->pools[2].objsize = 64;   heap->pools[2].first = NULL;
+	heap->pools[3].objsize = 128;  heap->pools[3].first = NULL;
+	heap->pools[4].objsize = 256;  heap->pools[4].first = NULL;
+	heap->pools[5].objsize = 512;  heap->pools[5].first = NULL;
+	heap->pools[6].objsize = 1024; heap->pools[6].first = NULL;
+	heap->pools[7].objsize = 2048; heap->pools[7].first = NULL;
+	heap->pools[8].objsize = 4096; heap->pools[8].first = NULL;
 }
 
 void heap_shutdown()
 {
 }
 
+#define ALIGN(x, align) (((x) + ((align) - 1)) & -(align))
 static struct bucket *alloc_bucket(int objsize)
 {
 	struct bucket *b = mm_mmap(0, BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE | __MAP_HEAP, NULL, 0);
@@ -58,7 +57,7 @@ static struct bucket *alloc_bucket(int objsize)
 	b->next_bucket = NULL;
 
 	/* Set up the chain of free objects */
-	char *c = (char *)b + objsize;
+	char *c = (char *)b + ALIGN(sizeof(struct bucket), sizeof(void *)); /* Align to machine word size */
 	b->first_free = c;
 	while (c + objsize < (char *)b + BLOCK_SIZE)
 	{
