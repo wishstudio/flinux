@@ -8,6 +8,7 @@ This project is still in heavy development. It's still buggy and not meant for e
 Feature highlights
 ======
 
+* Pure user-mode application, no privileged code or drivers
 * Copy-on-Write fork(2) implementation
 * Dynamically and statically compiled executables
 * NTFS native hardlink
