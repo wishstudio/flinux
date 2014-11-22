@@ -24,27 +24,16 @@ struct fork_info
 
 static struct fork_info * const fork = FORK_INFO_BASE;
 
-__declspec(noreturn) static void restore_fork_context()
+__declspec(noreturn) void restore_context(CONTEXT *context);
+
+__declspec(noreturn) static void fork_child()
 {
 	install_syscall_handler();
 	tls_afterfork();
 	process_init(fork->stack_base);
 	if (fork->ctid)
 		*(pid_t *)fork->ctid = GetCurrentProcessId();
-	__asm
-	{
-		mov ecx, [FORK_INFO_BASE + CONTEXT.Ecx]
-		mov edx, [FORK_INFO_BASE + CONTEXT.Edx]
-		mov ebx, [FORK_INFO_BASE + CONTEXT.Ebx]
-		mov esi, [FORK_INFO_BASE + CONTEXT.Esi]
-		mov edi, [FORK_INFO_BASE + CONTEXT.Edi]
-		mov esp, [FORK_INFO_BASE + CONTEXT.Esp]
-		mov ebp, [FORK_INFO_BASE + CONTEXT.Ebp]
-		xor eax, eax
-		mov gs, ax
-		push [FORK_INFO_BASE + CONTEXT.Eip]
-		ret
-	}
+	restore_context(&fork->context);
 }
 
 void fork_init()
@@ -53,7 +42,7 @@ void fork_init()
 	{
 		/* We're a fork child */
 		log_info("We're a fork child.\n");
-		restore_fork_context();
+		fork_child();
 	}
 	else
 	{
@@ -92,6 +81,11 @@ static pid_t fork_process(PCONTEXT context, unsigned long flags, void *ptid, voi
 	GetModuleFileNameW(NULL, filename, sizeof(filename));
 
 	tls_beforefork();
+#ifdef _WIN64
+	context->Rax = 0;
+#else
+	context->Eax = 0;
+#endif
 
 	PROCESS_INFORMATION info;
 	STARTUPINFOW si = { 0 };

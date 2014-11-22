@@ -178,4 +178,14 @@
   <ItemGroup>
     <CustomBuild Include="src\ntdll.def" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="src\syscall\stubs.asm">
+      <Filter>syscall</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <MASM Include="src\syscall\stubs64.asm">
+      <Filter>syscall</Filter>
+    </MASM>
+  </ItemGroup>
 </Project>

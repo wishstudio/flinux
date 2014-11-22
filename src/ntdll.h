@@ -6,6 +6,8 @@
 
 typedef LONG NTSTATUS;
 
+#define STATUS_SUCCESS 0
+
 #ifndef NT_SUCCESS
 #define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
 #endif

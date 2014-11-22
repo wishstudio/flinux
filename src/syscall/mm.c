@@ -256,12 +256,17 @@ void dump_virtual_memory(HANDLE process)
 void mm_dump_stack_trace(PCONTEXT context)
 {
 	log_info("Stack trace:\n");
-	uint32_t esp = context->Esp;
-	log_info("ESP: 0x%x\n", esp);
-	for (uint32_t i = esp & ~15; i < ((esp + 256) & ~15); i += 16)
+#ifdef _WIN64
+	size_t sp = context->Rsp;
+	log_info("RSP: 0x%x\n", sp);
+#else
+	size_t sp = context->Esp;
+	log_info("ESP: 0x%x\n", sp);
+#endif
+	for (size_t i = sp & ~15; i < ((sp + 256) & ~15); i += 16)
 	{
 		log_raw("%08x ", i);
-		for (uint32_t j = i; j < i + 16 && j < ((esp + 256) & ~15); j++)
+		for (size_t j = i; j < i + 16 && j < ((sp + 256) & ~15); j++)
 			log_raw("%02x ", *(unsigned char *)j);
 		log_raw("\n");
 	}
