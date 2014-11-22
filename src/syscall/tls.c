@@ -1,6 +1,10 @@
 #include <syscall/mm.h>
 #include <syscall/tls.h>
+#include <errno.h>
+#include <intrin.h>
 #include <log.h>
+#include <stddef.h>
+#include <winternl.h>
 
 /* Linux thread local storage (TLS) support emulation
  *
@@ -54,30 +58,43 @@
  * Currently I only work on software emulation of TLS. The non-emulated
  * way for 32-bit Windows remains a TODO.
  *
- * Q: How to emulate TLS?
+ * Q: How to implement TLS?
  *
+ * There are two flavor of approaches, one is emulation and another is
+ * patching.
+ * 1. Emulation
  * Keep gs to the zero value. This will cause an access violation on every
  * access related to gs. In the exception handler we can manually inspect
- * which instruction caused the violation and emulate that behavior.
+ * which instruction caused the violation and emulate that behavior. This
+ * does not require any modifications to the executables. But as exception
+ * handling is very expensive, this will not get good performance. Another
+ * issue is on x86_64 systems, the Windows WOW64 runtimes seems to mess up
+ * Win64 TEB pointer to gs register at context switches. This approach
+ * will easily lead to crashes in this case.
+ *
+ * 2. Patching
+ * Make patches for glibc which is (AFAIK) the only source for gs accesses.
+ * Windows x86 TLS uses the fs segment register for storage. The location for
+ * each TLS slot can be easily figured. Since the offset may change between
+ * operating systems and we don't want to check this in glibc, we calculate
+ * the offset here and pass it to glibc. Then at each TLS access we patch
+ * glibc to use the fs segment register to first acquire the location of
+ * the current TLS storage, then access its own TLS variables.
+ *
  */
 
 #include "x86_inst.h" /* x86 instruction definitions */
 
-#define VIRTUAL_GDT_BASE	0x80 /* To guarantee access violation when in use */
 #define MAX_TLS_ENTRIES		0x80
-
-struct tls_entry
-{
-	int allocated;
-	int addr;
-	int limit;
-};
 
 struct tls_data
 {
-	struct tls_entry entries[MAX_TLS_ENTRIES];
-	uint32_t gs, gs_addr; /* i386 explicitly requires pre-fetching segment information */
-	uint8_t trampoline[PAGE_SIZE];
+	DWORD gs_slot; /* Win32 TLS slot id for storing current emulated gs register */
+	DWORD entries_slot[MAX_TLS_ENTRIES]; /* Win32 TLS slot id for each emulated tls entries */
+	PVOID current_gs_value;
+	PVOID current_entries_addr[MAX_TLS_ENTRIES];
+	/* current_gs_addr and current_entries_addr is sed by fork to passing tls data to the new process */
+	uint8_t trampoline[2048]; /* TODO */
 };
 
 static struct tls_data *const tls = TLS_DATA_BASE;
@@ -85,19 +102,75 @@ static struct tls_data *const tls = TLS_DATA_BASE;
 void tls_init()
 {
 	sys_mmap(TLS_DATA_BASE, sizeof(struct tls_data), PROT_READ | PROT_WRITE | PROT_EXEC, MAP_FIXED | MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	for (int i = 0; i < MAX_TLS_ENTRIES; i++)
+		tls->entries_slot[i] = -1;
+	tls->gs_slot = TlsAlloc();
 }
 
 void tls_reset()
 {
 	for (int i = 0; i < MAX_TLS_ENTRIES; i++)
-		tls->entries[i].allocated = 0;
-	tls->gs = 0;
-	tls->gs_addr = 0;
+		if (tls->entries_slot[i] != -1)
+		{
+			TlsFree(tls->entries_slot[i]);
+			tls->entries_slot[i] = -1;
+		}
 }
 
 void tls_shutdown()
 {
+	TlsFree(tls->gs_slot);
+	for (int i = 0; i < MAX_TLS_ENTRIES; i++)
+		if (tls->entries_slot[i] != -1)
+			TlsFree(tls->entries_slot[i]);
 	sys_munmap(TLS_DATA_BASE, sizeof(struct tls_data));
+}
+
+void tls_beforefork()
+{
+	log_info("Saving TLS context...\n");
+	/* Save tls data for current thread into shared memory regions */
+	tls->current_gs_value = TlsGetValue(tls->gs_slot);
+	log_info("gs slot %d value 0x%x\n", tls->gs_slot, tls->current_gs_value);
+	for (int i = 0; i < MAX_TLS_ENTRIES; i++)
+		if (tls->entries_slot[i] != -1)
+		{
+			tls->current_entries_addr[i] = TlsGetValue(tls->entries_slot[i]);
+			log_info("entry %d slot %d addr 0x%x\n", i, tls->entries_slot[i], tls->current_entries_addr[i]);
+		}
+}
+
+void tls_afterfork()
+{
+	log_info("Restoring TLS context...\n");
+	tls->gs_slot = TlsAlloc();
+	TlsSetValue(tls->gs_slot, tls->current_gs_value);
+	log_info("gs slot %d value 0x%x\n", tls->gs_slot, tls->current_gs_value);
+	/* Restore saved tls info from shared memory regions */
+	for (int i = 0; i < MAX_TLS_ENTRIES; i++)
+		if (tls->entries_slot[i] != -1)
+		{
+			DWORD slot = TlsAlloc();
+			tls->entries_slot[i] = slot;
+			TlsSetValue(slot, tls->current_entries_addr[i]);
+			log_info("entry %d slot %d addr 0x%x\n", i, tls->entries_slot[i], tls->current_entries_addr[i]);
+		}
+}
+
+static size_t tls_slot_to_offset(DWORD slot)
+{
+	if (slot < 64)
+		return offsetof(TEB, TlsSlots[slot]);
+	else
+		return offsetof(TEB, TlsExpansionSlots) + (slot - 64) * sizeof(PVOID);
+}
+
+static DWORD tls_offset_to_slot(size_t offset)
+{
+	if (offset < offsetof(TEB, TlsSlots[64]))
+		return (offset - offsetof(TEB, TlsSlots)) / sizeof(PVOID);
+	else
+		return (offset - offsetof(TEB, TlsExpansionSlots)) / sizeof(PVOID) + 64;
 }
 
 /* Segment register format:
@@ -114,24 +187,22 @@ int sys_set_thread_area(struct user_desc *u_info)
 	{
 		/* Find an empty entry */
 		for (int i = 0; i < MAX_TLS_ENTRIES; i++)
-			if (!tls->entries[i].allocated)
+			if (tls->entries_slot[i] == -1)
 			{
-				u_info->entry_number = VIRTUAL_GDT_BASE + i;
-				log_info("allocated entry %d (%x)\n", i, u_info->entry_number);
+				DWORD slot = TlsAlloc();
+				tls->entries_slot[i] = slot;
+				u_info->entry_number = tls_slot_to_offset(slot);
+				log_info("allocated entry %d (slot %d), calculated fs offset 0x%x\n", i, slot, u_info->entry_number);
 				break;
 			}
 		if (u_info->entry_number == -1)
-		{
-			/* TODO: errno */
-			return -1;
-		}
+			return -ESRCH;
 	}
-	else if (u_info->entry_number < VIRTUAL_GDT_BASE) /* A simply consistency check */
-		return -1;
-	int entry = u_info->entry_number - VIRTUAL_GDT_BASE;
-	tls->entries[entry].allocated = 1;
-	tls->entries[entry].addr = u_info->base_addr;
-	tls->entries[entry].limit = u_info->limit;
+#if _WIN64
+	__writefsqword(u_info->entry_number, u_info->base_addr);
+#else
+	__writefsdword(u_info->entry_number, u_info->base_addr);
+#endif
 	return 0;
 }
 
@@ -146,7 +217,7 @@ static int handle_mov_reg_gs(PCONTEXT context, uint8_t modrm)
 	{
 		return 0;
 	}
-	uint16_t val = tls->gs;
+	uint16_t val = TlsGetValue(tls->gs_slot);
 	switch (modrm & 7)
 	{
 	case 0: LOW16(context->Eax) = val; break;
@@ -180,11 +251,9 @@ static int handle_mov_gs_reg(PCONTEXT context, uint8_t modrm)
 	case 6: val = context->Esi; break;
 	case 7: val = context->Edi; break;
 	}
-	uint16_t entry = (val >> 3) - VIRTUAL_GDT_BASE;
-	if (entry >= MAX_TLS_ENTRIES || !tls->entries[entry].allocated)
-		return 0;
-	tls->gs = val;
-	tls->gs_addr = tls->entries[entry].addr;
+	uint16_t gs_offset = (val >> 3);
+	log_info("mov gs, %d\n", tls_offset_to_slot(gs_offset));
+	TlsSetValue(tls->gs_slot, tls_offset_to_slot(gs_offset));
 	return 1;
 }
 
@@ -321,6 +390,9 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 			desc = &one_byte_inst[code[prefix_end]];
 			inst_len = 1;
 		}
+		/* TODO: Optimization to reduce one lookup? */
+		size_t gs_value = TlsGetValue(tls->gs_slot);
+		size_t gs_addr = TlsGetValue(gs_value);
 
 		int idx = 0;
 		#define JUMP_TO_TRAMPOLINE() \
@@ -367,7 +439,7 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 					base_addr = *(uint32_t *)&code[prefix_end + inst_len + sib]; \
 					addr_bytes = 4; \
 				} \
-				base_addr += tls->gs_addr; \
+				base_addr += gs_addr; \
 				if (mod == 0 && MODRM_M(modrm) == 5) /* special case: immediate disp32 */ \
 				{ \
 					GEN_BYTE(modrm); \
@@ -421,7 +493,7 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 			/* MOV moffs16, AX */
 			/* MOV moffs32, EAX */
 			/* TODO: Deal with address_size_prefix when we support it */
-			uint32_t addr = tls->gs_addr + LOW32(code[prefix_end + 1]);
+			uint32_t addr = gs_addr + LOW32(code[prefix_end + 1]);
 			COPY_PREFIX();
 			GEN_BYTE(code[prefix_end]);
 			GEN_DWORD(addr);

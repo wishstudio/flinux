@@ -3,6 +3,7 @@
 #include <syscall/mm.h>
 #include <syscall/process.h>
 #include <syscall/syscall.h>
+#include <syscall/tls.h>
 #include <log.h>
 
 /* Fork process
@@ -26,6 +27,7 @@ static struct fork_info * const fork = FORK_INFO_BASE;
 __declspec(noreturn) static void restore_fork_context()
 {
 	install_syscall_handler();
+	tls_afterfork();
 	process_init(fork->stack_base);
 	if (fork->ctid)
 		*(pid_t *)fork->ctid = GetCurrentProcessId();
@@ -88,6 +90,8 @@ static pid_t fork_process(PCONTEXT context, unsigned long flags, void *ptid, voi
 {
 	wchar_t filename[MAX_PATH];
 	GetModuleFileNameW(NULL, filename, sizeof(filename));
+
+	tls_beforefork();
 
 	PROCESS_INFORMATION info;
 	STARTUPINFOW si = { 0 };
