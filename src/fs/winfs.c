@@ -11,7 +11,7 @@
 #include <Windows.h>
 #include <ntdll.h>
 
-#define WINFS_SYMLINK_HEADER		"!<symlink>\377\376"
+#define WINFS_SYMLINK_HEADER		"!<SYMLINK>\379\378"
 #define WINFS_SYMLINK_HEADER_LEN	(sizeof(WINFS_SYMLINK_HEADER) - 1)
 
 struct winfs_file
@@ -187,7 +187,7 @@ static int winfs_stat(struct file *f, struct stat64 *buf)
 	{
 		int r;
 		if ((info.dwFileAttributes & FILE_ATTRIBUTE_SYSTEM)
-			&& (r = winfs_read_symlink(winfile->handle, NULL, 0)) > 0) /* TODO: Restore file position */
+			&& (r = winfs_read_symlink(winfile->handle, NULL, 0)) > 0)
 		{
 			buf->st_mode |= S_IFLNK;
 			buf->st_size = r;
@@ -334,6 +334,7 @@ static size_t winfs_readlink(const char *pathname, char *target, size_t buflen)
 
 	if (utf8_to_utf16_filename(pathname, strlen(pathname) + 1, wpathname, PATH_MAX) <= 0)
 		return -ENOENT;
+	/* TODO: This is not concurrency safe */
 	attr = GetFileAttributesW(wpathname);
 	if (attr == INVALID_FILE_ATTRIBUTES)
 		return -ENOENT;
