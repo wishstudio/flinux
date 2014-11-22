@@ -6,6 +6,7 @@
 #include <syscall/exec.h>
 #include <syscall/mm.h>
 #include <syscall/process.h>
+#include <syscall/tls.h>
 #include <syscall/vfs.h>
 #include <log.h>
 #include <heap.h>
@@ -33,47 +34,49 @@ __declspec(noreturn) static void goto_entrypoint(const char *stack, void *entryp
 		xor esi, esi
 		xor edi, edi
 		xor ebp, ebp
-		mov gs, ax
 		ret
 	}
 }
 
+/* Macros for easier initial stack mangling */
+#define PTR(ptr) *(void**)(stack -= sizeof(void*)) = (void*)(ptr)
+#define AUX_VEC(id, value) PTR(value); PTR(id)
+#define ALLOC(size) (stack -= (size))
+
 static void run(struct elf_header *executable, struct elf_header *interpreter, int argc, char *argv[], int env_size, char *envp[], PCONTEXT context)
 {
 	/* Generate initial stack */
-	int aux_size = 8;
-	int initial_stack_size = argc + 1 + env_size + 1 + aux_size * 2 + 1;
 	char *stack_base = process_get_stack_base();
-	const char **stack = (const char **)(stack_base + STACK_SIZE - initial_stack_size * sizeof(const char *) - sizeof(argc));
-	int idx = 0;
-	/* argc */
-	stack[idx++] = argc;
-	/* argv */
-	for (int i = 0; i < argc; i++)
-		stack[idx++] = argv[i];
-	stack[idx++] = NULL;
-	/* environment variables */
-	for (int i = 0; i < env_size; i++)
-		stack[idx++] = envp[i];
-	stack[idx++] = NULL;
+	char *stack = stack_base + STACK_SIZE;
+	/* 16 random bytes for AT_RANDOM */
+	/* TODO: Fill in real content */
+	char *random_bytes = ALLOC(16);
+
 	/* auxiliary vector */
-	stack[idx++] = (const char *)AT_PHDR;
-	stack[idx++] = (const char *)executable->pht;
-	stack[idx++] = (const char *)AT_PHENT;
-	stack[idx++] = (const char *)executable->eh.e_phentsize;
-	stack[idx++] = (const char *)AT_PHNUM;
-	stack[idx++] = (const char *)executable->eh.e_phnum;
-	stack[idx++] = (const char *)AT_PAGESZ;
-	stack[idx++] = (const char *)PAGE_SIZE;
-	stack[idx++] = (const char *)AT_BASE;
-	stack[idx++] = (const char *)(interpreter? interpreter->load_base - interpreter->low: NULL);
-	stack[idx++] = (const char *)AT_FLAGS;
-	stack[idx++] = (const char *)0;
-	stack[idx++] = (const char *)AT_SECURE;
-	stack[idx++] = (const char *)0;
-	stack[idx++] = (const char *)AT_ENTRY;
-	stack[idx++] = (const char *)executable->load_base + executable->eh.e_entry;
-	stack[idx++] = NULL;
+	PTR(NULL);
+	AUX_VEC(AT_FLAGS, 0);
+	AUX_VEC(AT_SECURE, 0);
+	AUX_VEC(AT_RANDOM, random_bytes);
+	AUX_VEC(AT_PAGESZ, PAGE_SIZE);
+	AUX_VEC(AT_PHDR, executable->pht);
+	AUX_VEC(AT_PHENT, executable->eh.e_phentsize);
+	AUX_VEC(AT_PHNUM, executable->eh.e_phnum);
+	AUX_VEC(AT_ENTRY, executable->load_base + executable->eh.e_entry);
+	AUX_VEC(AT_BASE, (interpreter ? interpreter->load_base - interpreter->low : NULL));
+
+	/* environment variables */
+	PTR(NULL);
+	for (int i = env_size - 1; i >= 0; i--)
+		PTR(envp[i]);
+
+	/* argv */
+	PTR(NULL);
+	for (int i = argc - 1; i >= 0; i--)
+		PTR(argv[i]);
+
+	/* argc */
+	/* TODO: We need to verify if this works on amd64 */
+	PTR(argc);
 
 	/* Call executable entrypoint */
 	uint32_t entrypoint = interpreter? interpreter->load_base + interpreter->eh.e_entry: executable->load_base + executable->eh.e_entry;
@@ -140,6 +143,7 @@ static int load_elf(const char *filename, struct elf_header **executable, struct
 		{
 			elf->low = min(elf->low, ph->p_vaddr);
 			elf->high = max(elf->high, ph->p_vaddr + ph->p_memsz);
+			log_info("PT_LOAD: vaddr %x, size %x\n", ph->p_vaddr, ph->p_memsz);
 		}
 		else if (ph->p_type == PT_DYNAMIC)
 			log_info("PT_DYNAMIC: vaddr %x, size %x\n", ph->p_vaddr, ph->p_memsz);
@@ -280,6 +284,7 @@ int sys_execve(const char *filename, char *argv[], char *envp[], int _4, int _5,
 
 	vfs_reset();
 	mm_reset();
+	tls_reset();
 	if (do_execve(f, argc, new_argv, env_size, new_envp, context) != 0)
 	{
 		log_warning("execve() failed.\n");
