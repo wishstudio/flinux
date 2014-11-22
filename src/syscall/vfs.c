@@ -71,6 +71,7 @@ void vfs_close(int fd)
 
 void vfs_init()
 {
+	log_info("vfs subsystem initializating...\n");
 	mm_mmap(VFS_DATA_BASE, sizeof(struct vfs_data), PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, NULL, 0);
 	struct file *console_in, *console_out;
 	console_alloc(&console_in, &console_out);
@@ -86,6 +87,7 @@ void vfs_init()
 	vfs->cwd[0] = '/';
 	vfs->cwd[1] = 0;
 	vfs->umask = S_IWGRP | S_IWOTH;
+	log_info("vfs subsystem initialized.\n");
 }
 
 void vfs_reset()
@@ -657,7 +659,7 @@ int sys_symlink(const char *symlink_target, const char *linkpath)
 	}
 }
 
-size_t sys_readlink(const char *pathname, char *buf, int bufsize)
+int sys_readlink(const char *pathname, char *buf, int bufsize)
 {
 	log_info("readlink(\"%s\", %x, %d)\n", pathname, buf, bufsize);
 	char path[MAX_PATH], target[MAX_PATH];

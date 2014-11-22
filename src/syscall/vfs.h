@@ -29,18 +29,18 @@ size_t sys_writev(int fd, const struct iovec *iov, int iovcnt);
 size_t sys_preadv(int fd, const struct iovec *iov, int iovcnt, off_t offset);
 size_t sys_pwritev(int fd, const struct iovec *iov, int iovcnt, off_t offset);
 off_t sys_lseek(int fd, off_t offset, int whence);
-int sys_llseek(unsigned long offset_high, unsigned long offset_low, loff_t *result, int whence);
+int sys_llseek(int fd, unsigned long offset_high, unsigned long offset_low, loff_t *result, int whence);
 
 int sys_open(const char *pathname, int flags, int mode);
 int sys_close(int fd);
 
 int sys_mknod(const char *pathname, int mode, unsigned int dev);
 
-int sys_link(const char *pathname);
+int sys_link(const char *oldpath, const char *newpath);
 int sys_unlink(const char *pathname);
 
 int sys_symlink(const char *target, const char *linkpath);
-size_t sys_readlink(const char *pathname, char *buf, size_t bufsize);
+int sys_readlink(const char *pathname, char *buf, int bufsize);
 
 int sys_pipe(int pipefd[2]);
 int sys_pipe2(int pipefd[2], int flags);
