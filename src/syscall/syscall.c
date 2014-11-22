@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <Windows.h>
 
-typedef int syscall_fn(int ebx, int ecx, int edx, int esi, int edi, int ebp);
+typedef int syscall_fn(int ebx, int ecx, int edx, int esi, int edi, int ebp, PCONTEXT context);
 
 #define SYSCALL_COUNT 338
 #define SYSCALL(name) extern int name(int ebx, int ecx, int edx, int esi, int edi, int ebp, PCONTEXT context);
@@ -58,9 +58,8 @@ static LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
 			log_error("Page fault(DEP): %x at %x\n", ep->ExceptionRecord->ExceptionInformation[1], ep->ContextRecord->Eip);
 	}
 	log_info("Application crashed, dumping debug information...\n");
-	mm_dump_stack_trace(ep->ContextRecord);
 	//dump_virtual_memory(GetCurrentProcess());
-	mm_find_memory(GetCurrentProcess(), ep->ContextRecord->Eip);
+	mm_dump_stack_trace(ep->ContextRecord);
 	log_info("EAX: 0x%x\n", ep->ContextRecord->Eax);
 	log_info("EBX: 0x%x\n", ep->ContextRecord->Ebx);
 	log_info("ECX: 0x%x\n", ep->ContextRecord->Ecx);

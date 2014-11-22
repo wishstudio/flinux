@@ -253,27 +253,6 @@ void dump_virtual_memory(HANDLE process)
 	} while ((uint32_t)addr < 0x7FFF0000);
 }
 
-void mm_find_memory(HANDLE process, DWORD value)
-{
-	log_info("Finding memory pattern...\n");
-	char *addr = 0;
-	do
-	{
-		MEMORY_BASIC_INFORMATION info;
-		VirtualQueryEx(process, addr, &info, sizeof(info));
-		if (info.State == MEM_COMMIT && (info.Protect == PAGE_READONLY || info.Protect == PAGE_READWRITE || info.Protect == PAGE_WRITECOPY ||
-			info.Protect == PAGE_EXECUTE_READ || info.Protect == PAGE_EXECUTE_READWRITE || info.Protect == PAGE_EXECUTE_WRITECOPY))
-		{
-			for (uint32_t i = info.BaseAddress; i + 3 * sizeof(DWORD) <= (uint32_t)info.BaseAddress + info.RegionSize; i++)
-				if (*(DWORD *)i == 0 && *(1 + (DWORD *)i) == value && *(2 + (DWORD *)i) == 0)
-				//if (*(DWORD *)i == value)
-					log_info("Found memory pattern: 0x%x at 0x%x.\n", value, i + 4);
-		}
-		addr += info.RegionSize;
-	} while ((uint32_t)addr < 0x7FFF0000);
-	log_info("Finding memory pattern done.\n");
-}
-
 void mm_dump_stack_trace(PCONTEXT context)
 {
 	log_info("Stack trace:\n");
