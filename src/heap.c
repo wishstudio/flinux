@@ -33,6 +33,7 @@ static struct heap_data *const heap = MM_HEAP_BASE;
 
 void heap_init()
 {
+	log_info("heap subsystem initializating...\n");
 	mm_mmap(MM_HEAP_BASE, sizeof(struct heap_data), PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, NULL, 0);
 	heap->pools[0].objsize = 16;   heap->pools[0].first = NULL;
 	heap->pools[1].objsize = 32;   heap->pools[1].first = NULL;
@@ -43,6 +44,7 @@ void heap_init()
 	heap->pools[6].objsize = 1024; heap->pools[6].first = NULL;
 	heap->pools[7].objsize = 2048; heap->pools[7].first = NULL;
 	heap->pools[8].objsize = 4096; heap->pools[8].first = NULL;
+	log_info("heap subsystem initialized.\n");
 }
 
 void heap_shutdown()

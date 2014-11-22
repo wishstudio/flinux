@@ -31,7 +31,8 @@ void log_raw(const char *format, ...)
 	va_list ap;
 	va_start(ap, format);
 	int size = wvsprintfA(buffer, format, ap);
-	WriteFile(hFile, buffer, size, NULL, NULL);
+	DWORD bytes_written;
+	WriteFile(hFile, buffer, size, &bytes_written, NULL);
 }
 
 static void log_internal(char *type, const char *format, va_list ap)
@@ -42,7 +43,8 @@ static void log_internal(char *type, const char *format, va_list ap)
 	buffer[3] = ')';
 	buffer[4] = ' ';
 	int size = 5 + wvsprintfA(buffer + 5, format, ap);
-	WriteFile(hFile, buffer, size, NULL, NULL);
+	DWORD bytes_written;
+	WriteFile(hFile, buffer, size, &bytes_written, NULL);
 }
 
 void log_debug(const char *format, ...)
