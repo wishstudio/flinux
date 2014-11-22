@@ -115,7 +115,11 @@ static pid_t fork_process(PCONTEXT context, unsigned long flags, void *ptid, voi
 
 	/* Copy stack */
 	VirtualAllocEx(info.hProcess, stack_base, STACK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+#ifdef _WIN64
+	WriteProcessMemory(info.hProcess, context->Rsp, context->Rsp, (char *)stack_base + STACK_SIZE - context->Rsp, NULL);
+#else
 	WriteProcessMemory(info.hProcess, context->Esp, context->Esp, (char *)stack_base + STACK_SIZE - context->Esp, NULL);
+#endif
 
 	ResumeThread(info.hThread);
 

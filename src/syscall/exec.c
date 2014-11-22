@@ -86,6 +86,25 @@ static void run(struct elf_header *executable, struct elf_header *interpreter, i
 		goto_entrypoint(stack, entrypoint);
 	/* Otherwise, we're at execve() in syscall handler context */
 	/* TODO: Add a trampoline to free original stack */
+#ifdef _WIN64
+	context->Rax = 0;
+	context->Rcx = 0;
+	context->Rdx = 0;
+	context->Rbx = 0;
+	context->Rsp = stack;
+	context->Rbp = 0;
+	context->Rsi = 0;
+	context->Rdi = 0;
+	context->Rip = entrypoint;
+	context->R8 = 0;
+	context->R9 = 0;
+	context->R10 = 0;
+	context->R11 = 0;
+	context->R12 = 0;
+	context->R13 = 0;
+	context->R14 = 0;
+	context->R15 = 0;
+#else
 	context->Eax = 0;
 	context->Ecx = 0;
 	context->Edx = 0;
@@ -95,6 +114,7 @@ static void run(struct elf_header *executable, struct elf_header *interpreter, i
 	context->Esi = 0;
 	context->Edi = 0;
 	context->Eip = entrypoint;
+#endif
 }
 
 static int load_elf(const char *filename, struct elf_header **executable, struct elf_header **interpreter)

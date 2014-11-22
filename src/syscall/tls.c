@@ -206,6 +206,7 @@ int sys_set_thread_area(struct user_desc *u_info)
 	return 0;
 }
 
+#ifndef _WIN64
 #define LOW8(x) (*((uint8_t *)&(x)))
 #define LOW16(x) (*((uint16_t *)&(x)))
 #define LOW32(x) (*((uint32_t *)&(x)))
@@ -256,6 +257,7 @@ static int handle_mov_gs_reg(PCONTEXT context, uint8_t modrm)
 	TlsSetValue(tls->gs_slot, tls_offset_to_slot(gs_offset));
 	return 1;
 }
+#endif
 
 #define MODRM_MOD(c)	(((c) >> 6) & 7)
 #define MODRM_R(c)		(((c) >> 3) & 7)
@@ -264,6 +266,13 @@ static int handle_mov_gs_reg(PCONTEXT context, uint8_t modrm)
 int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 {
 	log_info("TLS Emulation begin.\n");
+#ifdef _WIN64
+	if (context->Rip >= tls->trampoline && context->Rip < tls->trampoline + sizeof(tls->trampoline))
+	{
+		log_warning("EIP Inside TLS trampoline!!!!! Emulation skipped.\n");
+		return 0;
+	}
+#else
 	if (context->Eip >= tls->trampoline && context->Eip < tls->trampoline + sizeof(tls->trampoline))
 	{
 		log_warning("EIP Inside TLS trampoline!!!!! Emulation skipped.\n");
@@ -304,6 +313,7 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 			return 1;
 		}
 	}
+#endif
 	else
 	{
 		/* Maybe a normal instruction involving with segment prefix.
@@ -311,7 +321,11 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 		 * any of them, instead we examine the address mode of the instruction
 		 * and patch it to use the base address.
 		 */
+#ifdef _WIN64
+		log_info("TLS: Try emulating instruction at %llx\n", context->Rip);
+#else
 		log_info("TLS: Try emulating instruction at %x\n", context->Eip);
+#endif
 		/* First let's deal with instruction prefix.
 		 * According to x86 doc the prefixes can appear in any order.
 		 * We just loop over the prefixes and ensure it has the GS segment
@@ -395,9 +409,15 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 		size_t gs_addr = TlsGetValue(gs_value);
 
 		int idx = 0;
+#ifdef _WIN64
+		#define JUMP_TO_TRAMPOLINE() \
+			context->Rip = tls->trampoline; \
+			log_info("Building trampoline successfully at %llx\n", tls->trampoline)
+#else
 		#define JUMP_TO_TRAMPOLINE() \
 			context->Eip = tls->trampoline; \
 			log_info("Building trampoline successfully at %x\n", tls->trampoline)
+#endif
 		#define GEN_BYTE(x)		tls->trampoline[idx++] = (x)
 		#define GEN_WORD(x)		*(uint16_t *)&tls->trampoline[(idx += 2) - 2] = (x)
 		#define GEN_DWORD(x)	*(uint32_t *)&tls->trampoline[(idx += 4) - 4] = (x)
@@ -409,10 +429,17 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 					continue; \
 				else \
 					GEN_BYTE(code[i])
+#ifdef _WIN64
+		#define GEN_EPILOGUE(inst_len) \
+			GEN_BYTE(0x68); /* PUSH imm32 */ \
+			GEN_DWORD(context->Rip + prefix_end + (inst_len)); \
+			GEN_BYTE(0xC3); /* RET */
+#else
 		#define GEN_EPILOGUE(inst_len) \
 			GEN_BYTE(0x68); /* PUSH imm32 */ \
 			GEN_DWORD(context->Eip + prefix_end + (inst_len)); \
 			GEN_BYTE(0xC3); /* RET */
+#endif
 		#define GEN_MODRM_R(changed_r) \
 			{ \
 				uint8_t modrm = code[prefix_end + inst_len]; \
@@ -515,7 +542,11 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 				GEN_BYTE(0xFF);
 				GEN_MODRM_R(4);
 				/* Patch return address */
+#ifdef _WIN64
+				PATCH_DWORD(patch_idx, context->Rip + prefix_end + (inst_len));
+#else
 				PATCH_DWORD(patch_idx, context->Eip + prefix_end + (inst_len));
+#endif
 				JUMP_TO_TRAMPOLINE();
 				return 1;
 			}
