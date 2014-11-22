@@ -13,30 +13,22 @@
 
 #include <Windows.h>
 
+#ifdef _WIN64
+#define Elf_Ehdr Elf64_Ehdr
+#define Elf_Phdr Elf64_Phdr
+#else
+#define Elf_Ehdr Elf32_Ehdr
+#define Elf_Phdr Elf32_Phdr
+#endif
+
 struct elf_header
 {
-	uint32_t load_base, low, high;
-	Elf32_Ehdr eh;
+	size_t load_base, low, high;
+	Elf_Ehdr eh;
 	char pht[];
 };
 
-__declspec(noreturn) static void goto_entrypoint(const char *stack, void *entrypoint)
-{
-	__asm
-	{
-		mov eax, entrypoint
-		mov esp, stack
-		push eax
-		xor eax, eax
-		xor ebx, ebx
-		xor ecx, ecx
-		xor edx, edx
-		xor esi, esi
-		xor edi, edi
-		xor ebp, ebp
-		ret
-	}
-}
+__declspec(noreturn) void goto_entrypoint(const char *stack, void *entrypoint);
 
 /* Macros for easier initial stack mangling */
 #define PTR(ptr) *(void**)(stack -= sizeof(void*)) = (void*)(ptr)
@@ -79,7 +71,7 @@ static void run(struct elf_header *executable, struct elf_header *interpreter, i
 	PTR(argc);
 
 	/* Call executable entrypoint */
-	uint32_t entrypoint = interpreter? interpreter->load_base + interpreter->eh.e_entry: executable->load_base + executable->eh.e_entry;
+	size_t entrypoint = interpreter? interpreter->load_base + interpreter->eh.e_entry: executable->load_base + executable->eh.e_entry;
 	log_info("Entrypoint: %x\n", entrypoint);
 	/* If we're starting from main(), just jump to entrypoint */
 	if (!context)
@@ -119,7 +111,7 @@ static void run(struct elf_header *executable, struct elf_header *interpreter, i
 
 static int load_elf(const char *filename, struct elf_header **executable, struct elf_header **interpreter)
 {
-	Elf32_Ehdr eh;
+	Elf_Ehdr eh;
 	struct file *f;
 	int r = vfs_open(filename, O_RDONLY, 0, &f);
 	if (r < 0)
@@ -145,7 +137,7 @@ static int load_elf(const char *filename, struct elf_header **executable, struct
 	}
 
 	/* Load program header table */
-	uint32_t phsize = (uint32_t)eh.e_phentsize * (uint32_t)eh.e_phnum;
+	size_t phsize = (size_t)eh.e_phentsize * (size_t)eh.e_phnum;
 	struct elf_header *elf = kmalloc(sizeof(struct elf_header) + phsize); /* TODO: Free it at execve */
 	*executable = elf;
 	if (interpreter)
@@ -158,7 +150,7 @@ static int load_elf(const char *filename, struct elf_header **executable, struct
 	elf->high = 0;
 	for (int i = 0; i < eh.e_phnum; i++)
 	{
-		Elf32_Phdr *ph = (Elf32_Phdr *)&elf->pht[eh.e_phentsize * i];
+		Elf_Phdr *ph = (Elf_Phdr *)&elf->pht[eh.e_phentsize * i];
 		if (ph->p_type == PT_LOAD)
 		{
 			elf->low = min(elf->low, ph->p_vaddr);
@@ -175,7 +167,7 @@ static int load_elf(const char *filename, struct elf_header **executable, struct
 	elf->load_base = 0;
 	if (eh.e_type == ET_DYN)
 	{
-		uint32_t free_addr = mm_find_free_pages(elf->high - elf->low) * PAGE_SIZE;
+		size_t free_addr = mm_find_free_pages(elf->high - elf->low) * PAGE_SIZE;
 		if (!free_addr)
 		{
 			vfs_release(f);
@@ -188,11 +180,11 @@ static int load_elf(const char *filename, struct elf_header **executable, struct
 	/* Map executable segments */
 	for (int i = 0; i < eh.e_phnum; i++)
 	{
-		Elf32_Phdr *ph = (Elf32_Phdr *)&elf->pht[eh.e_phentsize * i];
+		Elf_Phdr *ph = (Elf_Phdr *)&elf->pht[eh.e_phentsize * i];
 		if (ph->p_type == PT_LOAD)
 		{
-			uint32_t addr = ph->p_vaddr & 0xFFFFF000;
-			uint32_t size = ph->p_memsz + (ph->p_vaddr & 0x00000FFF);
+			size_t addr = ph->p_vaddr & 0xFFFFF000;
+			size_t size = ph->p_memsz + (ph->p_vaddr & 0x00000FFF);
 			off_t offset_pages = ph->p_offset / PAGE_SIZE;
 
 			int prot = 0;
@@ -204,14 +196,14 @@ static int load_elf(const char *filename, struct elf_header **executable, struct
 				prot |= PROT_EXEC;
 			mm_mmap(elf->load_base + addr, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED, NULL, 0);
 			f->op_vtable->pread(f, (char *)(elf->load_base + ph->p_vaddr), ph->p_filesz, ph->p_offset);
-			mm_update_brk((uint32_t)addr + size);
+			mm_update_brk((size_t)addr + size);
 		}
 	}
 
 	/* Load interpreter if present */
 	for (int i = 0; i < eh.e_phnum; i++)
 	{
-		Elf32_Phdr *ph = (Elf32_Phdr *)&elf->pht[eh.e_phentsize * i];
+		Elf_Phdr *ph = (Elf_Phdr *)&elf->pht[eh.e_phentsize * i];
 		if (ph->p_type == PT_INTERP)
 		{
 			if (interpreter == NULL)
