@@ -199,18 +199,18 @@ int sys_set_thread_area(struct user_desc *u_info)
 			return -ESRCH;
 	}
 #if _WIN64
-	__writefsqword(u_info->entry_number, u_info->base_addr);
+	__writegsqword(u_info->entry_number, u_info->base_addr);
 #else
 	__writefsdword(u_info->entry_number, u_info->base_addr);
 #endif
 	return 0;
 }
 
-#ifndef _WIN64
 #define LOW8(x) (*((uint8_t *)&(x)))
 #define LOW16(x) (*((uint16_t *)&(x)))
 #define LOW32(x) (*((uint32_t *)&(x)))
 #define LOW64(x) (*((uint64_t *)&(x)))
+#ifndef _WIN64
 static int handle_mov_reg_gs(PCONTEXT context, uint8_t modrm)
 {
 	/* 11 101 rrr */

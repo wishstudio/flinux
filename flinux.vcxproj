@@ -41,6 +41,8 @@
     <ClInclude Include="src\common\utime.h" />
     <ClInclude Include="src\common\utsname.h" />
     <ClInclude Include="src\common\wait.h" />
+    <ClInclude Include="src\core\core.h" />
+    <ClInclude Include="src\core\forward_list.h" />
     <ClInclude Include="src\datetime.h" />
     <ClInclude Include="src\fs\console.h" />
     <ClInclude Include="src\fs\devfs.h" />
@@ -84,13 +86,13 @@
   <ItemGroup>
     <CustomBuild Include="src\ntdll.def">
       <Command Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">dlltool -k --def %(FullPath) -l $(OutDir)%(Filename).lib</Command>
-      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">dlltool -k --def %(FullPath) -l $(OutDir)%(Filename).lib</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">dlltool -k -m i386:x86-64 --def %(FullPath) -l $(OutDir)%(Filename).lib</Command>
       <Message Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Creating import library</Message>
       <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Creating import library</Message>
       <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(OutDir)%(Filename).lib</Outputs>
       <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)%(Filename).lib</Outputs>
       <Command Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">dlltool -k --def %(FullPath) -l $(OutDir)%(Filename).lib</Command>
-      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">dlltool -k --def %(FullPath) -l $(OutDir)%(Filename).lib</Command>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">dlltool -k -m i386:x86-64 --def %(FullPath) -l $(OutDir)%(Filename).lib</Command>
       <Message Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Creating import library</Message>
       <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Creating import library</Message>
       <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(OutDir)%(Filename).lib</Outputs>

@@ -13,6 +13,9 @@
     <Filter Include="fs">
       <UniqueIdentifier>{b5499d5e-1549-4423-8644-e1c3d92fee62}</UniqueIdentifier>
     </Filter>
+    <Filter Include="core">
+      <UniqueIdentifier>{bf8b2302-bfb8-482c-bb5a-68176dce23d8}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\binfmt\elf.h">
@@ -130,6 +133,12 @@
     </ClInclude>
     <ClInclude Include="src\common\select.h">
       <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="src\core\core.h">
+      <Filter>core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\core\forward_list.h">
+      <Filter>core</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
