@@ -118,8 +118,6 @@ struct mm_data
 
 	/* Section object handle of a block */
 	HANDLE block_section_handle[BLOCK_COUNT];
-	/* Number of allocated pages inside a allocation region */
-	uint8_t block_page_count[BLOCK_COUNT];
 };
 static struct mm_data *const mm = MM_DATA_BASE;
 
@@ -160,6 +158,22 @@ static void split_map_entry(struct map_entry *e, uint32_t last_page_of_first_ent
 	forward_list_add(e, ne);
 }
 
+static void free_map_entry_blocks(struct map_entry *p, struct map_entry *e)
+{
+	struct map_entry *n = forward_list_next(e);
+	uint32_t start_block = GET_BLOCK_OF_PAGE(e->start_page);
+	uint32_t end_block = GET_BLOCK_OF_PAGE(e->end_page);
+	if (p != &mm->map_list && GET_BLOCK_OF_PAGE(p->end_page) == start_block)
+		start_block++;
+	if (n != NULL && GET_BLOCK_OF_PAGE(n->start_page) == end_block)
+		end_block--;
+	for (uint32_t i = start_block; i <= end_block; i++)
+	{
+		NtUnmapViewOfSection(NtCurrentProcess(), GET_BLOCK_ADDRESS(i));
+		NtClose(mm->block_section_handle[i]);
+	}
+}
+
 void mm_init()
 {
 	VirtualAlloc(MM_DATA_BASE, sizeof(struct mm_data), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
@@ -179,7 +193,6 @@ void mm_reset()
 			NtUnmapViewOfSection(NtCurrentProcess(), GET_BLOCK_ADDRESS(i));
 			NtClose(mm->block_section_handle[i]);
 			mm->block_section_handle[i] = NULL;
-			mm->block_page_count[i] = 0;
 		}
 	struct map_entry *p, *e;
 	forward_list_iterate_safe(&mm->map_list, p, e)
@@ -419,10 +432,12 @@ int mm_handle_page_fault(void *addr)
 	forward_list_iterate(&mm->map_list, p, e)
 		if (end_page < e->start_page)
 			break;
-		else if (start_page <= e->end_page)
+		else
 		{
 			uint32_t range_start = max(start_page, e->start_page);
 			uint32_t range_end = min(end_page, e->end_page);
+			if (range_start > range_end)
+				continue;
 			DWORD oldProtect;
 			if (!VirtualProtect(GET_PAGE_ADDRESS(range_start), PAGE_SIZE * (range_end - range_start + 1), prot_linux2win(e->prot), &oldProtect))
 			{
@@ -546,57 +561,66 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, struct file *f, of
 		prot |= PROT_WRITE; /* TODO: Fix at end */
 
 	/* Allocate and map missing section objects */
-	for (uint16_t i = start_block; i <= end_block; i++)
+	uint32_t missing_block_start = start_block;
+	uint32_t missing_block_end = end_block;
+	struct map_entry *p, *e;
+	forward_list_iterate(&mm->map_list, p, e)
 	{
-		if (mm->block_page_count[i] == 0)
+		uint32_t range_start_block = GET_BLOCK_OF_PAGE(e->start_page);
+		uint32_t range_end_block = GET_BLOCK_OF_PAGE(e->end_page);
+		if (missing_block_end < range_start_block)
+			break;
+		else if (missing_block_end == range_start_block)
+			missing_block_end--;
+		else if (range_end_block == missing_block_start)
+			missing_block_start++;
+	}
+
+	for (uint32_t i = missing_block_start; i <= missing_block_end; i++)
+	{
+		OBJECT_ATTRIBUTES attr;
+		attr.Length = sizeof(OBJECT_ATTRIBUTES);
+		attr.RootDirectory = NULL;
+		attr.ObjectName = NULL;
+		attr.Attributes = OBJ_INHERIT;
+		attr.SecurityDescriptor = NULL;
+		attr.SecurityQualityOfService = NULL;
+		LARGE_INTEGER max_size;
+		max_size.QuadPart = BLOCK_SIZE;
+		NTSTATUS status;
+		HANDLE handle;
+
+		/* Allocate section */
+		status = NtCreateSection(&handle, SECTION_MAP_READ | SECTION_MAP_WRITE | SECTION_MAP_EXECUTE, &attr, &max_size, PAGE_EXECUTE_READWRITE, SEC_COMMIT, NULL);
+		if (status != STATUS_SUCCESS)
 		{
-			OBJECT_ATTRIBUTES attr;
-			attr.Length = sizeof(OBJECT_ATTRIBUTES);
-			attr.RootDirectory = NULL;
-			attr.ObjectName = NULL;
-			attr.Attributes = OBJ_INHERIT;
-			attr.SecurityDescriptor = NULL;
-			attr.SecurityQualityOfService = NULL;
-			LARGE_INTEGER max_size;
-			max_size.QuadPart = BLOCK_SIZE;
-			NTSTATUS status;
-			HANDLE handle;
-
-			/* Allocate section */
-			status = NtCreateSection(&handle, SECTION_MAP_READ | SECTION_MAP_WRITE | SECTION_MAP_EXECUTE, &attr, &max_size, PAGE_EXECUTE_READWRITE, SEC_COMMIT, NULL);
-			if (status != STATUS_SUCCESS)
-			{
-				log_error("NtCreateSection() failed. Status: %x\n", status);
-				goto ROLLBACK;
-			}
-
-			/* Map section */
-			PVOID base_addr = GET_BLOCK_ADDRESS(i);
-			SIZE_T view_size = BLOCK_SIZE;
-			status = NtMapViewOfSection(handle, NtCurrentProcess(), &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, PAGE_EXECUTE_READWRITE);
-			if (status != STATUS_SUCCESS)
-			{
-				log_error("NtMapViewOfSection() failed. Address: %x, Status: %x\n", base_addr, status);
-				NtClose(handle);
-				dump_virtual_memory(NtCurrentProcess());
-				goto ROLLBACK;
-			}
-			mm->block_section_handle[i] = handle;
-			continue;
-
-		ROLLBACK:
-			/* Roll back */
-			for (uint16_t j = start_block; j < i; j++)
-			{
-				if (mm->block_page_count[j] == 0)
-				{
-					NtUnmapViewOfSection(NtCurrentProcess(), GET_BLOCK_ADDRESS(j));
-					NtClose(mm->block_section_handle[j]);
-					mm->block_section_handle[j] = NULL;
-				}
-			}
-			return -ENOMEM; /* TODO */
+			log_error("NtCreateSection() failed. Status: %x\n", status);
+			goto ROLLBACK;
 		}
+
+		/* Map section */
+		PVOID base_addr = GET_BLOCK_ADDRESS(i);
+		SIZE_T view_size = BLOCK_SIZE;
+		status = NtMapViewOfSection(handle, NtCurrentProcess(), &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, PAGE_EXECUTE_READWRITE);
+		if (status != STATUS_SUCCESS)
+		{
+			log_error("NtMapViewOfSection() failed. Address: %x, Status: %x\n", base_addr, status);
+			NtClose(handle);
+			dump_virtual_memory(NtCurrentProcess());
+			goto ROLLBACK;
+		}
+		mm->block_section_handle[i] = handle;
+		continue;
+		
+	ROLLBACK:
+		/* Roll back */
+		for (uint16_t j = missing_block_start; j < i; j++)
+		{
+			NtUnmapViewOfSection(NtCurrentProcess(), GET_BLOCK_ADDRESS(j));
+			NtClose(mm->block_section_handle[j]);
+			mm->block_section_handle[j] = NULL;
+		}
+		return -ENOMEM; /* TODO */
 	}
 
 	RtlSecureZeroMemory(addr, length); /* TODO: Optimization? */
@@ -635,11 +659,6 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, struct file *f, of
 	}
 	if (!mm_change_protection(start_page, end_page, prot))
 		return -ENOMEM; /* TODO */
-	for (uint32_t i = start_page; i <= end_page; i++)
-	{
-		/* TODO: Optimization */
-		mm->block_page_count[GET_BLOCK_OF_PAGE(i)]++;
-	}
 	log_info("Allocated memory: [%x, %x)\n", addr, (uint32_t)addr + length);
 	return addr;
 }
@@ -658,6 +677,46 @@ int mm_munmap(void *addr, size_t length)
 		return -EINVAL;
 	}
 
+	uint32_t start_page = GET_PAGE(addr);
+	uint32_t end_page = GET_PAGE((size_t)addr + length - 1);
+	struct map_entry *p, *e;
+	forward_list_iterate_safe(&mm->map_list, p, e)
+		if (end_page < e->start_page)
+			break;
+		else
+		{
+			uint32_t range_start = max(start_page, e->start_page);
+			uint32_t range_end = min(end_page, e->end_page);
+			if (range_start > range_end)
+				continue;
+			if (range_start == e->start_page && range_end == e->end_page)
+			{
+				/* That's good, the current entry is fully overlapped */
+				if (e->f)
+					vfs_release(e->f);
+				free_map_entry_blocks(p, e);
+				forward_list_remove(p, e);
+				free_map_entry(e);
+			}
+			else
+			{
+				/* Not so good, part of current entry is overlapped */
+				if (range_start == e->start_page)
+				{
+					split_map_entry(e, range_end);
+					free_map_entry_blocks(p, e);
+					forward_list_remove(p, e);
+					free_map_entry(e);
+				}
+				else
+				{
+					split_map_entry(e, range_start - 1);
+					/* The current entry is unrelated, we just skip to next entry (which we just generated) */
+				}
+			}
+		}
+
+#if 0
 	uint32_t unmap_start_page = GET_PAGE(addr);
 	uint32_t unmap_end_page = GET_PAGE((size_t)addr + length - 1);
 	struct map_entry *pred, *e;
@@ -708,6 +767,7 @@ int mm_munmap(void *addr, size_t length)
 				}
 			}
 		}
+#endif
 	return 0;
 }
 
@@ -783,10 +843,12 @@ int sys_mprotect(void *addr, size_t length, int prot)
 	forward_list_iterate_safe(&mm->map_list, p, e)
 		if (end_page < e->start_page)
 			break;
-		else if (start_page <= e->end_page)
+		else
 		{
 			uint32_t range_start = max(start_page, e->start_page);
 			uint32_t range_end = min(end_page, e->end_page);
+			if (range_start > range_end)
+				continue;
 			if (range_start == e->start_page && range_end == e->end_page)
 			{
 				/* That's good, the current entry is fully overlapped */
@@ -804,7 +866,6 @@ int sys_mprotect(void *addr, size_t length, int prot)
 				{
 					split_map_entry(e, range_start - 1);
 					/* The current entry is unrelated, we just skip to next entry (which we just generated) */
-					continue;
 				}
 			}
 		}
