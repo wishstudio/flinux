@@ -93,6 +93,7 @@
 #define GET_PAGE_IN_BLOCK(page) ((page) % PAGES_PER_BLOCK)
 #define GET_BLOCK_OF_PAGE(page) ((page) / PAGES_PER_BLOCK)
 #define GET_FIRST_PAGE_OF_BLOCK(block)	((block) * PAGES_PER_BLOCK)
+#define GET_LAST_PAGE_OF_BLOCK(block) ((block) * PAGES_PER_BLOCK + (PAGES_PER_BLOCK - 1))
 #define GET_BLOCK_ADDRESS(block) (void *)((block) * BLOCK_SIZE)
 #define GET_PAGE_ADDRESS(page) (void *)((page) * PAGE_SIZE)
 
@@ -101,6 +102,7 @@ struct map_entry
 	FORWARD_LIST_NODE(struct map_entry);
 	uint32_t start_page;
 	uint32_t end_page;
+	int prot;
 	struct file *f;
 	off_t offset_pages;
 };
@@ -118,9 +120,6 @@ struct mm_data
 	HANDLE block_section_handle[BLOCK_COUNT];
 	/* Number of allocated pages inside a allocation region */
 	uint8_t block_page_count[BLOCK_COUNT];
-
-	/* Protection flags for a given page */
-	uint8_t page_prot[PAGE_COUNT];
 };
 static struct mm_data *const mm = MM_DATA_BASE;
 
@@ -136,6 +135,29 @@ static struct map_entry *new_map_entry()
 static void free_map_entry(struct map_entry *entry)
 {
 	forward_list_add(&mm->map_free_list, entry);
+}
+
+static struct map_entry *find_map_entry(void *addr)
+{
+	struct map_entry *p, *e;
+	forward_list_iterate(&mm->map_list, p, e)
+		if (addr < GET_PAGE_ADDRESS(p->start_page))
+			return NULL;
+		else if (addr <= GET_PAGE_ADDRESS(p->end_page))
+			return e;
+	return NULL;
+}
+
+static void split_map_entry(struct map_entry *e, uint32_t last_page_of_first_entry)
+{
+	struct map_entry *ne = new_map_entry();
+	ne->start_page = last_page_of_first_entry + 1;
+	ne->end_page = e->end_page;
+	if ((ne->f = e->f))
+		ne->offset_pages = e->offset_pages + (ne->start_page - e->start_page);
+	ne->prot = e->prot;
+	e->end_page = last_page_of_first_entry;
+	forward_list_add(e, ne);
 }
 
 void mm_init()
@@ -163,8 +185,6 @@ void mm_reset()
 	forward_list_iterate_safe(&mm->map_list, p, e)
 		if (e->start_page >= GET_PAGE(ADDRESS_ALLOCATION_LOW) && e->end_page < GET_PAGE(ADDRESS_ALLOCATION_HIGH))
 		{
-			for (uint32_t i = e->start_page; i <= e->end_page; i++)
-				mm->page_prot[i] = 0;
 			forward_list_remove(p, e);
 			free_map_entry(e);
 		}
@@ -222,6 +242,26 @@ static DWORD prot_linux2win(int prot)
 		return PAGE_READONLY;
 	else
 		return PAGE_NOACCESS;
+}
+
+static int mm_change_protection(uint32_t start_page, uint32_t end_page, int prot)
+{
+	DWORD protection = prot_linux2win(prot);
+	uint32_t start_block = GET_BLOCK_OF_PAGE(start_page);
+	uint32_t end_block = GET_BLOCK_OF_PAGE(end_page);
+	for (uint32_t i = start_block; i <= end_block; i++)
+	{
+		uint32_t range_start = max(GET_FIRST_PAGE_OF_BLOCK(i), start_page);
+		uint32_t range_end = min(GET_LAST_PAGE_OF_BLOCK(i), end_page);
+		DWORD oldProtect;
+		if (!VirtualProtect(GET_PAGE_ADDRESS(range_start), PAGE_SIZE * (range_end - range_start + 1), protection, &oldProtect))
+		{
+			log_error("VirtualProtect(0x%x, 0x%x) failed, error code: %d\n", GET_PAGE_ADDRESS(range_start),
+				PAGE_SIZE * (range_end - range_start + 1), GetLastError());
+			return 0;
+		}
+	}
+	return 1;
 }
 
 void dump_virtual_memory(HANDLE process)
@@ -316,7 +356,8 @@ int mm_handle_page_fault(void *addr)
 		log_warning("Address %x outside of valid usermode address space.\n", addr);
 		return 0;
 	}
-	if ((mm->page_prot[GET_PAGE(addr)] & PROT_WRITE) == 0)
+	struct map_entry *entry = find_map_entry(addr);
+	if ((entry->prot & PROT_WRITE) == 0)
 	{
 		log_warning("Address %x (page %x) not writable.\n", addr, GET_PAGE(addr));
 		return 0;
@@ -372,16 +413,24 @@ int mm_handle_page_fault(void *addr)
 		}
 	}
 	/* We're the only owner of the section now, change page protection flags */
-	for (uint32_t i = 0; i < PAGES_PER_BLOCK; i++)
-	{
-		uint32_t page = GET_FIRST_PAGE_OF_BLOCK(block) + i;
-		DWORD oldProtect;
-		if (!VirtualProtect(GET_PAGE_ADDRESS(page), PAGE_SIZE, prot_linux2win(mm->page_prot[page]), &oldProtect))
+	uint32_t start_page = GET_FIRST_PAGE_OF_BLOCK(block);
+	uint32_t end_page = GET_LAST_PAGE_OF_BLOCK(block);
+	struct map_entry *p, *e;
+	forward_list_iterate(&mm->map_list, p, e)
+		if (end_page < e->start_page)
+			break;
+		else if (start_page <= e->end_page)
 		{
-			log_error("VirtualProtect(0x%x) failed, error code: %d.\n", GET_PAGE_ADDRESS(page), GetLastError());
-			return 0;
+			uint32_t range_start = max(start_page, e->start_page);
+			uint32_t range_end = min(end_page, e->end_page);
+			DWORD oldProtect;
+			if (!VirtualProtect(GET_PAGE_ADDRESS(range_start), PAGE_SIZE * (range_end - range_start + 1), prot_linux2win(e->prot), &oldProtect))
+			{
+				log_error("VirtualProtect(0x%x, 0x%x) failed, error code: %d.\n", GET_PAGE_ADDRESS(range_start),
+					PAGE_SIZE * (range_end - range_start + 1), GetLastError());
+				return 0;
+			}
 		}
-	}
 	return 1;
 }
 
@@ -417,17 +466,19 @@ int mm_fork(HANDLE process)
 	/* Disable write permission on pages */
 	struct map_entry *p, *e;
 	forward_list_iterate(&mm->map_list, p, e)
-		for (uint32_t j = e->start_page; j <= e->end_page; j++)
+		if ((e->prot & PROT_WRITE) > 0)
 		{
 			DWORD oldProtect;
-			if (!VirtualProtectEx(process, GET_PAGE_ADDRESS(j), PAGE_SIZE, prot_linux2win(mm->page_prot[j] & ~PROT_WRITE), &oldProtect))
+			LPVOID addr = GET_PAGE_ADDRESS(e->start_page);
+			SIZE_T size = PAGE_SIZE * (e->end_page - e->start_page + 1);
+			if (!VirtualProtectEx(process, addr, size, prot_linux2win(e->prot & ~PROT_WRITE), &oldProtect))
 			{
-				log_error("VirtualProtectEx(%x) on child failed.\n", GET_PAGE_ADDRESS(j));
+				log_error("VirtualProtectEx(0x%x, 0x%x) on child failed, error code: %d.\n", addr, size, GetLastError());
 				return 0;
 			}
-			if (!VirtualProtect(GET_PAGE_ADDRESS(j), PAGE_SIZE, prot_linux2win(mm->page_prot[j] & ~PROT_WRITE), &oldProtect))
+			if (!VirtualProtect(addr, size, prot_linux2win(e->prot & ~PROT_WRITE), &oldProtect))
 			{
-				log_error("VirtualProtect(%x) on parent failed.\n", GET_PAGE_ADDRESS(j));
+				log_error("VirtualProtect(0x%x, 0x%x) on parent failed, error code: %d.\n", addr, size, GetLastError());
 				return 0;
 			}
 		}
@@ -561,6 +612,7 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, struct file *f, of
 		f->ref++;
 		f->op_vtable->pread(f, (char*)(start_page * PAGE_SIZE), (end_page - start_page + 1) * PAGE_SIZE, (loff_t)offset_pages * PAGE_SIZE);
 	}
+	entry->prot = prot;
 	if (forward_list_empty(&mm->map_list))
 		forward_list_add(&mm->map_list, entry);
 	else
@@ -581,17 +633,12 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, struct file *f, of
 			}
 		}
 	}
+	if (!mm_change_protection(start_page, end_page, prot))
+		return -ENOMEM; /* TODO */
 	for (uint32_t i = start_page; i <= end_page; i++)
 	{
 		/* TODO: Optimization */
-		mm->page_prot[i] = prot;
 		mm->block_page_count[GET_BLOCK_OF_PAGE(i)]++;
-		DWORD old;
-		if (!VirtualProtect(GET_PAGE_ADDRESS(i), PAGE_SIZE, prot_linux2win(prot), &old))
-		{
-			log_error("VirtualProtect() failed, error code: %d\n", GetLastError());
-			return -ENOMEM; /* TODO */
-		}
 	}
 	log_info("Allocated memory: [%x, %x)\n", addr, (uint32_t)addr + length);
 	return addr;
@@ -626,13 +673,8 @@ int mm_munmap(void *addr, size_t length)
 			if (start_page > e->start_page && end_page < e->end_page)
 			{
 				/* Need to split entry */
-				struct map_entry *ne = new_map_entry();
-				ne->start_page = end_page + 1;
-				ne->end_page = e->end_page;
-				if (ne->f = e->f)
-					ne->offset_pages = e->offset_pages + (ne->start_page - e->start_page);
+				split_map_entry(e, end_page);
 				e->end_page = start_page - 1;
-				forward_list_add(e, ne);
 			}
 			else if (start_page > e->start_page)
 				e->end_page = start_page - 1;
@@ -738,29 +780,37 @@ int sys_mprotect(void *addr, size_t length, int prot)
 		return -ENOMEM;
 	;
 	/* Change protection flags */
-	uint32_t j = start_page;
-	for (uint32_t i = start_page; i <= end_page + 1; i++)
-		if (mm->page_prot[i] != mm->page_prot[j] || i == end_page + 1)
+	forward_list_iterate_safe(&mm->map_list, p, e)
+		if (end_page < e->start_page)
+			break;
+		else if (start_page <= e->end_page)
 		{
-			int old_prot = mm->page_prot[j];
-			DWORD protection, oldProtection;
-			if (old_prot & PROT_WRITE)
-				protection = prot_linux2win(prot);
-			else
-				protection = prot_linux2win(prot & ~PROT_WRITE);
-			/* Change protection flags for pages in [j, i) */
-			uint32_t start_block = GET_BLOCK_OF_PAGE(j);
-			uint32_t end_block = GET_BLOCK_OF_PAGE(i - 1);
-			for (uint32_t k = start_block; k < end_block; k++)
+			uint32_t range_start = max(start_page, e->start_page);
+			uint32_t range_end = min(end_page, e->end_page);
+			if (range_start == e->start_page && range_end == e->end_page)
 			{
-				VirtualProtect(GET_PAGE_ADDRESS(j), (PAGES_PER_BLOCK - GET_PAGE_IN_BLOCK(j)) * PAGE_SIZE, protection, &oldProtection);
-				j = (k + 1) * PAGES_PER_BLOCK;
+				/* That's good, the current entry is fully overlapped */
+				e->prot = prot;
 			}
-			if (i > j)
-				VirtualProtect(GET_PAGE_ADDRESS(j), (i - j) * PAGE_SIZE, protection, &oldProtection);
+			else
+			{
+				/* Not so good, part of current entry is overlapped, we need to split the entry */
+				if (range_start == e->start_page)
+				{
+					split_map_entry(e, range_end);
+					e->prot = prot;
+				}
+				else
+				{
+					split_map_entry(e, range_start - 1);
+					/* The current entry is unrelated, we just skip to next entry (which we just generated) */
+					continue;
+				}
+			}
 		}
-	for (uint32_t i = start_page; i <= end_page; i++)
-		mm->page_prot[i] = prot;
+	if (!mm_change_protection(start_page, end_page, prot & ~PROT_WRITE))
+		/* We remove the write protection in case the pages are already shared */
+		return -ENOMEM; /* TODO */
 	return 0;
 }
 
