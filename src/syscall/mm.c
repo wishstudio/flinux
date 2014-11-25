@@ -715,59 +715,6 @@ int mm_munmap(void *addr, size_t length)
 				}
 			}
 		}
-
-#if 0
-	uint32_t unmap_start_page = GET_PAGE(addr);
-	uint32_t unmap_end_page = GET_PAGE((size_t)addr + length - 1);
-	struct map_entry *pred, *e;
-	forward_list_iterate_safe(&mm->map_list, pred, e)
-		if (e->start_page > unmap_end_page)
-			break;
-		else if (e->end_page >= unmap_start_page) /* Overlapped */
-		{
-			/* Determine overlapped pages */
-			uint32_t start_page = max(unmap_start_page, e->start_page);
-			uint32_t end_page = min(unmap_end_page, e->end_page);
-			/* Modify entry */
-			if (start_page > e->start_page && end_page < e->end_page)
-			{
-				/* Need to split entry */
-				split_map_entry(e, end_page);
-				e->end_page = start_page - 1;
-			}
-			else if (start_page > e->start_page)
-				e->end_page = start_page - 1;
-			else if (end_page < e->end_page)
-			{
-				if (e->f)
-					e->offset_pages += end_page + 1 - e->start_page;
-				e->start_page = end_page + 1;
-			}
-			else
-			{
-				/* Remove entry from entry list */
-				if (e->f) /* Release file handle if used */
-					vfs_release(e->f);
-				forward_list_remove(pred, e);
-				/* Add entry to free list */
-				free_map_entry(e);
-			}
-			for (uint32_t i = start_page; i <= end_page; i++)
-				mm->block_page_count[GET_BLOCK_OF_PAGE(i)]--; /* TODO: Optimization */
-			/* Free unused memory allocations */
-			uint16_t start_block = GET_BLOCK_OF_PAGE(start_page);
-			uint16_t end_block = GET_BLOCK_OF_PAGE(end_page);
-			for (uint16_t i = start_block; i <= end_block; i++)
-			{
-				if (mm->block_page_count[i] == 0)
-				{
-					NtUnmapViewOfSection(NtCurrentProcess(), GET_BLOCK_ADDRESS(i));
-					NtClose(mm->block_section_handle[i]);
-					mm->block_section_handle[i] = NULL;
-				}
-			}
-		}
-#endif
 	return 0;
 }
 
