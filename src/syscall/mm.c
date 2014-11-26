@@ -257,26 +257,6 @@ static DWORD prot_linux2win(int prot)
 		return PAGE_NOACCESS;
 }
 
-static int mm_change_protection(uint32_t start_page, uint32_t end_page, int prot)
-{
-	DWORD protection = prot_linux2win(prot);
-	uint32_t start_block = GET_BLOCK_OF_PAGE(start_page);
-	uint32_t end_block = GET_BLOCK_OF_PAGE(end_page);
-	for (uint32_t i = start_block; i <= end_block; i++)
-	{
-		uint32_t range_start = max(GET_FIRST_PAGE_OF_BLOCK(i), start_page);
-		uint32_t range_end = min(GET_LAST_PAGE_OF_BLOCK(i), end_page);
-		DWORD oldProtect;
-		if (!VirtualProtect(GET_PAGE_ADDRESS(range_start), PAGE_SIZE * (range_end - range_start + 1), protection, &oldProtect))
-		{
-			log_error("VirtualProtect(0x%x, 0x%x) failed, error code: %d\n", GET_PAGE_ADDRESS(range_start),
-				PAGE_SIZE * (range_end - range_start + 1), GetLastError());
-			return 0;
-		}
-	}
-	return 1;
-}
-
 void dump_virtual_memory(HANDLE process)
 {
 	char *addr = 0;
@@ -294,6 +274,27 @@ void dump_virtual_memory(HANDLE process)
 		}
 		addr += info.RegionSize;
 	} while ((uint32_t)addr < 0x7FFF0000);
+}
+
+static int mm_change_protection(HANDLE process, uint32_t start_page, uint32_t end_page, int prot)
+{
+	DWORD protection = prot_linux2win(prot);
+	uint32_t start_block = GET_BLOCK_OF_PAGE(start_page);
+	uint32_t end_block = GET_BLOCK_OF_PAGE(end_page);
+	for (uint32_t i = start_block; i <= end_block; i++)
+	{
+		uint32_t range_start = max(GET_FIRST_PAGE_OF_BLOCK(i), start_page);
+		uint32_t range_end = min(GET_LAST_PAGE_OF_BLOCK(i), end_page);
+		DWORD oldProtect;
+		if (!VirtualProtectEx(process, GET_PAGE_ADDRESS(range_start), PAGE_SIZE * (range_end - range_start + 1), protection, &oldProtect))
+		{
+			log_error("VirtualProtect(0x%x, 0x%x) failed, error code: %d\n", GET_PAGE_ADDRESS(range_start),
+				PAGE_SIZE * (range_end - range_start + 1), GetLastError());
+			dump_virtual_memory(process);
+			return 0;
+		}
+	}
+	return 1;
 }
 
 void mm_dump_stack_trace(PCONTEXT context)
@@ -483,19 +484,10 @@ int mm_fork(HANDLE process)
 	forward_list_iterate(&mm->map_list, p, e)
 		if ((e->prot & PROT_WRITE) > 0)
 		{
-			DWORD oldProtect;
-			LPVOID addr = GET_PAGE_ADDRESS(e->start_page);
-			SIZE_T size = PAGE_SIZE * (e->end_page - e->start_page + 1);
-			if (!VirtualProtectEx(process, addr, size, prot_linux2win(e->prot & ~PROT_WRITE), &oldProtect))
-			{
-				log_error("VirtualProtectEx(0x%x, 0x%x) on child failed, error code: %d.\n", addr, size, GetLastError());
+			if (!mm_change_protection(process, e->start_page, e->end_page, e->prot & ~PROT_WRITE))
 				return 0;
-			}
-			if (!VirtualProtect(addr, size, prot_linux2win(e->prot & ~PROT_WRITE), &oldProtect))
-			{
-				log_error("VirtualProtect(0x%x, 0x%x) on parent failed, error code: %d.\n", addr, size, GetLastError());
+			if (!mm_change_protection(GetCurrentProcess(), e->start_page, e->end_page, e->prot & ~PROT_WRITE))
 				return 0;
-			}
 		}
 	return 1;
 }
@@ -657,7 +649,7 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, struct file *f, of
 			}
 		}
 	}
-	if (!mm_change_protection(start_page, end_page, prot))
+	if (!mm_change_protection(GetCurrentProcess(), start_page, end_page, prot))
 		return -ENOMEM; /* TODO */
 	log_info("Allocated memory: [%x, %x)\n", addr, (uint32_t)addr + length);
 	return addr;
@@ -816,7 +808,7 @@ int sys_mprotect(void *addr, size_t length, int prot)
 				}
 			}
 		}
-	if (!mm_change_protection(start_page, end_page, prot & ~PROT_WRITE))
+	if (!mm_change_protection(GetCurrentProcess(), start_page, end_page, prot & ~PROT_WRITE))
 		/* We remove the write protection in case the pages are already shared */
 		return -ENOMEM; /* TODO */
 	return 0;
