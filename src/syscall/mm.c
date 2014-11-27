@@ -470,10 +470,18 @@ int mm_fork(HANDLE process)
 		log_error("mm_fork(): Write mm_data structure failed, error code: %d\n", GetLastError());
 		return 0;
 	}
-	/* Map sections */
-	/* TODO: Optimization */
-	for (uint32_t i = 0; i < BLOCK_COUNT; i++)
-		if (mm->block_section_handle[i])
+	uint32_t last_block = 0;
+	uint32_t section_object_count = 0;
+	struct map_entry *p, *e;
+	log_info("Mapping and changing memory protection...\n");
+	forward_list_iterate(&mm->map_list, p, e)
+	{
+		/* Map section */
+		uint32_t start_block = GET_BLOCK_OF_PAGE(e->start_page);
+		uint32_t end_block = GET_BLOCK_OF_PAGE(e->end_page);
+		if (start_block == last_block)
+			start_block++;
+		for (uint32_t i = start_block; i <= end_block; i++)
 		{
 			PVOID base_addr = GET_BLOCK_ADDRESS(i);
 			SIZE_T view_size = BLOCK_SIZE;
@@ -485,10 +493,10 @@ int mm_fork(HANDLE process)
 				dump_virtual_memory(process);
 				return 0;
 			}
+			section_object_count++;
 		}
-	/* Disable write permission on pages */
-	struct map_entry *p, *e;
-	forward_list_iterate(&mm->map_list, p, e)
+		last_block = end_block;
+		/* Disable write permission */
 		if ((e->prot & PROT_WRITE) > 0)
 		{
 			if (!mm_change_protection(process, e->start_page, e->end_page, e->prot & ~PROT_WRITE))
@@ -496,6 +504,8 @@ int mm_fork(HANDLE process)
 			if (!mm_change_protection(GetCurrentProcess(), e->start_page, e->end_page, e->prot & ~PROT_WRITE))
 				return 0;
 		}
+	}
+	log_info("Total section objects: %d\n", section_object_count);
 	return 1;
 }
 
