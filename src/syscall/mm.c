@@ -139,9 +139,9 @@ static struct map_entry *find_map_entry(void *addr)
 {
 	struct map_entry *p, *e;
 	forward_list_iterate(&mm->map_list, p, e)
-		if (addr < GET_PAGE_ADDRESS(p->start_page))
+		if (addr < GET_PAGE_ADDRESS(e->start_page))
 			return NULL;
-		else if (addr <= GET_PAGE_ADDRESS(p->end_page))
+		else if (addr < GET_PAGE_ADDRESS(e->end_page + 1))
 			return e;
 	return NULL;
 }
@@ -182,6 +182,7 @@ void mm_init()
 	forward_list_init(&mm->map_free_list);
 	for (uint32_t i = 0; i + 1 < MAX_MMAP_COUNT; i++)
 		forward_list_add(&mm->map_free_list, &mm->map_entries[i]);
+	mm->brk = 0;
 }
 
 void mm_reset()
@@ -201,6 +202,7 @@ void mm_reset()
 			forward_list_remove(p, e);
 			free_map_entry(e);
 		}
+	mm->brk = 0;
 }
 
 void mm_shutdown()
@@ -371,6 +373,11 @@ int mm_handle_page_fault(void *addr)
 		return 0;
 	}
 	struct map_entry *entry = find_map_entry(addr);
+	if (entry == NULL)
+	{
+		log_warning("No corresponding map entry found.\n");
+		return 0;
+	}
 	if ((entry->prot & PROT_WRITE) == 0)
 	{
 		log_warning("Address %x (page %x) not writable.\n", addr, GET_PAGE(addr));
@@ -567,6 +574,7 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, struct file *f, of
 		else if (range_end_block == missing_block_start)
 			missing_block_start++;
 	}
+	log_info("missing block range: [0x%x, 0x%x]\n", missing_block_start, missing_block_end);
 
 	for (uint32_t i = missing_block_start; i <= missing_block_end; i++)
 	{
@@ -658,7 +666,6 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, struct file *f, of
 int mm_munmap(void *addr, size_t length)
 {
 	/* TODO: We should mark NOACCESS for munmap()-ed but not VirtualFree()-ed pages */
-	/* TODO: We currently only support unmap full pages */
 	if (!IS_ALIGNED(addr, PAGE_SIZE))
 		return -EINVAL;
 	length = ALIGN_TO_PAGE(length);
