@@ -39,6 +39,14 @@ void filetime_to_unix_timeval(const FILETIME *filetime, struct timeval *tv)
 	tv->tv_usec = (nsec % NANOSECONDS_PER_SECOND) / 1000;
 }
 
+void filetime_to_unix_timespec(const FILETIME *filetime, struct timespec *tv)
+{
+	uint64_t nsec = filetime_to_unix(filetime);
+	/* TODO: Handle overflow? */
+	tv->tv_sec = nsec / NANOSECONDS_PER_SECOND;
+	tv->tv_nsec = nsec % NANOSECONDS_PER_SECOND;
+}
+
 static void unix_time_to_filetime(uint64_t nsec, FILETIME *filetime)
 {
 	uint64_t ticks = nsec / NANOSECONDS_PER_TICK + TICKS_TO_UNIX_EPOCH;

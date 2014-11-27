@@ -140,6 +140,12 @@
     <ClInclude Include="src\core\forward_list.h">
       <Filter>core</Filter>
     </ClInclude>
+    <ClInclude Include="src\syscall\timer.h">
+      <Filter>syscall</Filter>
+    </ClInclude>
+    <ClInclude Include="src\common\time.h">
+      <Filter>common</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
@@ -183,6 +189,9 @@
       <Filter>fs</Filter>
     </ClCompile>
     <ClCompile Include="src\datetime.c" />
+    <ClCompile Include="src\syscall\timer.c">
+      <Filter>syscall</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="src\ntdll.def" />
