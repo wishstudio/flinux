@@ -40,4 +40,5 @@
 	for (prev = (list), node = prev->_fl_next; node; prev = node, node = node->_fl_next)
 
 #define forward_list_iterate_safe(list, prev, node) \
-	for (prev = (list), node = prev->_fl_next; prev->_fl_next; prev = prev->_fl_next, node = prev->_fl_next)
+	for (prev = (list), node = prev->_fl_next; node; \
+		prev->_fl_next == node? (prev = node), (node = node->_fl_next): (node = prev->_fl_next))
