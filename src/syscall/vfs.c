@@ -52,6 +52,12 @@ struct file *vfs_get(int fd)
 	return vfs->fds[fd];
 }
 
+/* Reference a file, only used on raw file handles not created by sys_open() */
+void vfs_ref(struct file *f)
+{
+	f->ref++;
+}
+
 /* Release a file, only used on raw file handles not created by sys_open() */
 void vfs_release(struct file *f)
 {
@@ -63,8 +69,7 @@ void vfs_release(struct file *f)
 void vfs_close(int fd)
 {
 	struct file *f = vfs->fds[fd];
-	if (--f->ref == 0)
-		f->op_vtable->close(f);
+	vfs_release(f);
 	vfs->fds[fd] = NULL;
 	vfs->fds_cloexec[fd] = 0;
 }

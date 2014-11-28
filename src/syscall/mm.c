@@ -156,7 +156,10 @@ static void split_map_entry(struct map_entry *e, uint32_t last_page_of_first_ent
 	ne->start_page = last_page_of_first_entry + 1;
 	ne->end_page = e->end_page;
 	if ((ne->f = e->f))
+	{
+		vfs_ref(ne->f);
 		ne->offset_pages = e->offset_pages + (ne->start_page - e->start_page);
+	}
 	ne->prot = e->prot;
 	e->end_page = last_page_of_first_entry;
 	forward_list_add(e, ne);
@@ -164,6 +167,8 @@ static void split_map_entry(struct map_entry *e, uint32_t last_page_of_first_ent
 
 static void free_map_entry_blocks(struct map_entry *p, struct map_entry *e)
 {
+	if (e->f)
+		vfs_release(e->f);
 	struct map_entry *n = forward_list_next(e);
 	uint32_t start_block = GET_BLOCK_OF_PAGE(e->start_page);
 	uint32_t end_block = GET_BLOCK_OF_PAGE(e->end_page);
@@ -216,6 +221,8 @@ void mm_reset()
 	forward_list_iterate_safe(&mm->map_list, p, e)
 		if (e->start_page >= GET_PAGE(ADDRESS_ALLOCATION_LOW) && e->end_page < GET_PAGE(ADDRESS_ALLOCATION_HIGH))
 		{
+			if (e->f)
+				vfs_release(e->f);
 			forward_list_remove(p, e);
 			free_map_entry(e);
 		}
@@ -696,7 +703,7 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, struct file *f, of
 	entry->offset_pages = offset_pages;
 	entry->prot = prot;
 	if (f)
-		f->ref++;
+		vfs_ref(f);
 
 	if (forward_list_empty(&mm->map_list))
 		forward_list_add(&mm->map_list, entry);
