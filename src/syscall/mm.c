@@ -360,7 +360,7 @@ void mm_dump_stack_trace(PCONTEXT context)
 	}
 }
 
-static int allocate_block(uint32_t i, int prot)
+static int allocate_block(uint32_t i)
 {
 	OBJECT_ATTRIBUTES attr;
 	attr.Length = sizeof(OBJECT_ATTRIBUTES);
@@ -385,7 +385,7 @@ static int allocate_block(uint32_t i, int prot)
 	/* Map section */
 	PVOID base_addr = GET_BLOCK_ADDRESS(i);
 	SIZE_T view_size = BLOCK_SIZE;
-	status = NtMapViewOfSection(handle, NtCurrentProcess(), &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, prot_linux2win(prot));
+	status = NtMapViewOfSection(handle, NtCurrentProcess(), &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, PAGE_EXECUTE_READWRITE);
 	if (status != STATUS_SUCCESS)
 	{
 		log_error("NtMapViewOfSection() failed. Address: %x, Status: %x\n", base_addr, status);
@@ -430,7 +430,7 @@ static HANDLE duplicate_section(HANDLE source, void *source_addr)
 	DWORD oldProtect;
 	if (!VirtualProtect(source_addr, BLOCK_SIZE, PAGE_EXECUTE_READ, &oldProtect))
 	{
-		log_error("VirtualProtect() failed, status: %x\n", status);
+		log_error("VirtualProtect(0x%x) failed, error code: %d\n", source_addr, GetLastError());
 		return NULL;
 	}
 	CopyMemory(dest_addr, source_addr, BLOCK_SIZE);
@@ -538,8 +538,8 @@ static int handle_on_demand_page_fault(void *addr)
 	uint32_t start_page = GET_FIRST_PAGE_OF_BLOCK(block);
 	uint32_t end_page = GET_LAST_PAGE_OF_BLOCK(block);
 	struct map_entry *p, *e;
-	int block_prot;
 	int found = 0;
+	allocate_block(block);
 	forward_list_iterate(&mm->map_list, p, e)
 		if (end_page < e->start_page)
 			break;
@@ -551,13 +551,8 @@ static int handle_on_demand_page_fault(void *addr)
 				continue;
 			if (page >= range_start && page <= range_end)
 				found = 1;
-			if (!mm->block_section_handle[block])
-			{
-				block_prot = e->prot | PROT_WRITE;
-				allocate_block(block, block_prot);
-			}
 			map_entry_range(e, range_start, range_end);
-			if (block_prot != e->prot)
+			if (e->prot != PROT_READ | PROT_WRITE | PROT_EXEC)
 			{
 				DWORD oldProtect;
 				VirtualProtect(GET_PAGE_ADDRESS(range_start), (range_end - range_start + 1) * PAGE_SIZE, prot_linux2win(e->prot), &oldProtect);

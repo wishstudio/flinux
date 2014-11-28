@@ -725,6 +725,8 @@ int sys_pipe2(int pipefd[2], int flags)
 	vfs->fds_cloexec[wfd] = (flags & O_CLOEXEC) > 0;
 	pipefd[0] = rfd;
 	pipefd[1] = wfd;
+	log_info("read fd: %d\n", rfd);
+	log_info("write fd: %d\n", wfd);
 	return 0;
 }
 
