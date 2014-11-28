@@ -129,6 +129,8 @@ static int alloc_fd_slot()
 size_t sys_read(int fd, char *buf, size_t count)
 {
 	log_info("read(%d, %x, %d)\n", fd, buf, count);
+	if (!mm_check_write(buf, count))
+		return -EFAULT;
 	struct file *f = vfs->fds[fd];
 	if (f && f->op_vtable->read)
 		return f->op_vtable->read(f, buf, count);
@@ -139,6 +141,8 @@ size_t sys_read(int fd, char *buf, size_t count)
 size_t sys_write(int fd, const char *buf, size_t count)
 {
 	log_info("write(%d, %x, %d)\n", fd, buf, count);
+	if (!mm_check_read(buf, count))
+		return -EFAULT;
 	struct file *f = vfs->fds[fd];
 	if (f && f->op_vtable->write)
 		return f->op_vtable->write(f, buf, count);
@@ -149,6 +153,8 @@ size_t sys_write(int fd, const char *buf, size_t count)
 size_t sys_pread64(int fd, char *buf, size_t count, loff_t offset)
 {
 	log_info("pread64(%d, %x, %d, %lld)\n", fd, buf, count, offset);
+	if (!mm_check_write(buf, count))
+		return -EFAULT;
 	struct file *f = vfs->fds[fd];
 	if (f && f->op_vtable->pread)
 		return f->op_vtable->pread(f, buf, count, offset);
@@ -159,6 +165,8 @@ size_t sys_pread64(int fd, char *buf, size_t count, loff_t offset)
 size_t sys_pwrite64(int fd, const char *buf, size_t count, loff_t offset)
 {
 	log_info("pwrite64(%d, %x, %d, %lld)\n", fd, buf, count, offset);
+	if (!mm_check_read(buf, count))
+		return -EFAULT;
 	struct file *f = vfs->fds[fd];
 	if (f && f->op_vtable->pwrite)
 		return f->op_vtable->pwrite(f, buf, count, offset);
