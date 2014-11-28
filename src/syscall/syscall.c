@@ -40,6 +40,7 @@ static void dispatch_syscall(PCONTEXT context)
 }
 
 extern void *mm_check_read_begin, *mm_check_read_end, *mm_check_read_fail;
+extern void *mm_check_read_string_begin, *mm_check_read_string_end, *mm_check_read_string_fail;
 extern void *mm_check_write_begin, *mm_check_write_end, *mm_check_write_fail;
 
 static LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
@@ -76,6 +77,12 @@ static LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
 			{
 				ep->ContextRecord->Eip = &mm_check_read_fail;
 				log_warning("mm_check_read() failed at location 0x%x\n", ep->ExceptionRecord->ExceptionInformation[1]);
+				return EXCEPTION_CONTINUE_EXECUTION;
+			}
+			if (ep->ContextRecord->Eip >= &mm_check_read_string_begin && ep->ContextRecord->Eip <= &mm_check_read_string_end)
+			{
+				ep->ContextRecord->Eip = &mm_check_read_string_fail;
+				log_warning("mm_check_read_string() failed at location 0x%x\n", ep->ExceptionRecord->ExceptionInformation[1]);
 				return EXCEPTION_CONTINUE_EXECUTION;
 			}
 			if (ep->ContextRecord->Eip >= &mm_check_write_begin && ep->ContextRecord->Eip <= &mm_check_write_end)
