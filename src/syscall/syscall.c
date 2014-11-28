@@ -39,6 +39,9 @@ static void dispatch_syscall(PCONTEXT context)
 #endif
 }
 
+extern void *mm_check_read_begin, *mm_check_read_end, *mm_check_read_fail;
+extern void *mm_check_write_begin, *mm_check_write_end, *mm_check_write_fail;
+
 static LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
 {
 	if (ep->ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION)
@@ -69,6 +72,18 @@ static LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
 				return EXCEPTION_CONTINUE_EXECUTION;
 			else if (mm_handle_page_fault(ep->ExceptionRecord->ExceptionInformation[1]))
 				return EXCEPTION_CONTINUE_EXECUTION;
+			if (ep->ContextRecord->Eip >= &mm_check_read_begin && ep->ContextRecord->Eip <= &mm_check_read_end)
+			{
+				ep->ContextRecord->Eip = &mm_check_read_fail;
+				log_warning("mm_check_read() failed at location 0x%x\n", ep->ExceptionRecord->ExceptionInformation[1]);
+				return EXCEPTION_CONTINUE_EXECUTION;
+			}
+			if (ep->ContextRecord->Eip >= &mm_check_write_begin && ep->ContextRecord->Eip <= &mm_check_write_end)
+			{
+				ep->ContextRecord->Eip = &mm_check_write_fail;
+				log_warning("mm_check_write() failed at location 0x%x\n", ep->ExceptionRecord->ExceptionInformation[1]);
+				return EXCEPTION_CONTINUE_EXECUTION;
+			}
 		}
 #ifdef _WIN64
 		if (ep->ExceptionRecord->ExceptionInformation[0] == 0)

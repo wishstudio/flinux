@@ -24,6 +24,7 @@ void main()
 	/* fork_init() will directly jump to restored thread context if we are a fork child */
 
 	mm_init();
+	install_syscall_handler();
 	heap_init();
 	vfs_init();
 	tls_init();
@@ -89,7 +90,6 @@ void main()
 		else if (!filename)
 			filename = argv[i];
 	}
-	install_syscall_handler();
 	if (filename)
 		do_execve(filename, argc - 1, argv + 1, env_size, envp, NULL);
 	kprintf("Execution failed.\n");

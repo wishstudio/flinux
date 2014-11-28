@@ -37,6 +37,9 @@ void mm_update_brk(void *brk);
 
 void mm_dump_stack_trace(PCONTEXT context);
 
+int __cdecl mm_check_read(void *addr, size_t size);
+int __cdecl mm_check_write(void *addr, size_t size);
+
 int mm_handle_page_fault(void *addr);
 int mm_fork(HANDLE process);
 

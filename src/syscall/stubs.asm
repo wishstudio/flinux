@@ -78,4 +78,75 @@ restore_context PROC ctx
 
 restore_context ENDP
 
+PUBLIC mm_check_read_begin, mm_check_read_end, mm_check_read_fail
+
+mm_check_read PROC check_addr, check_size
+	mov edx, check_addr
+	mov ecx, check_size
+
+mm_check_read_begin LABEL PTR
+	mov al, byte ptr [edx]
+	; test first page which may be unaligned
+	
+	mov eax, edx
+	shr eax, 12
+	; eax - start page
+	add ecx, edx
+	shr ecx, 12
+	; ecx - end page
+	sub ecx, eax
+	; ecx - remaining pages
+
+	and dx, 0f000h
+L:
+	add edx, 01000h
+	mov al, byte ptr [edx]
+	loop L
+mm_check_read_end LABEL PTR
+
+SUCC:
+	xor eax, eax
+	inc eax
+	ret
+
+mm_check_read_fail LABEL PTR
+	xor eax, eax
+	ret
+mm_check_read ENDP
+
+PUBLIC mm_check_write_begin, mm_check_write_end, mm_check_write_fail
+mm_check_write PROC check_addr, check_size
+	mov edx, check_addr
+	mov ecx, check_size
+	
+mm_check_write_begin LABEL BYTE
+	mov byte ptr [edx], al
+	; test first page which may be unaligned
+	
+	mov eax, edx
+	shr eax, 12
+	; eax - start page
+	add ecx, edx
+	shr ecx, 12
+	; ecx - end page
+	sub ecx, eax
+	; ecx - remaining pages
+
+	and dx, 0f000h
+L:
+	add edx, 01000h
+	mov byte ptr [edx], al
+	loop L
+mm_check_write_end LABEL BYTE
+
+SUCC:
+	xor eax, eax
+	inc eax
+	ret
+
+mm_check_write_fail LABEL BYTE
+	xor eax, eax
+	ret
+mm_check_write ENDP
+
 end

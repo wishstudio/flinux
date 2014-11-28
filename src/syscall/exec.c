@@ -143,7 +143,7 @@ static int load_elf(const char *filename, struct elf_header **executable, struct
 	if (interpreter)
 		*interpreter = NULL;
 	elf->eh = eh;
-	f->op_vtable->pread(f, elf->pht, phsize, eh.e_phoff);
+	f->op_vtable->pread(f, elf->pht, phsize, eh.e_phoff); /* TODO */
 
 	/* Find virtual address range */
 	elf->low = 0xFFFFFFFF;
@@ -178,6 +178,7 @@ static int load_elf(const char *filename, struct elf_header **executable, struct
 	}
 
 	/* Map executable segments */
+	/* TODO: Directly use mmap() */
 	for (int i = 0; i < eh.e_phnum; i++)
 	{
 		Elf_Phdr *ph = (Elf_Phdr *)&elf->pht[eh.e_phentsize * i];
@@ -195,10 +196,13 @@ static int load_elf(const char *filename, struct elf_header **executable, struct
 			if (ph->p_flags & PF_X)
 				prot |= PROT_EXEC;
 			mm_mmap(elf->load_base + addr, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED, NULL, 0);
-			f->op_vtable->pread(f, (char *)(elf->load_base + ph->p_vaddr), ph->p_filesz, ph->p_offset);
+			void *vaddr = (char *)(elf->load_base + ph->p_vaddr);
+			mm_check_write(vaddr, ph->p_filesz); /* TODO */
+			f->op_vtable->pread(f, vaddr, ph->p_filesz, ph->p_offset);
 			mm_update_brk((size_t)addr + size);
 		}
 	}
+	return 0;
 
 	/* Load interpreter if present */
 	for (int i = 0; i < eh.e_phnum; i++)
@@ -212,7 +216,7 @@ static int load_elf(const char *filename, struct elf_header **executable, struct
 				return -EACCES; /* Bad interpreter */
 			}
 			char path[MAX_PATH];
-			f->op_vtable->pread(f, path, ph->p_filesz, ph->p_offset);
+			f->op_vtable->pread(f, path, ph->p_filesz, ph->p_offset); /* TODO */
 			path[ph->p_filesz] = 0;
 			if (load_elf(path, interpreter, NULL) < 0)
 			{

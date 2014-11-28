@@ -124,7 +124,10 @@ static size_t winfs_pread(struct file *f, char *buf, size_t count, loff_t offset
 	overlapped.OffsetHigh = offset >> 32ULL;
 	overlapped.hEvent = 0;
 	if (!ReadFile(winfile->handle, buf, count, &num_read, &overlapped))
+	{
+		log_warning("ReadFile() failed, error code: %d\n", GetLastError());
 		return -1;
+	}
 	return num_read;
 }
 
