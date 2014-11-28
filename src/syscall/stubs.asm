@@ -96,6 +96,7 @@ mm_check_read_begin LABEL PTR
 	; ecx - end page
 	sub ecx, eax
 	; ecx - remaining pages
+	je SUCC
 
 	and dx, 0f000h
 L:
@@ -131,6 +132,7 @@ mm_check_write_begin LABEL BYTE
 	; ecx - end page
 	sub ecx, eax
 	; ecx - remaining pages
+	je SUCC
 
 	and dx, 0f000h
 L:
