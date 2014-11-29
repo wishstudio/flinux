@@ -118,7 +118,7 @@ static LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
 	log_info("RDX: 0x%llx\n", ep->ContextRecord->Rdx);
 	log_info("RSI: 0x%llx\n", ep->ContextRecord->Rsi);
 	log_info("RDI: 0x%llx\n", ep->ContextRecord->Rdi);
-	log_info("RBP: 0x%llx\n", ep->ContextRecord->Rax);
+	log_info("RBP: 0x%llx\n", ep->ContextRecord->Rbp);
 	log_info("RSP: 0x%llx\n", ep->ContextRecord->Rsp);
 	log_info("R8:  0x%llx\n", ep->ContextRecord->R8);
 	log_info("R9:  0x%llx\n", ep->ContextRecord->R9);
