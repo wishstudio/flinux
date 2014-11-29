@@ -26,7 +26,7 @@
  *     MAP_FIXED with MAP_SHARED or MAP_PRIVATE on non 64kB aligned address.
  */
 
-/* Overall memory layout (x86)
+/* Overall memory layout (x86), u for unmappable
  *
  * FFFFFFFF ------------------------------
  * ...        Win32 kernel address space
@@ -60,9 +60,11 @@
  * 70900000 ------------------------------
  *              mm_heap_data structure
  * 70800000 ------------------------------
- *        process_data structure(unmappable)
+ *             process_data structure (u)
  * 70700000 ------------------------------
- *           mm_data structure(unmappable)
+ *                 section handles (u)
+ * 70200000 ------------------------------
+ *                mm_data structure (u)
  * 70000000 ------------------------------
  */
 
@@ -80,9 +82,14 @@
 /* The highest non fixed allocation address we can make */
 #define ADDRESS_ALLOCATION_HIGH 0x70000000U
 
-#define BLOCK_COUNT 0x00010000U
-#define PAGE_COUNT 0x00100000U
-#define PAGES_PER_BLOCK 16
+#define PAGES_PER_BLOCK (BLOCK_SIZE / PAGE_SIZE)
+#define BLOCK_COUNT ((ADDRESS_SPACE_HIGH - ADDRESS_SPACE_LOW) / BLOCK_SIZE)
+
+#define SECTION_HANDLE_PER_TABLE (BLOCK_SIZE / sizeof(HANDLE))
+#define SECTION_TABLE_PER_DIRECTORY (BLOCK_SIZE / sizeof(uint16_t))
+#define SECTION_TABLE_COUNT (BLOCK_COUNT / SECTION_HANDLE_PER_TABLE)
+
+#define GET_SECTION_TABLE(i) ((i) / SECTION_HANDLE_PER_TABLE)
 
 /* Helper macros */
 #define IS_ALIGNED(addr, alignment) ((size_t) (addr) % (size_t) (alignment) == 0)
@@ -120,10 +127,45 @@ struct mm_data
 	FORWARD_LIST(struct map_entry) map_list, map_free_list;
 	struct map_entry map_entries[MAX_MMAP_COUNT];
 
-	/* Section object handle of a block */
-	HANDLE block_section_handle[BLOCK_COUNT];
+	/* Section handle count for each table */
+	uint16_t section_table_handle_count[SECTION_TABLE_COUNT];
 };
 static struct mm_data *const mm = MM_DATA_BASE;
+static HANDLE *mm_section_handle = MM_SECTION_HANDLE_BASE;
+
+static __forceinline HANDLE get_section_handle(uint32_t i)
+{
+	uint32_t t = GET_SECTION_TABLE(i);
+	if (mm->section_table_handle_count[t])
+		return mm_section_handle[i];
+	else
+		return NULL;
+}
+
+static __forceinline void add_section_handle(uint32_t i, HANDLE handle)
+{
+	uint32_t t = GET_SECTION_TABLE(i);
+	if (mm->section_table_handle_count[t]++)
+		mm_section_handle[i] = handle;
+	else
+	{
+		VirtualAlloc(&mm_section_handle[t * SECTION_HANDLE_PER_TABLE], BLOCK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+		mm_section_handle[i] = handle;
+	}
+}
+
+static __forceinline void replace_section_handle(uint32_t i, HANDLE handle)
+{
+	mm_section_handle[i] = handle;
+}
+
+static __forceinline void remove_section_handle(uint32_t i)
+{
+	mm_section_handle[i] = NULL;
+	uint32_t t = GET_SECTION_TABLE(i);
+	if (--mm->section_table_handle_count[t] == 0)
+		VirtualFree(&mm_section_handle[t * SECTION_HANDLE_PER_TABLE], BLOCK_SIZE, MEM_RELEASE);
+}
 
 static struct map_entry *new_map_entry()
 {
@@ -188,12 +230,15 @@ static void free_map_entry_blocks(struct map_entry *p, struct map_entry *e)
 	}
 	/* Unmap other full blocks */
 	for (uint32_t i = start_block; i <= end_block; i++)
-		if (mm->block_section_handle[i])
+	{
+		HANDLE handle = get_section_handle(i);
+		if (handle)
 		{
 			NtUnmapViewOfSection(NtCurrentProcess(), GET_BLOCK_ADDRESS(i));
-			NtClose(mm->block_section_handle[i]);
-			mm->block_section_handle[i] = 0;
+			NtClose(handle);
+			remove_section_handle(i);
 		}
+	}
 }
 
 void mm_init()
@@ -211,12 +256,15 @@ void mm_reset()
 {
 	/* Release all user memory */
 	for (uint32_t i = GET_BLOCK(ADDRESS_ALLOCATION_LOW); i < GET_BLOCK(ADDRESS_ALLOCATION_HIGH); i++)
-		if (mm->block_section_handle[i])
+	{
+		HANDLE handle = get_section_handle(i);
+		if (handle)
 		{
 			NtUnmapViewOfSection(NtCurrentProcess(), GET_BLOCK_ADDRESS(i));
-			NtClose(mm->block_section_handle[i]);
-			mm->block_section_handle[i] = NULL;
+			NtClose(handle);
+			remove_section_handle(i);
 		}
+	}
 	struct map_entry *p, *e;
 	forward_list_iterate_safe(&mm->map_list, p, e)
 		if (e->start_page >= GET_PAGE(ADDRESS_ALLOCATION_LOW) && e->end_page < GET_PAGE(ADDRESS_ALLOCATION_HIGH))
@@ -232,11 +280,15 @@ void mm_reset()
 void mm_shutdown()
 {
 	for (uint32_t i = 0; i < BLOCK_COUNT; i++)
-		if (mm->block_section_handle[i])
+	{
+		HANDLE handle = get_section_handle(i);
+		if (handle)
 		{
 			NtUnmapViewOfSection(NtCurrentProcess(), GET_BLOCK_ADDRESS(i));
-			NtClose(mm->block_section_handle[i]);
+			NtClose(handle);
+			remove_section_handle(i);
 		}
+	}
 	VirtualFree(mm, 0, MEM_RELEASE);
 }
 
@@ -325,7 +377,9 @@ static int mm_change_protection(HANDLE process, uint32_t start_page, uint32_t en
 	uint32_t start_block = GET_BLOCK_OF_PAGE(start_page);
 	uint32_t end_block = GET_BLOCK_OF_PAGE(end_page);
 	for (uint32_t i = start_block; i <= end_block; i++)
-		if (mm->block_section_handle[i])
+	{
+		HANDLE handle = get_section_handle(i);
+		if (handle)
 		{
 			uint32_t range_start = max(GET_FIRST_PAGE_OF_BLOCK(i), start_page);
 			uint32_t range_end = min(GET_LAST_PAGE_OF_BLOCK(i), end_page);
@@ -338,6 +392,7 @@ static int mm_change_protection(HANDLE process, uint32_t start_page, uint32_t en
 				return 0;
 			}
 		}
+	}
 	return 1;
 }
 
@@ -393,7 +448,7 @@ static int allocate_block(uint32_t i)
 		dump_virtual_memory(NtCurrentProcess());
 		return 0;
 	}
-	mm->block_section_handle[i] = handle;
+	add_section_handle(i, handle);
 	return 1;
 }
 
@@ -457,7 +512,8 @@ static int handle_cow_page_fault(void *addr)
 		return 0;
 	}
 	uint16_t block = GET_BLOCK(addr);
-	if (mm->block_section_handle[block] == NULL)
+	HANDLE handle = get_section_handle(block);
+	if (!handle)
 	{
 		log_warning("Address %x (page %x) not mapped.\n", addr, GET_PAGE(addr));
 		return 0;
@@ -465,7 +521,7 @@ static int handle_cow_page_fault(void *addr)
 	/* Query information about the section object which the page within */
 	OBJECT_BASIC_INFORMATION info;
 	NTSTATUS status;
-	status = NtQueryObject(mm->block_section_handle[block], ObjectBasicInformation, &info, sizeof(OBJECT_BASIC_INFORMATION), NULL);
+	status = NtQueryObject(handle, ObjectBasicInformation, &info, sizeof(OBJECT_BASIC_INFORMATION), NULL);
 	if (status != STATUS_SUCCESS)
 	{
 		log_error("NtQueryObject() on block %x failed.\n", block);
@@ -477,8 +533,8 @@ static int handle_cow_page_fault(void *addr)
 	{
 		/* We are not the only one holding the section, duplicate it */
 		log_info("Duplicating section %x...\n", block);
-		HANDLE section;
-		if (!(section = duplicate_section(mm->block_section_handle[block], GET_BLOCK_ADDRESS(block))))
+		HANDLE new_section;
+		if (!(new_section = duplicate_section(handle, GET_BLOCK_ADDRESS(block))))
 		{
 			log_error("Duplicating section failed.\n");
 			return 0;
@@ -490,21 +546,21 @@ static int handle_cow_page_fault(void *addr)
 			log_error("Unmapping failed, status: %x\n", status);
 			return 0;
 		}
-		status = NtClose(mm->block_section_handle[block]);
+		status = NtClose(handle);
 		if (status != STATUS_SUCCESS)
 		{
 			log_error("NtClose() failed, status: %x\n", status);
 			return 0;
 		}
-		mm->block_section_handle[block] = section;
 		PVOID base_addr = GET_BLOCK_ADDRESS(block);
 		SIZE_T view_size = BLOCK_SIZE;
-		status = NtMapViewOfSection(section, NtCurrentProcess(), &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, PAGE_EXECUTE_READWRITE);
+		status = NtMapViewOfSection(new_section, NtCurrentProcess(), &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, PAGE_EXECUTE_READWRITE);
 		if (status != STATUS_SUCCESS)
 		{
 			log_error("Remapping failed, status: %x\n", status);
 			return 0;
 		}
+		replace_section_handle(block, new_section);
 	}
 	/* We're the only owner of the section now, change page protection flags */
 	uint32_t start_page = GET_FIRST_PAGE_OF_BLOCK(block);
@@ -574,7 +630,7 @@ int mm_handle_page_fault(void *addr)
 		log_warning("Address %x outside of valid usermode address space.\n", addr);
 		return 0;
 	}
-	if (mm->block_section_handle[GET_BLOCK(addr)])
+	if (get_section_handle(GET_BLOCK(addr)))
 		return handle_cow_page_fault(addr);
 	else
 		return handle_on_demand_page_fault(addr);
@@ -593,6 +649,22 @@ int mm_fork(HANDLE process)
 		log_error("mm_fork(): Write mm_data structure failed, error code: %d\n", GetLastError());
 		return 0;
 	}
+	/* Copy section handle tables */
+	for (uint32_t i = 0; i < SECTION_TABLE_COUNT; i++)
+		if (mm->section_table_handle_count[i])
+		{
+			uint32_t offset = i * BLOCK_SIZE;
+			if (!VirtualAllocEx(process, MM_SECTION_HANDLE_BASE + offset, BLOCK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE))
+			{
+				log_error("mm_fork(): Allocate section table 0x%x failed, error code: %d\n", i, GetLastError());
+				return 0;
+			}
+			if (!WriteProcessMemory(process, MM_SECTION_HANDLE_BASE + offset, MM_SECTION_HANDLE_BASE + offset, BLOCK_SIZE, NULL))
+			{
+				log_error("mm_fork(): Write section table 0x%x failed, error code: %d\n", i, GetLastError());
+				return 0;
+			}
+		}
 	uint32_t last_block = 0;
 	uint32_t section_object_count = 0;
 	struct map_entry *p, *e;
@@ -605,12 +677,14 @@ int mm_fork(HANDLE process)
 		if (start_block == last_block)
 			start_block++;
 		for (uint32_t i = start_block; i <= end_block; i++)
-			if (mm->block_section_handle[i])
+		{
+			HANDLE handle = get_section_handle(i);
+			if (handle)
 			{
 				PVOID base_addr = GET_BLOCK_ADDRESS(i);
 				SIZE_T view_size = BLOCK_SIZE;
 				NTSTATUS status;
-				status = NtMapViewOfSection(mm->block_section_handle[i], process, &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, PAGE_EXECUTE_READWRITE);
+				status = NtMapViewOfSection(handle, process, &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, PAGE_EXECUTE_READWRITE);
 				if (status != STATUS_SUCCESS)
 				{
 					log_error("mm_fork(): Map failed: %x, status code: %x\n", base_addr, status);
@@ -619,6 +693,7 @@ int mm_fork(HANDLE process)
 				}
 				section_object_count++;
 			}
+		}
 		last_block = end_block;
 		/* Disable write permission */
 		if ((e->prot & PROT_WRITE) > 0)
@@ -723,7 +798,7 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, struct file *f, of
 
 	/* If the first or last block is already allocated, we have to set up proper content in it
 	   For other blocks we map them on demand */
-	if (mm->block_section_handle[start_block])
+	if (get_section_handle(start_block))
 	{
 		uint32_t last_page = GET_LAST_PAGE_OF_BLOCK(start_block);
 		last_page = min(last_page, end_page);
@@ -733,7 +808,7 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, struct file *f, of
 		if ((prot & PROT_WRITE) == 0)
 			VirtualProtect(GET_PAGE_ADDRESS(start_page), (last_page - start_page + 1) * PAGE_SIZE, prot_linux2win(prot), &oldProtect);
 	}
-	if (end_block > start_block && mm->block_section_handle[end_block])
+	if (end_block > start_block && get_section_handle(end_block))
 	{
 		uint32_t first_page = GET_FIRST_PAGE_OF_BLOCK(end_block);
 		DWORD oldProtect;

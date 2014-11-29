@@ -12,23 +12,25 @@
 #define PAGE_SIZE 0x00001000U
 
 /* Base address of mm_data structure */
-#define MM_DATA_BASE		0x70000000
+#define MM_DATA_BASE			0x70000000
+/* Base address of section handles table */
+#define MM_SECTION_HANDLE_BASE	0x70200000
 /* Base address of process_data structure */
-#define PROCESS_DATA_BASE	0x70700000
+#define PROCESS_DATA_BASE		0x70700000
 /* Base address of mm_heap structure */
-#define MM_HEAP_BASE		0x70800000
+#define MM_HEAP_BASE			0x70800000
 /* Base address of vfs_data structure */
-#define VFS_DATA_BASE		0x70900000
+#define VFS_DATA_BASE			0x70900000
 /* Base address of tls_data structure */
-#define TLS_DATA_BASE		0x70FD0000
+#define TLS_DATA_BASE			0x70FD0000
 /* Base address of executable startup data */
-#define STARTUP_DATA_BASE	0x70FE0000
+#define STARTUP_DATA_BASE		0x70FE0000
 /* Base address of fork_info structure */
-#define FORK_INFO_BASE		0x70FF0000
+#define FORK_INFO_BASE			0x70FF0000
 /* Low address of kernel heap */
-#define ADDRESS_HEAP_LOW	0x71000000
+#define ADDRESS_HEAP_LOW		0x71000000
 /* High address of kernel heap */
-#define ADDRESS_HEAP_HIGH	0x72000000
+#define ADDRESS_HEAP_HIGH		0x72000000
 
 void mm_init();
 void mm_reset();
