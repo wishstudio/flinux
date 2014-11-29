@@ -198,6 +198,8 @@ void sys_exit_group(int status)
 
 int sys_oldolduname(struct oldold_utsname *buf)
 {
+	if (!mm_check_write(buf, sizeof(struct oldold_utsname)))
+		return -EFAULT;
 	struct utsname newbuf;
 	sys_uname(&newbuf);
 	strncpy(buf->sysname, newbuf.sysname, __OLD_UTS_LEN + 1);
@@ -210,6 +212,8 @@ int sys_oldolduname(struct oldold_utsname *buf)
 
 int sys_olduname(struct old_utsname *buf)
 {
+	if (!mm_check_write(buf, sizeof(struct old_utsname)))
+		return -EFAULT;
 	struct utsname newbuf;
 	sys_uname(&newbuf);
 	strcpy(buf->sysname, newbuf.sysname);
@@ -223,6 +227,8 @@ int sys_olduname(struct old_utsname *buf)
 int sys_uname(struct utsname *buf)
 {
 	log_info("sys_uname(%x)\n", buf);
+	if (!mm_check_write(buf, sizeof(struct utsname)))
+		return -EFAULT;
 	/* Just mimic a reasonable Linux uname */
 	strcpy(buf->sysname, "Linux");
 	strcpy(buf->nodename, "ForeignLinux");
@@ -236,6 +242,8 @@ int sys_uname(struct utsname *buf)
 int sys_getrlimit(int resource, struct rlimit *rlim)
 {
 	log_info("getrlimit(%d, %x)\n", resource, rlim);
+	if (!mm_check_write(rlim, sizeof(struct rlimit)))
+		return -EFAULT;
 	switch (resource)
 	{
 	case RLIMIT_STACK:
@@ -253,6 +261,8 @@ int sys_getrlimit(int resource, struct rlimit *rlim)
 int sys_setrlimit(int resource, const struct rlimit *rlim)
 {
 	log_info("setrlimit(%d, %x)\n", resource, rlim);
+	if (!mm_check_read(rlim, sizeof(struct rlimit)))
+		return -EFAULT;
 	switch (resource)
 	{
 	default:
