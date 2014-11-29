@@ -107,7 +107,8 @@ pid_t sys_waitpid(pid_t pid, int *status, int options)
 		process->child_handles[i] = process->child_handles[i + 1];
 	}
 	process->child_count--;
-	*status = W_EXITCODE(exitCode, 0);
+	if (status)
+		*status = W_EXITCODE(exitCode, 0);
 	return pid;
 }
 
