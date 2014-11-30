@@ -111,8 +111,8 @@
 struct map_entry
 {
 	FORWARD_LIST_NODE(struct map_entry);
-	uint32_t start_page;
-	uint32_t end_page;
+	size_t start_page;
+	size_t end_page;
 	int prot;
 	struct file *f;
 	off_t offset_pages;
@@ -133,18 +133,18 @@ struct mm_data
 static struct mm_data *const mm = MM_DATA_BASE;
 static HANDLE *mm_section_handle = MM_SECTION_HANDLE_BASE;
 
-static __forceinline HANDLE get_section_handle(uint32_t i)
+static __forceinline HANDLE get_section_handle(size_t i)
 {
-	uint32_t t = GET_SECTION_TABLE(i);
+	size_t t = GET_SECTION_TABLE(i);
 	if (mm->section_table_handle_count[t])
 		return mm_section_handle[i];
 	else
 		return NULL;
 }
 
-static __forceinline void add_section_handle(uint32_t i, HANDLE handle)
+static __forceinline void add_section_handle(size_t i, HANDLE handle)
 {
-	uint32_t t = GET_SECTION_TABLE(i);
+	size_t t = GET_SECTION_TABLE(i);
 	if (mm->section_table_handle_count[t]++)
 		mm_section_handle[i] = handle;
 	else
@@ -154,15 +154,15 @@ static __forceinline void add_section_handle(uint32_t i, HANDLE handle)
 	}
 }
 
-static __forceinline void replace_section_handle(uint32_t i, HANDLE handle)
+static __forceinline void replace_section_handle(size_t i, HANDLE handle)
 {
 	mm_section_handle[i] = handle;
 }
 
-static __forceinline void remove_section_handle(uint32_t i)
+static __forceinline void remove_section_handle(size_t i)
 {
 	mm_section_handle[i] = NULL;
-	uint32_t t = GET_SECTION_TABLE(i);
+	size_t t = GET_SECTION_TABLE(i);
 	if (--mm->section_table_handle_count[t] == 0)
 		VirtualFree(&mm_section_handle[t * SECTION_HANDLE_PER_TABLE], BLOCK_SIZE, MEM_RELEASE);
 }
@@ -192,7 +192,7 @@ static struct map_entry *find_map_entry(void *addr)
 	return NULL;
 }
 
-static void split_map_entry(struct map_entry *e, uint32_t last_page_of_first_entry)
+static void split_map_entry(struct map_entry *e, size_t last_page_of_first_entry)
 {
 	struct map_entry *ne = new_map_entry();
 	ne->start_page = last_page_of_first_entry + 1;
@@ -212,8 +212,8 @@ static void free_map_entry_blocks(struct map_entry *p, struct map_entry *e)
 	if (e->f)
 		vfs_release(e->f);
 	struct map_entry *n = forward_list_next(e);
-	uint32_t start_block = GET_BLOCK_OF_PAGE(e->start_page);
-	uint32_t end_block = GET_BLOCK_OF_PAGE(e->end_page);
+	size_t start_block = GET_BLOCK_OF_PAGE(e->start_page);
+	size_t end_block = GET_BLOCK_OF_PAGE(e->end_page);
 	if (p != &mm->map_list && GET_BLOCK_OF_PAGE(p->end_page) == start_block)
 	{
 		/* First block is still in use, make it inaccessible */
@@ -229,7 +229,7 @@ static void free_map_entry_blocks(struct map_entry *p, struct map_entry *e)
 		end_block--;
 	}
 	/* Unmap other full blocks */
-	for (uint32_t i = start_block; i <= end_block; i++)
+	for (size_t i = start_block; i <= end_block; i++)
 	{
 		HANDLE handle = get_section_handle(i);
 		if (handle)
@@ -247,7 +247,7 @@ void mm_init()
 	/* Initialize mapping info freelist */
 	forward_list_init(&mm->map_list);
 	forward_list_init(&mm->map_free_list);
-	for (uint32_t i = 0; i + 1 < MAX_MMAP_COUNT; i++)
+	for (size_t i = 0; i + 1 < MAX_MMAP_COUNT; i++)
 		forward_list_add(&mm->map_free_list, &mm->map_entries[i]);
 	mm->brk = 0;
 }
@@ -255,7 +255,7 @@ void mm_init()
 void mm_reset()
 {
 	/* Release all user memory */
-	for (uint32_t i = GET_BLOCK(ADDRESS_ALLOCATION_LOW); i < GET_BLOCK(ADDRESS_ALLOCATION_HIGH); i++)
+	for (size_t i = GET_BLOCK(ADDRESS_ALLOCATION_LOW); i < GET_BLOCK(ADDRESS_ALLOCATION_HIGH); i++)
 	{
 		HANDLE handle = get_section_handle(i);
 		if (handle)
@@ -279,7 +279,7 @@ void mm_reset()
 
 void mm_shutdown()
 {
-	for (uint32_t i = 0; i < BLOCK_COUNT; i++)
+	for (size_t i = 0; i < BLOCK_COUNT; i++)
 	{
 		HANDLE handle = get_section_handle(i);
 		if (handle)
@@ -298,9 +298,9 @@ void mm_update_brk(void *brk)
 }
 
 /* Find 'count' consecutive free pages in address range [low, high), return 0 if not found */
-static uint32_t find_free_pages(uint32_t count, uint32_t low, uint32_t high)
+static size_t find_free_pages(size_t count, size_t low, size_t high)
 {
-	uint32_t last = GET_PAGE(low);
+	size_t last = GET_PAGE(low);
 	struct map_entry *p, *e;
 	forward_list_iterate(&mm->map_list, p, e)
 		if (e->start_page >= GET_PAGE(low))
@@ -314,7 +314,7 @@ static uint32_t find_free_pages(uint32_t count, uint32_t low, uint32_t high)
 		return 0;
 }
 
-uint32_t mm_find_free_pages(uint32_t count_bytes)
+size_t mm_find_free_pages(size_t count_bytes)
 {
 	return find_free_pages(GET_PAGE(ALIGN_TO_PAGE(count_bytes)), ADDRESS_ALLOCATION_LOW, ADDRESS_ALLOCATION_HIGH);
 }
@@ -346,15 +346,15 @@ void dump_virtual_memory(HANDLE process)
 		{
 			char filename[1024];
 			if (GetMappedFileNameA(process, addr, filename, sizeof(filename)))
-				log_info("0x%08x - 0x%08x <--- %s\n", info.BaseAddress, (uint32_t)info.BaseAddress + info.RegionSize, filename);
+				log_info("0x%08x - 0x%08x <--- %s\n", info.BaseAddress, (size_t)info.BaseAddress + info.RegionSize, filename);
 			else
-				log_info("0x%08x - 0x%08x\n", info.BaseAddress, (uint32_t)info.BaseAddress + info.RegionSize);
+				log_info("0x%08x - 0x%08x\n", info.BaseAddress, (size_t)info.BaseAddress + info.RegionSize);
 		}
 		addr += info.RegionSize;
-	} while ((uint32_t)addr < 0x7FFF0000);
+	} while ((size_t)addr < 0x7FFF0000);
 }
 
-static void map_entry_range(struct map_entry *e, uint32_t start_page, uint32_t end_page)
+static void map_entry_range(struct map_entry *e, size_t start_page, size_t end_page)
 {
 	if (e->f)
 	{
@@ -371,18 +371,18 @@ static void map_entry_range(struct map_entry *e, uint32_t start_page, uint32_t e
 		RtlSecureZeroMemory(GET_PAGE_ADDRESS(start_page), (end_page - start_page + 1) * PAGE_SIZE);
 }
 
-static int mm_change_protection(HANDLE process, uint32_t start_page, uint32_t end_page, int prot)
+static int mm_change_protection(HANDLE process, size_t start_page, size_t end_page, int prot)
 {
 	DWORD protection = prot_linux2win(prot);
-	uint32_t start_block = GET_BLOCK_OF_PAGE(start_page);
-	uint32_t end_block = GET_BLOCK_OF_PAGE(end_page);
-	for (uint32_t i = start_block; i <= end_block; i++)
+	size_t start_block = GET_BLOCK_OF_PAGE(start_page);
+	size_t end_block = GET_BLOCK_OF_PAGE(end_page);
+	for (size_t i = start_block; i <= end_block; i++)
 	{
 		HANDLE handle = get_section_handle(i);
 		if (handle)
 		{
-			uint32_t range_start = max(GET_FIRST_PAGE_OF_BLOCK(i), start_page);
-			uint32_t range_end = min(GET_LAST_PAGE_OF_BLOCK(i), end_page);
+			size_t range_start = max(GET_FIRST_PAGE_OF_BLOCK(i), start_page);
+			size_t range_end = min(GET_LAST_PAGE_OF_BLOCK(i), end_page);
 			DWORD oldProtect;
 			if (!VirtualProtectEx(process, GET_PAGE_ADDRESS(range_start), PAGE_SIZE * (range_end - range_start + 1), protection, &oldProtect))
 			{
@@ -415,7 +415,7 @@ void mm_dump_stack_trace(PCONTEXT context)
 	}
 }
 
-static int allocate_block(uint32_t i)
+static int allocate_block(size_t i)
 {
 	OBJECT_ATTRIBUTES attr;
 	attr.Length = sizeof(OBJECT_ATTRIBUTES);
@@ -563,16 +563,16 @@ static int handle_cow_page_fault(void *addr)
 		replace_section_handle(block, new_section);
 	}
 	/* We're the only owner of the section now, change page protection flags */
-	uint32_t start_page = GET_FIRST_PAGE_OF_BLOCK(block);
-	uint32_t end_page = GET_LAST_PAGE_OF_BLOCK(block);
+	size_t start_page = GET_FIRST_PAGE_OF_BLOCK(block);
+	size_t end_page = GET_LAST_PAGE_OF_BLOCK(block);
 	struct map_entry *p, *e;
 	forward_list_iterate(&mm->map_list, p, e)
 		if (end_page < e->start_page)
 			break;
 		else
 		{
-			uint32_t range_start = max(start_page, e->start_page);
-			uint32_t range_end = min(end_page, e->end_page);
+			size_t range_start = max(start_page, e->start_page);
+			size_t range_end = min(end_page, e->end_page);
 			if (range_start > range_end)
 				continue;
 			DWORD oldProtect;
@@ -588,11 +588,11 @@ static int handle_cow_page_fault(void *addr)
 
 static int handle_on_demand_page_fault(void *addr)
 {
-	uint32_t block = GET_BLOCK(addr);
-	uint32_t page = GET_PAGE(addr);
+	size_t block = GET_BLOCK(addr);
+	size_t page = GET_PAGE(addr);
 	/* Map all map entries in the block */
-	uint32_t start_page = GET_FIRST_PAGE_OF_BLOCK(block);
-	uint32_t end_page = GET_LAST_PAGE_OF_BLOCK(block);
+	size_t start_page = GET_FIRST_PAGE_OF_BLOCK(block);
+	size_t end_page = GET_LAST_PAGE_OF_BLOCK(block);
 	struct map_entry *p, *e;
 	int found = 0;
 	allocate_block(block);
@@ -601,8 +601,8 @@ static int handle_on_demand_page_fault(void *addr)
 			break;
 		else
 		{
-			uint32_t range_start = max(start_page, e->start_page);
-			uint32_t range_end = min(end_page, e->end_page);
+			size_t range_start = max(start_page, e->start_page);
+			size_t range_end = min(end_page, e->end_page);
 			if (range_start > range_end)
 				continue;
 			if (page >= range_start && page <= range_end)
@@ -650,10 +650,10 @@ int mm_fork(HANDLE process)
 		return 0;
 	}
 	/* Copy section handle tables */
-	for (uint32_t i = 0; i < SECTION_TABLE_COUNT; i++)
+	for (size_t i = 0; i < SECTION_TABLE_COUNT; i++)
 		if (mm->section_table_handle_count[i])
 		{
-			uint32_t offset = i * BLOCK_SIZE;
+			size_t offset = i * BLOCK_SIZE;
 			if (!VirtualAllocEx(process, MM_SECTION_HANDLE_BASE + offset, BLOCK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE))
 			{
 				log_error("mm_fork(): Allocate section table 0x%x failed, error code: %d\n", i, GetLastError());
@@ -665,18 +665,18 @@ int mm_fork(HANDLE process)
 				return 0;
 			}
 		}
-	uint32_t last_block = 0;
-	uint32_t section_object_count = 0;
+	size_t last_block = 0;
+	size_t section_object_count = 0;
 	struct map_entry *p, *e;
 	log_info("Mapping and changing memory protection...\n");
 	forward_list_iterate(&mm->map_list, p, e)
 	{
 		/* Map section */
-		uint32_t start_block = GET_BLOCK_OF_PAGE(e->start_page);
-		uint32_t end_block = GET_BLOCK_OF_PAGE(e->end_page);
+		size_t start_block = GET_BLOCK_OF_PAGE(e->start_page);
+		size_t end_block = GET_BLOCK_OF_PAGE(e->end_page);
 		if (start_block == last_block)
 			start_block++;
-		for (uint32_t i = start_block; i <= end_block; i++)
+		for (size_t i = start_block; i <= end_block; i++)
 		{
 			HANDLE handle = get_section_handle(i);
 			if (handle)
@@ -734,7 +734,7 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, struct file *f, of
 	}
 	if (!(flags & MAP_FIXED))
 	{
-		uint32_t alloc_page;
+		size_t alloc_page;
 		if (flags & __MAP_HEAP)
 			alloc_page = find_free_pages(GET_PAGE(ALIGN_TO_PAGE(length)), ADDRESS_HEAP_LOW, ADDRESS_HEAP_HIGH);
 		else
@@ -753,10 +753,10 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, struct file *f, of
 		return -EINVAL;
 	}
 
-	uint32_t start_page = GET_PAGE(addr);
-	uint32_t end_page = GET_PAGE((size_t)addr + length - 1);
-	uint16_t start_block = GET_BLOCK(addr);
-	uint16_t end_block = GET_BLOCK((size_t)addr + length - 1);
+	size_t start_page = GET_PAGE(addr);
+	size_t end_page = GET_PAGE((size_t)addr + length - 1);
+	size_t start_block = GET_BLOCK(addr);
+	size_t end_block = GET_BLOCK((size_t)addr + length - 1);
 
 	/*
 	If address are fixed, unmap conflicting pages,
@@ -800,7 +800,7 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, struct file *f, of
 	   For other blocks we map them on demand */
 	if (get_section_handle(start_block))
 	{
-		uint32_t last_page = GET_LAST_PAGE_OF_BLOCK(start_block);
+		size_t last_page = GET_LAST_PAGE_OF_BLOCK(start_block);
 		last_page = min(last_page, end_page);
 		DWORD oldProtect;
 		VirtualProtect(GET_PAGE_ADDRESS(start_page), (last_page - start_page + 1) * PAGE_SIZE, prot_linux2win(prot | PROT_WRITE), &oldProtect);
@@ -810,14 +810,14 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, struct file *f, of
 	}
 	if (end_block > start_block && get_section_handle(end_block))
 	{
-		uint32_t first_page = GET_FIRST_PAGE_OF_BLOCK(end_block);
+		size_t first_page = GET_FIRST_PAGE_OF_BLOCK(end_block);
 		DWORD oldProtect;
 		VirtualProtect(GET_PAGE_ADDRESS(first_page), (end_page - first_page + 1) * PAGE_SIZE, prot_linux2win(prot | PROT_WRITE), &oldProtect);
 		map_entry_range(entry, first_page, end_page);
 		if ((prot & PROT_WRITE) == 0)
 			VirtualProtect(GET_PAGE_ADDRESS(first_page), (end_page - first_page + 1) * PAGE_SIZE, prot_linux2win(prot), &oldProtect);
 	}
-	log_info("Allocated memory: [%x, %x)\n", addr, (uint32_t)addr + length);
+	log_info("Allocated memory: [%x, %x)\n", addr, (size_t)addr + length);
 	return addr;
 }
 
@@ -834,16 +834,16 @@ int mm_munmap(void *addr, size_t length)
 		return -EINVAL;
 	}
 
-	uint32_t start_page = GET_PAGE(addr);
-	uint32_t end_page = GET_PAGE((size_t)addr + length - 1);
+	size_t start_page = GET_PAGE(addr);
+	size_t end_page = GET_PAGE((size_t)addr + length - 1);
 	struct map_entry *p, *e;
 	forward_list_iterate_safe(&mm->map_list, p, e)
 		if (end_page < e->start_page)
 			break;
 		else
 		{
-			uint32_t range_start = max(start_page, e->start_page);
-			uint32_t range_end = min(end_page, e->end_page);
+			size_t range_start = max(start_page, e->start_page);
+			size_t range_end = min(end_page, e->end_page);
 			if (range_start > range_end)
 				continue;
 			if (range_start == e->start_page && range_end == e->end_page)
@@ -926,9 +926,9 @@ int sys_mprotect(void *addr, size_t length, int prot)
 		return -EINVAL;
 	}
 	/* Validate all pages are mapped */
-	uint32_t start_page = GET_PAGE(addr);
-	uint32_t end_page = GET_PAGE((uint32_t)addr + length - 1);
-	uint32_t last_page = start_page - 1;
+	size_t start_page = GET_PAGE(addr);
+	size_t end_page = GET_PAGE((size_t)addr + length - 1);
+	size_t last_page = start_page - 1;
 	struct map_entry *p, *e;
 	forward_list_iterate(&mm->map_list, p, e)
 		if (e->start_page > end_page)
@@ -949,8 +949,8 @@ int sys_mprotect(void *addr, size_t length, int prot)
 			break;
 		else
 		{
-			uint32_t range_start = max(start_page, e->start_page);
-			uint32_t range_end = min(end_page, e->end_page);
+			size_t range_start = max(start_page, e->start_page);
+			size_t range_end = min(end_page, e->end_page);
 			if (range_start > range_end)
 				continue;
 			if (range_start == e->start_page && range_end == e->end_page)
@@ -998,12 +998,12 @@ void *sys_brk(void *addr)
 {
 	log_info("brk(%x)\n", addr);
 	log_info("Last brk: %x\n", mm->brk);
-	uint32_t brk = ALIGN_TO_PAGE(mm->brk);
+	size_t brk = ALIGN_TO_PAGE(mm->brk);
 	addr = ALIGN_TO_PAGE(addr);
 	/* TODO: Handle brk shrink */
 	if (addr > mm->brk)
 	{
-		if (sys_mmap(brk, (uint32_t)addr - (uint32_t)brk, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, -1, 0) < 0)
+		if (sys_mmap(brk, (size_t)addr - (size_t)brk, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, -1, 0) < 0)
 		{
 			log_error("Enlarge brk failed.\n");
 			return -ENOMEM;

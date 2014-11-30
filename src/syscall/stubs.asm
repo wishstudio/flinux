@@ -141,7 +141,7 @@ mm_check_write PROC check_addr, check_size
 	mov edx, check_addr
 	mov ecx, check_size
 	
-mm_check_write_begin LABEL BYTE
+mm_check_write_begin LABEL PTR
 	mov byte ptr [edx], al
 	; test first page which may be unaligned
 	
@@ -160,16 +160,16 @@ L:
 	add edx, 01000h
 	mov byte ptr [edx], al
 	loop L
-mm_check_write_end LABEL BYTE
+mm_check_write_end LABEL PTR
 
 SUCC:
 	xor eax, eax
 	inc eax
 	ret
 
-mm_check_write_fail LABEL BYTE
+mm_check_write_fail LABEL PTR
 	xor eax, eax
 	ret
 mm_check_write ENDP
 
-end
+END

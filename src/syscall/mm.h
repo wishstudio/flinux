@@ -39,6 +39,7 @@ void mm_update_brk(void *brk);
 
 void mm_dump_stack_trace(PCONTEXT context);
 
+/* Check if the memory region is compatible with desired access */
 int mm_check_read(void *addr, size_t size);
 int mm_check_read_string(const char *addr);
 int mm_check_write(void *addr, size_t size);
@@ -46,7 +47,7 @@ int mm_check_write(void *addr, size_t size);
 int mm_handle_page_fault(void *addr);
 int mm_fork(HANDLE process);
 
-uint32_t mm_find_free_pages(uint32_t count_bytes);
+size_t mm_find_free_pages(size_t count_bytes);
 struct file;
 void *mm_mmap(void *addr, size_t len, int prot, int flags, struct file *f, off_t offset_pages);
 int mm_munmap(void *addr, size_t len);

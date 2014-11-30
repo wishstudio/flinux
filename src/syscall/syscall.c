@@ -52,7 +52,14 @@ static LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
 #else
 		uint8_t* code = (uint8_t *)ep->ContextRecord->Eip;
 #endif
-		if (code >= 0 && code < 0x80000000U)
+		if (ep->ExceptionRecord->ExceptionInformation[0] == 8)
+		{
+			if (mm_handle_page_fault(code))
+				return EXCEPTION_CONTINUE_EXECUTION;
+			else if (mm_handle_page_fault(code + 0x1000)) // TODO: Use PAGE_SIZE
+				return EXCEPTION_CONTINUE_EXECUTION;
+		}
+		else if (code >= 0 && code < 0x80000000U)
 		{
 #ifdef _WIN64
 			log_info("RIP: 0x%x\n", ep->ContextRecord->Rip);
@@ -97,14 +104,14 @@ static LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
 			log_error("Page fault(read): %x at %llx\n", ep->ExceptionRecord->ExceptionInformation[1], ep->ContextRecord->Rip);
 		else if (ep->ExceptionRecord->ExceptionInformation[0] == 1)
 			log_error("Page fault(write): %x at %llx\n", ep->ExceptionRecord->ExceptionInformation[1], ep->ContextRecord->Rip);
-		else if (ep->ExceptionRecord->ExceptionInformation[0] == 2)
+		else if (ep->ExceptionRecord->ExceptionInformation[0] == 8)
 			log_error("Page fault(DEP): %x at %llx\n", ep->ExceptionRecord->ExceptionInformation[1], ep->ContextRecord->Rip);
 #else
 		if (ep->ExceptionRecord->ExceptionInformation[0] == 0)
 			log_error("Page fault(read): %x at %x\n", ep->ExceptionRecord->ExceptionInformation[1], ep->ContextRecord->Eip);
 		else if (ep->ExceptionRecord->ExceptionInformation[0] == 1)
 			log_error("Page fault(write): %x at %x\n", ep->ExceptionRecord->ExceptionInformation[1], ep->ContextRecord->Eip);
-		else if (ep->ExceptionRecord->ExceptionInformation[0] == 2)
+		else if (ep->ExceptionRecord->ExceptionInformation[0] == 8)
 			log_error("Page fault(DEP): %x at %x\n", ep->ExceptionRecord->ExceptionInformation[1], ep->ContextRecord->Eip);
 #endif
 	}
