@@ -202,7 +202,6 @@ static int load_elf(const char *filename, struct elf_header **executable, struct
 			mm_update_brk((size_t)addr + size);
 		}
 	}
-	return 0;
 
 	/* Load interpreter if present */
 	for (int i = 0; i < eh.e_phnum; i++)
