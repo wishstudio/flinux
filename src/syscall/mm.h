@@ -6,31 +6,66 @@
 #include <Windows.h>
 
 /* Windows allocation granularity */
+#ifdef _WIN64
+#define BLOCK_SIZE 0x00010000ULL
+#else
 #define BLOCK_SIZE 0x00010000U
+#endif
 
 /* Page size */
+#ifdef _WIN64
+#define PAGE_SIZE 0x00001000ULL
+#else
 #define PAGE_SIZE 0x00001000U
+#endif
+
+#ifdef _WIN64
 
 /* Base address of mm_data structure */
-#define MM_DATA_BASE			0x70000000
+#define MM_DATA_BASE			0x0000000010000000ULL
 /* Base address of section handles table */
-#define MM_SECTION_HANDLE_BASE	0x70200000
+#define MM_SECTION_HANDLE_BASE	0x0000000020000000ULL
 /* Base address of process_data structure */
-#define PROCESS_DATA_BASE		0x70700000
+#define PROCESS_DATA_BASE		0x00000000EC000000ULL
 /* Base address of mm_heap structure */
-#define MM_HEAP_BASE			0x70800000
+#define MM_HEAP_BASE			0x00000000ED000000ULL
 /* Base address of vfs_data structure */
-#define VFS_DATA_BASE			0x70900000
+#define VFS_DATA_BASE			0x00000000EE000000ULL
 /* Base address of tls_data structure */
-#define TLS_DATA_BASE			0x70FD0000
+#define TLS_DATA_BASE			0x00000000EFFD0000ULL
 /* Base address of executable startup data */
-#define STARTUP_DATA_BASE		0x70FE0000
+#define STARTUP_DATA_BASE		0x00000000EFFE0000ULL
 /* Base address of fork_info structure */
-#define FORK_INFO_BASE			0x70FF0000
+#define FORK_INFO_BASE			0x00000000EFFF0000ULL
 /* Low address of kernel heap */
-#define ADDRESS_HEAP_LOW		0x71000000
+#define ADDRESS_HEAP_LOW		0x00000000F0000000ULL
 /* High address of kernel heap */
-#define ADDRESS_HEAP_HIGH		0x72000000
+#define ADDRESS_HEAP_HIGH		0x0000000100000000ULL
+
+#else
+
+/* Base address of mm_data structure */
+#define MM_DATA_BASE			0x70000000U
+/* Base address of section handles table */
+#define MM_SECTION_HANDLE_BASE	0x70200000U
+/* Base address of process_data structure */
+#define PROCESS_DATA_BASE		0x70700000U
+/* Base address of mm_heap structure */
+#define MM_HEAP_BASE			0x70800000U
+/* Base address of vfs_data structure */
+#define VFS_DATA_BASE			0x70900000U
+/* Base address of tls_data structure */
+#define TLS_DATA_BASE			0x70FD0000U
+/* Base address of executable startup data */
+#define STARTUP_DATA_BASE		0x70FE0000U
+/* Base address of fork_info structure */
+#define FORK_INFO_BASE			0x70FF0000U
+/* Low address of kernel heap */
+#define ADDRESS_HEAP_LOW		0x71000000U
+/* High address of kernel heap */
+#define ADDRESS_HEAP_HIGH		0x72000000U
+
+#endif
 
 void mm_init();
 void mm_reset();

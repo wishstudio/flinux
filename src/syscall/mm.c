@@ -26,7 +26,7 @@
  *     MAP_FIXED with MAP_SHARED or MAP_PRIVATE on non 64kB aligned address.
  */
 
-/* Overall memory layout (x86), u for unmappable
+/* Overall memory layout (x86)
  *
  * FFFFFFFF ------------------------------
  * ...        Win32 kernel address space
@@ -45,7 +45,7 @@
  * 00000000 ------------------------------
  *
  *
- * Foreign Linux kernel data memory layout
+ * Foreign Linux kernel data memory layout (x86), u for unmappable
  *
  * 72000000 ------------------------------
  *                    kernel heap
@@ -68,19 +68,76 @@
  * 70000000 ------------------------------
  */
 
+/* Overall memory layout (x64)
+ *
+ * FFFFFFFF FFFFFFFF ------------------------------
+ * ...                 Win32 kernel address space
+ * FFFF0000 00000000 ------------------------------
+ * ...                         (unusable)
+ * 0000FFFF FFFFFFFF ------------------------------
+ *                      (unused in Foreign Linux)
+ *                    we reduce the available address space to limit the size of section handles store
+ * 00001000 00000000 ------------------------------
+ * ...                   Application code/data
+ * 00000002 00000000 ------------------------------
+ * ...                 Foreign Linux kernel code
+ * 00000001 00000000 ------------------------------
+ * ...                 Foreign Linux kernel data
+ * 00000000 10000000 ------------------------------
+ * ...                     Win32 system heaps
+ * 00000000 00000000 ------------------------------
+ *
+ *
+ * Foreign Linux kernel data memory layout (x64), u for unmappable
+ *
+ * 00000001 00000000 ------------------------------
+ *                             kernel heap
+ * 00000000 F0000000 ------------------------------
+ *                         fork_info structure
+ * 00000000 EFFF0000 ------------------------------
+ *                      startup (argv, env) data
+ * 00000000 EFFE0000 ------------------------------
+ *                         tls_data structure
+ * 00000000 EFFD0000 ------------------------------
+ *                         vfs_data structure
+ * 00000000 EE000000 ------------------------------
+ *                        mm_heap_data structure
+ * 00000000 ED000000 ------------------------------
+ *                      process_data structure (u)
+ * 00000000 EC000000 ------------------------------
+ *                         section handles (u)
+ * 00000000 20000000 ------------------------------
+ *                        mm_data structure (u)
+ * 00000000 10000000 ------------------------------
+ */
+
 /* Hard limits */
 /* Maximum number of mmap()-ed areas */
 #define MAX_MMAP_COUNT 65535
 
-/* OS-specific constants */
+#ifdef _WIN64
+
 /* Lower bound of the virtual address space */
-#define ADDRESS_SPACE_LOW 0x00000000U
+#define ADDRESS_SPACE_LOW		0x0000000000000000ULL
 /* Higher bound of the virtual address space */
-#define ADDRESS_SPACE_HIGH 0x80000000U
+#define ADDRESS_SPACE_HIGH		0x0001000000000000ULL
 /* The lowest non fixed allocation address we can make */
-#define ADDRESS_ALLOCATION_LOW 0x04000000U
+#define ADDRESS_ALLOCATION_LOW	0x0000000200000000ULL
 /* The highest non fixed allocation address we can make */
-#define ADDRESS_ALLOCATION_HIGH 0x70000000U
+#define ADDRESS_ALLOCATION_HIGH	0x0001000000000000ULL
+
+#else
+
+/* Lower bound of the virtual address space */
+#define ADDRESS_SPACE_LOW		0x00000000U
+/* Higher bound of the virtual address space */
+#define ADDRESS_SPACE_HIGH		0x80000000U
+/* The lowest non fixed allocation address we can make */
+#define ADDRESS_ALLOCATION_LOW	0x04000000U
+/* The highest non fixed allocation address we can make */
+#define ADDRESS_ALLOCATION_HIGH	0x70000000U
+
+#endif
 
 #define PAGES_PER_BLOCK (BLOCK_SIZE / PAGE_SIZE)
 #define BLOCK_COUNT ((ADDRESS_SPACE_HIGH - ADDRESS_SPACE_LOW) / BLOCK_SIZE)
@@ -93,8 +150,8 @@
 
 /* Helper macros */
 #define IS_ALIGNED(addr, alignment) ((size_t) (addr) % (size_t) (alignment) == 0)
-#define ALIGN_TO_BLOCK(addr) (((size_t) addr + BLOCK_SIZE - 1) & 0xFFFF0000)
-#define ALIGN_TO_PAGE(addr) (((size_t) addr + PAGE_SIZE - 1) & 0xFFFFF000)
+#define ALIGN_TO_BLOCK(addr) (((size_t) addr + BLOCK_SIZE - 1) & (-BLOCK_SIZE))
+#define ALIGN_TO_PAGE(addr) (((size_t) addr + PAGE_SIZE - 1) & (-PAGE_SIZE))
 #define GET_BLOCK(addr) ((size_t) (addr) / BLOCK_SIZE)
 #define GET_PAGE(addr) ((size_t) (addr) / PAGE_SIZE)
 #define GET_PAGE_IN_BLOCK(page) ((page) % PAGES_PER_BLOCK)
