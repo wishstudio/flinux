@@ -121,4 +121,98 @@ restore_context PROC ctx: QWORD
 
 restore_context ENDP
 
-end
+PUBLIC mm_check_read_begin, mm_check_read_end, mm_check_read_fail
+mm_check_read PROC check_addr: QWORD, check_size: QWORD
+	mov rdx, check_addr
+	mov rcx, check_size
+
+mm_check_read_begin LABEL PTR
+	mov al, byte ptr [rdx]
+	; test first page which may be unaligned
+	
+	mov rax, rdx
+	shr rax, 12
+	; rax - start page
+	add rcx, rdx
+	shr rcx, 12
+	; rcx - end page
+	sub rcx, rax
+	; rcx - remaining pages
+	je SUCC
+
+	and dx, 0f000h
+L:
+	add rdx, 01000h
+	mov al, byte ptr [rdx]
+	loop L
+mm_check_read_end LABEL PTR
+
+SUCC:
+	xor rax, rax
+	inc eax
+	ret
+
+mm_check_read_fail LABEL PTR
+	xor rax, rax
+	ret
+mm_check_read ENDP
+
+PUBLIC mm_check_read_string_begin, mm_check_read_string_end, mm_check_read_string_fail
+mm_check_read_string PROC check_addr: QWORD
+	mov rdx, check_addr
+
+mm_check_read_string_begin LABEL PTR
+L:
+	mov al, byte ptr [rdx]
+	test al, al
+	jz SUCC
+	inc rdx
+mm_check_read_string_end LABEL PTR
+
+SUCC:
+	xor rax, rax
+	inc eax
+	ret
+
+mm_check_read_string_fail LABEL PTR
+	xor rax, rax
+	ret
+mm_check_read_string ENDP
+
+PUBLIC mm_check_write_begin, mm_check_write_end, mm_check_write_fail
+mm_check_write PROC check_addr: QWORD, check_size: QWORD
+	mov rdx, check_addr
+	mov rcx, check_size
+	
+mm_check_write_begin LABEL PTR
+	mov byte ptr [rdx], al
+	; test first page which may be unaligned
+	
+	mov rax, rdx
+	shr rax, 12
+	; rax - start page
+	add rcx, rdx
+	shr rcx, 12
+	; rcx - end page
+	sub rcx, rax
+	; rcx - remaining pages
+	je SUCC
+
+	and dx, 0f000h
+L:
+	add rdx, 01000h
+	mov byte ptr [rdx], al
+	loop L
+mm_check_write_end LABEL PTR
+
+SUCC:
+	xor rax, rax
+	inc eax
+	ret
+
+mm_check_write_fail LABEL PTR
+	xor rax, rax
+	ret
+mm_check_write ENDP
+
+END

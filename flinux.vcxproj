@@ -53,6 +53,7 @@
     <ClInclude Include="src\heap.h" />
     <ClInclude Include="src\log.h" />
     <ClInclude Include="src\ntdll.h" />
+    <ClInclude Include="src\platform.h" />
     <ClInclude Include="src\str.h" />
     <ClInclude Include="src\syscall\exec.h" />
     <ClInclude Include="src\syscall\fork.h" />

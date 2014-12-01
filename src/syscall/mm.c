@@ -360,7 +360,7 @@ static void map_entry_range(struct map_entry *e, size_t start_page, size_t end_p
 	{
 		size_t desired_size = (end_page - start_page + 1) * PAGE_SIZE;
 		size_t r = e->f->op_vtable->pread(e->f, GET_PAGE_ADDRESS(start_page), desired_size,
-			(e->offset_pages + start_page - e->start_page) * PAGE_SIZE);
+			(loff_t)(e->offset_pages + start_page - e->start_page) * PAGE_SIZE);
 		if (r < desired_size)
 		{
 			size_t remain = desired_size - r;
@@ -524,7 +524,7 @@ static int handle_cow_page_fault(void *addr)
 	status = NtQueryObject(handle, ObjectBasicInformation, &info, sizeof(OBJECT_BASIC_INFORMATION), NULL);
 	if (status != STATUS_SUCCESS)
 	{
-		log_error("NtQueryObject() on block %x failed.\n", block);
+		log_error("NtQueryObject() on block %x failed, status: 0x%x.\n", block, status);
 		return 0;
 	}
 	if (info.HandleCount == 1)

@@ -146,6 +146,7 @@
     <ClInclude Include="src\common\time.h">
       <Filter>common</Filter>
     </ClInclude>
+    <ClInclude Include="src\platform.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />

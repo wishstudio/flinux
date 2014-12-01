@@ -1,6 +1,7 @@
 #include <syscall/syscall.h>
 #include <syscall/tls.h>
 #include <log.h>
+#include <platform.h>
 
 #include <stdint.h>
 #include <Windows.h>
@@ -47,11 +48,7 @@ static LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
 {
 	if (ep->ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION)
 	{
-#ifdef _WIN64
-		uint8_t* code = (uint8_t *)ep->ContextRecord->Rip;
-#else
-		uint8_t* code = (uint8_t *)ep->ContextRecord->Eip;
-#endif
+		uint8_t* code = (uint8_t *)ep->ContextRecord->Xip;
 		if (ep->ExceptionRecord->ExceptionInformation[0] == 8)
 		{
 			if (mm_handle_page_fault(code))
@@ -59,20 +56,16 @@ static LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
 			else if (mm_handle_page_fault(code + 0x1000)) // TODO: Use PAGE_SIZE
 				return EXCEPTION_CONTINUE_EXECUTION;
 		}
-		else if (code >= 0 && code < 0x80000000U)
+		else
 		{
 #ifdef _WIN64
-			log_info("RIP: 0x%x\n", ep->ContextRecord->Rip);
+			log_info("RIP: 0x%llx\n", ep->ContextRecord->Rip);
 #else
 			log_info("EIP: 0x%x\n", ep->ContextRecord->Eip);
 #endif
 			if (code[0] == 0xCD && code[1] == 0x80) /* INT 80h */
 			{
-#ifdef _WIN64
-				ep->ContextRecord->Rip += 2;
-#else
-				ep->ContextRecord->Eip += 2;
-#endif
+				ep->ContextRecord->Xip += 2;
 				dispatch_syscall(ep->ContextRecord);
 				return EXCEPTION_CONTINUE_EXECUTION;
 			}
@@ -80,21 +73,21 @@ static LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
 				return EXCEPTION_CONTINUE_EXECUTION;
 			else if (mm_handle_page_fault(ep->ExceptionRecord->ExceptionInformation[1]))
 				return EXCEPTION_CONTINUE_EXECUTION;
-			if (ep->ContextRecord->Eip >= &mm_check_read_begin && ep->ContextRecord->Eip <= &mm_check_read_end)
+			if (ep->ContextRecord->Xip >= &mm_check_read_begin && ep->ContextRecord->Xip <= &mm_check_read_end)
 			{
-				ep->ContextRecord->Eip = &mm_check_read_fail;
+				ep->ContextRecord->Xip = &mm_check_read_fail;
 				log_warning("mm_check_read() failed at location 0x%x\n", ep->ExceptionRecord->ExceptionInformation[1]);
 				return EXCEPTION_CONTINUE_EXECUTION;
 			}
-			if (ep->ContextRecord->Eip >= &mm_check_read_string_begin && ep->ContextRecord->Eip <= &mm_check_read_string_end)
+			if (ep->ContextRecord->Xip >= &mm_check_read_string_begin && ep->ContextRecord->Xip <= &mm_check_read_string_end)
 			{
-				ep->ContextRecord->Eip = &mm_check_read_string_fail;
+				ep->ContextRecord->Xip = &mm_check_read_string_fail;
 				log_warning("mm_check_read_string() failed at location 0x%x\n", ep->ExceptionRecord->ExceptionInformation[1]);
 				return EXCEPTION_CONTINUE_EXECUTION;
 			}
-			if (ep->ContextRecord->Eip >= &mm_check_write_begin && ep->ContextRecord->Eip <= &mm_check_write_end)
+			if (ep->ContextRecord->Xip >= &mm_check_write_begin && ep->ContextRecord->Xip <= &mm_check_write_end)
 			{
-				ep->ContextRecord->Eip = &mm_check_write_fail;
+				ep->ContextRecord->Xip = &mm_check_write_fail;
 				log_warning("mm_check_write() failed at location 0x%x\n", ep->ExceptionRecord->ExceptionInformation[1]);
 				return EXCEPTION_CONTINUE_EXECUTION;
 			}
@@ -116,7 +109,7 @@ static LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
 #endif
 	}
 	log_info("Application crashed, dumping debug information...\n");
-	//dump_virtual_memory(GetCurrentProcess());
+	dump_virtual_memory(GetCurrentProcess());
 	mm_dump_stack_trace(ep->ContextRecord);
 #ifdef _WIN64
 	log_info("RAX: 0x%llx\n", ep->ContextRecord->Rax);

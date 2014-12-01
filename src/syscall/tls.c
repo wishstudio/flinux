@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <intrin.h>
 #include <log.h>
+#include <platform.h>
 #include <stddef.h>
 #include <winternl.h>
 
@@ -199,7 +200,8 @@ int sys_set_thread_area(struct user_desc *u_info)
 			return -ESRCH;
 	}
 #if _WIN64
-	__writegsqword(u_info->entry_number, u_info->base_addr);
+	// TODO: This triggers internal compiler error for now
+	//__writefsqword(u_info->entry_number, u_info->base_addr);
 #else
 	__writefsdword(u_info->entry_number, u_info->base_addr);
 #endif
@@ -429,17 +431,10 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 					continue; \
 				else \
 					GEN_BYTE(code[i])
-#ifdef _WIN64
 		#define GEN_EPILOGUE(inst_len) \
 			GEN_BYTE(0x68); /* PUSH imm32 */ \
-			GEN_DWORD(context->Rip + prefix_end + (inst_len)); \
+			GEN_DWORD(context->Xip + prefix_end + (inst_len)); \
 			GEN_BYTE(0xC3); /* RET */
-#else
-		#define GEN_EPILOGUE(inst_len) \
-			GEN_BYTE(0x68); /* PUSH imm32 */ \
-			GEN_DWORD(context->Eip + prefix_end + (inst_len)); \
-			GEN_BYTE(0xC3); /* RET */
-#endif
 		#define GEN_MODRM_R(changed_r) \
 			{ \
 				uint8_t modrm = code[prefix_end + inst_len]; \
@@ -542,11 +537,7 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 				GEN_BYTE(0xFF);
 				GEN_MODRM_R(4);
 				/* Patch return address */
-#ifdef _WIN64
-				PATCH_DWORD(patch_idx, context->Rip + prefix_end + (inst_len));
-#else
-				PATCH_DWORD(patch_idx, context->Eip + prefix_end + (inst_len));
-#endif
+				PATCH_DWORD(patch_idx, context->Xip + prefix_end + (inst_len));
 				JUMP_TO_TRAMPOLINE();
 				return 1;
 			}
