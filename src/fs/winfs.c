@@ -100,7 +100,12 @@ static size_t winfs_read(struct file *f, char *buf, size_t count)
 	struct winfs_file *winfile = (struct winfs_file *) f;
 	size_t num_read;
 	if (!ReadFile(winfile->handle, buf, count, &num_read, NULL))
+	{
+		if (GetLastError() == ERROR_HANDLE_EOF)
+			return 0;
+		log_warning("ReadFile() failed, error code: %d\n", GetLastError());
 		return -1;
+	}
 	return num_read;
 }
 
@@ -125,6 +130,8 @@ static size_t winfs_pread(struct file *f, char *buf, size_t count, loff_t offset
 	overlapped.hEvent = 0;
 	if (!ReadFile(winfile->handle, buf, count, &num_read, &overlapped))
 	{
+		if (GetLastError() == ERROR_HANDLE_EOF)
+			return 0;
 		log_warning("ReadFile() failed, error code: %d\n", GetLastError());
 		return -1;
 	}
