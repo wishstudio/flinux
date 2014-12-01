@@ -234,7 +234,11 @@ int sys_uname(struct utsname *buf)
 	strcpy(buf->nodename, "ForeignLinux");
 	strcpy(buf->release, "3.15.0");
 	strcpy(buf->version, "3.15.0");
+#ifdef _WIN64
+	strcpy(buf->machine, "x86_64");
+#else
 	strcpy(buf->machine, "i386");
+#endif
 	strcpy(buf->domainname, "GNU/Linux");
 	return 0;
 }
