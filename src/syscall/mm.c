@@ -403,12 +403,12 @@ void dump_virtual_memory(HANDLE process)
 		{
 			char filename[1024];
 			if (GetMappedFileNameA(process, addr, filename, sizeof(filename)))
-				log_info("0x%08x - 0x%08x <--- %s\n", info.BaseAddress, (size_t)info.BaseAddress + info.RegionSize, filename);
+				log_info("0x%p - 0x%p <--- %s\n", info.BaseAddress, (size_t)info.BaseAddress + info.RegionSize, filename);
 			else
-				log_info("0x%08x - 0x%08x\n", info.BaseAddress, (size_t)info.BaseAddress + info.RegionSize);
+				log_info("0x%p - 0x%p\n", info.BaseAddress, (size_t)info.BaseAddress + info.RegionSize);
 		}
 		addr += info.RegionSize;
-	} while ((size_t)addr < 0x7FFF0000);
+	} while ((size_t)addr < ADDRESS_SPACE_HIGH);
 }
 
 static void map_entry_range(struct map_entry *e, size_t start_page, size_t end_page)

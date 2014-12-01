@@ -1,4 +1,5 @@
 #include <str.h>
+#include <vsprintf.h>
 
 #include <stdarg.h>
 #include <Windows.h>
@@ -10,7 +11,7 @@ int kprintf(const char *format, ...)
 {
 	va_list ap;
 	va_start(ap, format);
-	int size = wvsprintfA(buffer, format, ap);
+	int size = kvsprintf(buffer, format, ap);
 	HANDLE handle = GetStdHandle(STD_OUTPUT_HANDLE);
 	WriteFile(handle, buffer, size, NULL, NULL);
 	FlushFileBuffers(handle);

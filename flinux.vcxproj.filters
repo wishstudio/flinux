@@ -147,6 +147,7 @@
       <Filter>common</Filter>
     </ClInclude>
     <ClInclude Include="src\platform.h" />
+    <ClInclude Include="src\vsprintf.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
@@ -193,6 +194,7 @@
     <ClCompile Include="src\syscall\timer.c">
       <Filter>syscall</Filter>
     </ClCompile>
+    <ClCompile Include="src\vsprintf.c" />
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="src\ntdll.def" />

@@ -66,6 +66,7 @@
     <ClInclude Include="src\syscall\tls.h" />
     <ClInclude Include="src\syscall\vfs.h" />
     <ClInclude Include="src\syscall\x86_inst.h" />
+    <ClInclude Include="src\vsprintf.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\datetime.c" />
@@ -86,6 +87,7 @@
     <ClCompile Include="src\syscall\timer.c" />
     <ClCompile Include="src\syscall\tls.c" />
     <ClCompile Include="src\syscall\vfs.c" />
+    <ClCompile Include="src\vsprintf.c" />
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="src\ntdll.def">

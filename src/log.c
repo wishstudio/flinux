@@ -1,4 +1,5 @@
 #include <log.h>
+#include <vsprintf.h>
 
 #include <Windows.h>
 #include <stdarg.h>
@@ -30,7 +31,7 @@ void log_raw(const char *format, ...)
 {
 	va_list ap;
 	va_start(ap, format);
-	int size = wvsprintfA(buffer, format, ap);
+	int size = kvsprintf(buffer, format, ap);
 	DWORD bytes_written;
 	WriteFile(hFile, buffer, size, &bytes_written, NULL);
 }
@@ -42,7 +43,7 @@ static void log_internal(char *type, const char *format, va_list ap)
 	buffer[2] = type;
 	buffer[3] = ')';
 	buffer[4] = ' ';
-	int size = 5 + wvsprintfA(buffer + 5, format, ap);
+	int size = 5 + kvsprintf(buffer + 5, format, ap);
 	DWORD bytes_written;
 	WriteFile(hFile, buffer, size, &bytes_written, NULL);
 }
