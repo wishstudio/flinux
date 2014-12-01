@@ -129,9 +129,15 @@ static int load_elf(const char *filename, struct elf_header **executable, struct
 		return -EACCES;
 	}
 
+#ifdef _WIN64
+	if (eh.e_machine != EM_X86_64)
+	{
+		log_error("Not an x86_64 executable.\n");
+#else
 	if (eh.e_machine != EM_386)
 	{
 		log_error("Not an i386 executable.\n");
+#endif
 		vfs_release(f);
 		return -EACCES;
 	}
