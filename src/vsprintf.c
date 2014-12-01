@@ -8,7 +8,7 @@ static const char *uppercase = "0123456789ABCDEF";
 #define IS_SIGNED(type) \
 	((type)-1 < (type)0)
 
-#define PRINT_NUM(buf, x, type, base, ch) \
+#define PRINT_NUM(buf, x, type, utype, base, ch, width, fillchar) \
 	do											\
 	{											\
 		int b = (base);							\
@@ -20,7 +20,7 @@ static const char *uppercase = "0123456789ABCDEF";
 			sign = 1;							\
 			y = -y;								\
 		}										\
-		unsigned type z = (unsigned type)y;		\
+		utype z = (utype)y;						\
 		int len = 0;							\
 		if (y == 0)								\
 			nbuf[len++] = '0';					\
@@ -34,6 +34,9 @@ static const char *uppercase = "0123456789ABCDEF";
 		}										\
 		if (sign)								\
 			nbuf[len++] = '-';					\
+		int w = (width) - len;					\
+		while (w-- > 0)							\
+			*buf++ = fillchar;					\
 		while (len--)							\
 			*buf++ = nbuf[len];					\
 	} while (0)
@@ -64,28 +67,28 @@ int kvsprintf(char *buffer, const char *format, va_list args)
 			case 'd':
 			{
 				format = f;
-				PRINT_NUM(buf, va_arg(args, int), int, 10, lowercase);
+				PRINT_NUM(buf, va_arg(args, int32_t), int32_t, uint32_t, 10, lowercase, 0, ' ');
 				continue;
 			}
 
 			case 'u':
 			{
 				format = f;
-				PRINT_NUM(buf, va_arg(args, unsigned int), unsigned int, 10, lowercase);
+				PRINT_NUM(buf, va_arg(args, uint32_t), uint32_t, uint32_t, 10, lowercase, 0, ' ');
 				continue;
 			}
 
 			case 'x':
 			{
 				format = f;
-				PRINT_NUM(buf, va_arg(args, unsigned int), unsigned int, 16, lowercase);
+				PRINT_NUM(buf, va_arg(args, uint32_t), uint32_t, uint32_t, 16, lowercase, 0, ' ');
 				continue;
 			}
 
 			case 'X':
 			{
 				format = f;
-				PRINT_NUM(buf, va_arg(args, unsigned int), unsigned int, 16, uppercase);
+				PRINT_NUM(buf, va_arg(args, uint32_t), uint32_t, uint32_t, 16, uppercase, 0, ' ');
 				continue;
 			}
 
@@ -94,7 +97,7 @@ int kvsprintf(char *buffer, const char *format, va_list args)
 				if (f[0] == 'l' && f[1] == 'x')
 				{
 					format = f + 2;
-					PRINT_NUM(buf, va_arg(args, unsigned long long), unsigned long long, 16, lowercase);
+					PRINT_NUM(buf, va_arg(args, uint64_t), uint64_t, uint64_t, 16, lowercase, 0, ' ');
 					continue;
 				}
 			}
@@ -102,7 +105,7 @@ int kvsprintf(char *buffer, const char *format, va_list args)
 			case 'p':
 			{
 				format = f;
-				PRINT_NUM(buf, va_arg(args, unsigned int), unsigned int, 16, lowercase);
+				PRINT_NUM(buf, va_arg(args, uintptr_t), uintptr_t, uintptr_t, 16, lowercase, sizeof(void *) * 2, '0');
 				continue;
 			}
 			}
