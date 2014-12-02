@@ -38,7 +38,7 @@ static syscall_fn* syscall_table[SYSCALL_COUNT] =
 #undef SYSCALL
 #endif
 
-int64_t sys_unimplemented(int64_t _1, int64_t _2, int64_t _3, int64_t _4, int64_t _5, int64_t _6, PCONTEXT context)
+size_t sys_unimplemented(size_t _1, size_t _2, size_t _3, size_t _4, size_t _5, size_t _6, PCONTEXT context)
 {
 #ifdef _WIN64
 	log_error("FATAL: Unimplemented syscall: %d\n", (int)context->Rax);
