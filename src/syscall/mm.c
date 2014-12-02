@@ -408,7 +408,11 @@ void dump_virtual_memory(HANDLE process)
 				log_info("0x%p - 0x%p\n", info.BaseAddress, (size_t)info.BaseAddress + info.RegionSize);
 		}
 		addr += info.RegionSize;
-	} while ((size_t)addr < ADDRESS_SPACE_HIGH);
+#ifdef _WIN64
+	} while ((size_t)addr < 0x00007FFFFFFF0000ULL);
+#else
+	} while ((size_t)addr < 0x7FFF0000U);
+#endif
 }
 
 static void map_entry_range(struct map_entry *e, size_t start_page, size_t end_page)
