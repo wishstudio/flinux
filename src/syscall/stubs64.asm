@@ -73,10 +73,10 @@ LastExceptionToRip	QWORD	?
 LastExceptionFromRip	QWORD	?
 CONTEXT			ENDS
 
-goto_entrypoint PROC stack: QWORD, entrypoint: QWORD
+goto_entrypoint PROC ; stack: QWORD, entrypoint: QWORD
 
-	mov rax, entrypoint
-	mov rsp, stack
+	mov rax, rdx ; entrypoint
+	mov rsp, rcx ; stack
 	push rax
 	xor rax, rax
 	xor rbx, rbx
@@ -97,9 +97,9 @@ goto_entrypoint PROC stack: QWORD, entrypoint: QWORD
 
 goto_entrypoint ENDP
 
-restore_context PROC ctx: QWORD
+restore_context PROC ; ctx: QWORD
 
-	mov rax, ctx
+	mov rax, rcx ; ctx
 	mov rcx, [rax + CONTEXT._Rcx]
 	mov rdx, [rax + CONTEXT._Rdx]
 	mov rbx, [rax + CONTEXT._Rbx]
@@ -122,9 +122,10 @@ restore_context PROC ctx: QWORD
 restore_context ENDP
 
 PUBLIC mm_check_read_begin, mm_check_read_end, mm_check_read_fail
-mm_check_read PROC check_addr: QWORD, check_size: QWORD
-	mov rdx, check_addr
-	mov rcx, check_size
+mm_check_read PROC ; check_addr: QWORD, check_size: QWORD
+	xchg rcx, rdx
+	; rcx = check_size
+	; rdx = check_addr
 
 mm_check_read_begin LABEL PTR
 	mov al, byte ptr [rdx]
@@ -158,8 +159,8 @@ mm_check_read_fail LABEL PTR
 mm_check_read ENDP
 
 PUBLIC mm_check_read_string_begin, mm_check_read_string_end, mm_check_read_string_fail
-mm_check_read_string PROC check_addr: QWORD
-	mov rdx, check_addr
+mm_check_read_string PROC ; check_addr: QWORD
+	mov rdx, rcx ; check_addr
 
 mm_check_read_string_begin LABEL PTR
 L:
@@ -180,9 +181,10 @@ mm_check_read_string_fail LABEL PTR
 mm_check_read_string ENDP
 
 PUBLIC mm_check_write_begin, mm_check_write_end, mm_check_write_fail
-mm_check_write PROC check_addr: QWORD, check_size: QWORD
-	mov rdx, check_addr
-	mov rcx, check_size
+mm_check_write PROC ; check_addr: QWORD, check_size: QWORD
+	xchg rcx, rdx
+	; rcx = check_size
+	; rdx = check_addr
 	
 mm_check_write_begin LABEL PTR
 	mov byte ptr [rdx], al
