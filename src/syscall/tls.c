@@ -132,12 +132,12 @@ void tls_beforefork()
 	log_info("Saving TLS context...\n");
 	/* Save tls data for current thread into shared memory regions */
 	tls->current_gs_value = TlsGetValue(tls->gs_slot);
-	log_info("gs slot %d value 0x%x\n", tls->gs_slot, tls->current_gs_value);
+	log_info("gs slot %d value 0x%p\n", tls->gs_slot, tls->current_gs_value);
 	for (int i = 0; i < MAX_TLS_ENTRIES; i++)
 		if (tls->entries_slot[i] != -1)
 		{
 			tls->current_entries_addr[i] = TlsGetValue(tls->entries_slot[i]);
-			log_info("entry %d slot %d addr 0x%x\n", i, tls->entries_slot[i], tls->current_entries_addr[i]);
+			log_info("entry %d slot %d addr 0x%p\n", i, tls->entries_slot[i], tls->current_entries_addr[i]);
 		}
 }
 
@@ -146,7 +146,7 @@ void tls_afterfork()
 	log_info("Restoring TLS context...\n");
 	tls->gs_slot = TlsAlloc();
 	TlsSetValue(tls->gs_slot, tls->current_gs_value);
-	log_info("gs slot %d value 0x%x\n", tls->gs_slot, tls->current_gs_value);
+	log_info("gs slot %d value 0x%p\n", tls->gs_slot, tls->current_gs_value);
 	/* Restore saved tls info from shared memory regions */
 	for (int i = 0; i < MAX_TLS_ENTRIES; i++)
 		if (tls->entries_slot[i] != -1)
@@ -154,7 +154,7 @@ void tls_afterfork()
 			DWORD slot = TlsAlloc();
 			tls->entries_slot[i] = slot;
 			TlsSetValue(slot, tls->current_entries_addr[i]);
-			log_info("entry %d slot %d addr 0x%x\n", i, tls->entries_slot[i], tls->current_entries_addr[i]);
+			log_info("entry %d slot %d addr 0x%p\n", i, tls->entries_slot[i], tls->current_entries_addr[i]);
 		}
 }
 
@@ -183,7 +183,7 @@ static DWORD tls_offset_to_slot(size_t offset)
 
 int sys_set_thread_area(struct user_desc *u_info)
 {
-	log_info("set_thread_area(%x): entry=%d, base=%x, limit=%x\n", u_info, u_info->entry_number, u_info->base_addr, u_info->limit);
+	log_info("set_thread_area(%p): entry=%d, base=%p, limit=%p\n", u_info, u_info->entry_number, u_info->base_addr, u_info->limit);
 	if (u_info->entry_number == -1)
 	{
 		/* Find an empty entry */
@@ -323,11 +323,7 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 		 * any of them, instead we examine the address mode of the instruction
 		 * and patch it to use the base address.
 		 */
-#ifdef _WIN64
-		log_info("TLS: Try emulating instruction at %llx\n", context->Rip);
-#else
-		log_info("TLS: Try emulating instruction at %x\n", context->Eip);
-#endif
+		log_info("TLS: Try emulating instruction at %p\n", context->Xip);
 		/* First let's deal with instruction prefix.
 		 * According to x86 doc the prefixes can appear in any order.
 		 * We just loop over the prefixes and ensure it has the GS segment
@@ -411,15 +407,9 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 		size_t gs_addr = TlsGetValue(gs_value);
 
 		int idx = 0;
-#ifdef _WIN64
 		#define JUMP_TO_TRAMPOLINE() \
-			context->Rip = tls->trampoline; \
-			log_info("Building trampoline successfully at %llx\n", tls->trampoline)
-#else
-		#define JUMP_TO_TRAMPOLINE() \
-			context->Eip = tls->trampoline; \
-			log_info("Building trampoline successfully at %x\n", tls->trampoline)
-#endif
+			context->Xip = tls->trampoline; \
+			log_info("Building trampoline successfully at %p\n", tls->trampoline)
 		#define GEN_BYTE(x)		tls->trampoline[idx++] = (x)
 		#define GEN_WORD(x)		*(uint16_t *)&tls->trampoline[(idx += 2) - 2] = (x)
 		#define GEN_DWORD(x)	*(uint32_t *)&tls->trampoline[(idx += 4) - 4] = (x)

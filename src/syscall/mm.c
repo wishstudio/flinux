@@ -447,7 +447,7 @@ static int mm_change_protection(HANDLE process, size_t start_page, size_t end_pa
 			DWORD oldProtect;
 			if (!VirtualProtectEx(process, GET_PAGE_ADDRESS(range_start), PAGE_SIZE * (range_end - range_start + 1), protection, &oldProtect))
 			{
-				log_error("VirtualProtect(0x%x, 0x%x) failed, error code: %d\n", GET_PAGE_ADDRESS(range_start),
+				log_error("VirtualProtect(0x%p, 0x%p) failed, error code: %d\n", GET_PAGE_ADDRESS(range_start),
 					PAGE_SIZE * (range_end - range_start + 1), GetLastError());
 				dump_virtual_memory(process);
 				return 0;
@@ -462,14 +462,14 @@ void mm_dump_stack_trace(PCONTEXT context)
 	log_info("Stack trace:\n");
 #ifdef _WIN64
 	size_t sp = context->Rsp;
-	log_info("RSP: 0x%x\n", sp);
+	log_info("RSP: 0x%p\n", sp);
 #else
 	size_t sp = context->Esp;
-	log_info("ESP: 0x%x\n", sp);
+	log_info("ESP: 0x%p\n", sp);
 #endif
 	for (size_t i = sp & ~15; i < ((sp + 256) & ~15); i += 16)
 	{
-		log_raw("%08x ", i);
+		log_raw("%p ", i);
 		for (size_t j = i; j < i + 16 && j < ((sp + 256) & ~15); j++)
 			log_raw("%02x ", *(unsigned char *)j);
 		log_raw("\n");
@@ -504,7 +504,7 @@ static int allocate_block(size_t i)
 	status = NtMapViewOfSection(handle, NtCurrentProcess(), &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, PAGE_EXECUTE_READWRITE);
 	if (status != STATUS_SUCCESS)
 	{
-		log_error("NtMapViewOfSection() failed. Address: %x, Status: %x\n", base_addr, status);
+		log_error("NtMapViewOfSection() failed. Address: %p, Status: %x\n", base_addr, status);
 		NtClose(handle);
 		dump_virtual_memory(NtCurrentProcess());
 		return 0;
@@ -546,7 +546,7 @@ static HANDLE duplicate_section(HANDLE source, void *source_addr)
 	DWORD oldProtect;
 	if (!VirtualProtect(source_addr, BLOCK_SIZE, PAGE_EXECUTE_READ, &oldProtect))
 	{
-		log_error("VirtualProtect(0x%x) failed, error code: %d\n", source_addr, GetLastError());
+		log_error("VirtualProtect(0x%p) failed, error code: %d\n", source_addr, GetLastError());
 		return NULL;
 	}
 	CopyMemory(dest_addr, source_addr, BLOCK_SIZE);
@@ -569,14 +569,14 @@ static int handle_cow_page_fault(void *addr)
 	}
 	if ((entry->prot & PROT_WRITE) == 0)
 	{
-		log_warning("Address %x (page %x) not writable.\n", addr, GET_PAGE(addr));
+		log_warning("Address %p (page %p) not writable.\n", addr, GET_PAGE(addr));
 		return 0;
 	}
 	uint16_t block = GET_BLOCK(addr);
 	HANDLE handle = get_section_handle(block);
 	if (!handle)
 	{
-		log_warning("Address %x (page %x) not mapped.\n", addr, GET_PAGE(addr));
+		log_warning("Address %p (page %p) not mapped.\n", addr, GET_PAGE(addr));
 		return 0;
 	}
 	/* Query information about the section object which the page within */
@@ -585,7 +585,7 @@ static int handle_cow_page_fault(void *addr)
 	status = NtQueryObject(handle, ObjectBasicInformation, &info, sizeof(OBJECT_BASIC_INFORMATION), NULL);
 	if (status != STATUS_SUCCESS)
 	{
-		log_error("NtQueryObject() on block %x failed, status: 0x%x.\n", block, status);
+		log_error("NtQueryObject() on block %p failed, status: 0x%x.\n", block, status);
 		return 0;
 	}
 	if (info.HandleCount == 1)
@@ -593,7 +593,7 @@ static int handle_cow_page_fault(void *addr)
 	else
 	{
 		/* We are not the only one holding the section, duplicate it */
-		log_info("Duplicating section %x...\n", block);
+		log_info("Duplicating section %p...\n", block);
 		HANDLE new_section;
 		if (!(new_section = duplicate_section(handle, GET_BLOCK_ADDRESS(block))))
 		{
@@ -639,7 +639,7 @@ static int handle_cow_page_fault(void *addr)
 			DWORD oldProtect;
 			if (!VirtualProtect(GET_PAGE_ADDRESS(range_start), PAGE_SIZE * (range_end - range_start + 1), prot_linux2win(e->prot), &oldProtect))
 			{
-				log_error("VirtualProtect(0x%x, 0x%x) failed, error code: %d.\n", GET_PAGE_ADDRESS(range_start),
+				log_error("VirtualProtect(0x%p, 0x%p) failed, error code: %d.\n", GET_PAGE_ADDRESS(range_start),
 					PAGE_SIZE * (range_end - range_start + 1), GetLastError());
 				return 0;
 			}
@@ -677,18 +677,18 @@ static int handle_on_demand_page_fault(void *addr)
 		}
 	/* TODO: Mark unmapped pages as PAGE_NOACCESS */
 	if (!found)
-		log_error("Page 0x%x not mapped.\n", GET_PAGE(addr));
+		log_error("Block 0x%p not mapped.\n", GET_BLOCK(addr));
 	else
-		log_info("On demand page 0x%x loaded.\n", GET_PAGE(addr));
+		log_info("On demand block 0x%p loaded.\n", GET_BLOCK(addr));
 	return found;
 }
 
 int mm_handle_page_fault(void *addr)
 {
-	log_info("Handling page fault at address %x (page %x)\n", addr, GET_PAGE(addr));
+	log_info("Handling page fault at address %p (page %p)\n", addr, GET_PAGE(addr));
 	if ((size_t)addr < ADDRESS_SPACE_LOW || (size_t)addr >= ADDRESS_SPACE_HIGH)
 	{
-		log_warning("Address %x outside of valid usermode address space.\n", addr);
+		log_warning("Address %p outside of valid usermode address space.\n", addr);
 		return 0;
 	}
 	if (get_section_handle(GET_BLOCK(addr)))
@@ -717,12 +717,12 @@ int mm_fork(HANDLE process)
 			size_t offset = i * BLOCK_SIZE;
 			if (!VirtualAllocEx(process, MM_SECTION_HANDLE_BASE + offset, BLOCK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE))
 			{
-				log_error("mm_fork(): Allocate section table 0x%x failed, error code: %d\n", i, GetLastError());
+				log_error("mm_fork(): Allocate section table 0x%p failed, error code: %d\n", i, GetLastError());
 				return 0;
 			}
 			if (!WriteProcessMemory(process, MM_SECTION_HANDLE_BASE + offset, MM_SECTION_HANDLE_BASE + offset, BLOCK_SIZE, NULL))
 			{
-				log_error("mm_fork(): Write section table 0x%x failed, error code: %d\n", i, GetLastError());
+				log_error("mm_fork(): Write section table 0x%p failed, error code: %d\n", i, GetLastError());
 				return 0;
 			}
 		}
@@ -748,7 +748,7 @@ int mm_fork(HANDLE process)
 				status = NtMapViewOfSection(handle, process, &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, PAGE_EXECUTE_READWRITE);
 				if (status != STATUS_SUCCESS)
 				{
-					log_error("mm_fork(): Map failed: %x, status code: %x\n", base_addr, status);
+					log_error("mm_fork(): Map failed: %p, status code: %x\n", base_addr, status);
 					dump_virtual_memory(process);
 					return 0;
 				}
@@ -878,7 +878,7 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, struct file *f, of
 		if ((prot & PROT_WRITE) == 0)
 			VirtualProtect(GET_PAGE_ADDRESS(first_page), (end_page - first_page + 1) * PAGE_SIZE, prot_linux2win(prot), &oldProtect);
 	}
-	log_info("Allocated memory: [%x, %x)\n", addr, (size_t)addr + length);
+	log_info("Allocated memory: [%p, %p)\n", addr, (size_t)addr + length);
 	return addr;
 }
 
@@ -939,7 +939,7 @@ int mm_munmap(void *addr, size_t length)
 void *sys_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
 {
 	/* TODO: We should mark NOACCESS for VirtualAlloc()-ed but currently unused pages */
-	log_info("mmap(%x, %x, %x, %x, %d, %x)\n", addr, length, prot, flags, fd, offset);
+	log_info("mmap(%p, %p, %x, %x, %d, %x)\n", addr, length, prot, flags, fd, offset);
 	/* TODO: Initialize mapped area to zero */
 	if (!IS_ALIGNED(offset, PAGE_SIZE))
 		return -EINVAL;
@@ -948,7 +948,7 @@ void *sys_mmap(void *addr, size_t length, int prot, int flags, int fd, off_t off
 
 void *sys_oldmmap(void *_args)
 {
-	log_info("oldmmap(%x)\n", _args);
+	log_info("oldmmap(%p)\n", _args);
 	struct oldmmap_args_t
 	{
 		void *addr;
@@ -964,19 +964,19 @@ void *sys_oldmmap(void *_args)
 
 void *sys_mmap2(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
 {
-	log_info("mmap2(%x, %x, %x, %x, %d, %x)\n", addr, length, prot, flags, fd, offset);
+	log_info("mmap2(%p, %p, %x, %x, %d, %x)\n", addr, length, prot, flags, fd, offset);
 	return mm_mmap(addr, length, prot, flags, vfs_get(fd), offset);
 }
 
 int sys_munmap(void *addr, size_t length)
 {
-	log_info("munmap(%x, %x)\n", addr, length);
+	log_info("munmap(%p, %p)\n", addr, length);
 	return mm_munmap(addr, length);
 }
 
 int sys_mprotect(void *addr, size_t length, int prot)
 {
-	log_info("mprotect(%x, %x, %x)\n", addr, length, prot);
+	log_info("mprotect(%p, %p, %x)\n", addr, length, prot);
 	if (!IS_ALIGNED(addr, PAGE_SIZE))
 		return -EINVAL;
 	length = ALIGN_TO_PAGE(length);
@@ -1057,8 +1057,8 @@ int sys_munlock(const void *addr, size_t len)
 
 void *sys_brk(void *addr)
 {
-	log_info("brk(%x)\n", addr);
-	log_info("Last brk: %x\n", mm->brk);
+	log_info("brk(%p)\n", addr);
+	log_info("Last brk: %p\n", mm->brk);
 	size_t brk = ALIGN_TO_PAGE(mm->brk);
 	addr = ALIGN_TO_PAGE(addr);
 	/* TODO: Handle brk shrink */
@@ -1071,6 +1071,6 @@ void *sys_brk(void *addr)
 		}
 		mm->brk = addr;
 	}
-	log_info("New brk: %x\n", mm->brk);
+	log_info("New brk: %p\n", mm->brk);
 	return mm->brk;
 }

@@ -72,7 +72,7 @@ static void run(struct elf_header *executable, struct elf_header *interpreter, i
 
 	/* Call executable entrypoint */
 	size_t entrypoint = interpreter? interpreter->load_base + interpreter->eh.e_entry: executable->load_base + executable->eh.e_entry;
-	log_info("Entrypoint: %x\n", entrypoint);
+	log_info("Entrypoint: %p\n", entrypoint);
 	/* If we're starting from main(), just jump to entrypoint */
 	if (!context)
 		goto_entrypoint(stack, entrypoint);
@@ -161,10 +161,10 @@ static int load_elf(const char *filename, struct elf_header **executable, struct
 		{
 			elf->low = min(elf->low, ph->p_vaddr);
 			elf->high = max(elf->high, ph->p_vaddr + ph->p_memsz);
-			log_info("PT_LOAD: vaddr %x, size %x\n", ph->p_vaddr, ph->p_memsz);
+			log_info("PT_LOAD: vaddr %p, size %p\n", ph->p_vaddr, ph->p_memsz);
 		}
 		else if (ph->p_type == PT_DYNAMIC)
-			log_info("PT_DYNAMIC: vaddr %x, size %x\n", ph->p_vaddr, ph->p_memsz);
+			log_info("PT_DYNAMIC: vaddr %p, size %p\n", ph->p_vaddr, ph->p_memsz);
 		else if (ph->p_type == PT_PHDR) /* Patch phdr pointer in PT_PHDR, glibc uses it to determine load offset */
 			ph->p_vaddr = elf->pht;
 	}
@@ -180,7 +180,7 @@ static int load_elf(const char *filename, struct elf_header **executable, struct
 			return -ENOMEM;
 		}
 		elf->load_base = free_addr - elf->low;
-		log_info("ET_DYN load offset: %x, real range [%x, %x)\n", elf->load_base, elf->load_base + elf->low, elf->load_base + elf->high);
+		log_info("ET_DYN load offset: %p, real range [%p, %p)\n", elf->load_base, elf->load_base + elf->low, elf->load_base + elf->high);
 	}
 
 	/* Map executable segments */
@@ -250,7 +250,7 @@ int sys_execve(const char *filename, char *argv[], char *envp[], int _4, int _5,
 {
 	/* TODO: Deal with argv/envp == NULL */
 	/* TODO: Don't destroy things on failure */
-	log_info("execve(%s, %x, %x)\n", filename, argv, envp);
+	log_info("execve(%s, %p, %p)\n", filename, argv, envp);
 	log_info("Reinitializing...\n");
 
 	/* Copy argv[] and envp[] to startup data */

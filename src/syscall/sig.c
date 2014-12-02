@@ -31,14 +31,14 @@ int sys_personality(unsigned long persona)
 
 int sys_rt_sigaction(int signum, const struct sigaction *act, struct sigaction *oldact)
 {
-	log_info("rt_sigaction(%d, %x, %x)\n", signum, act, oldact);
+	log_info("rt_sigaction(%d, %p, %p)\n", signum, act, oldact);
 	/* TODO */
 	return 0;
 }
 
 int sys_rt_sigprocmask(int how, const sigset_t *set, sigset_t *oldset)
 {
-	log_info("rt_sigprocmask(%d, 0x%x, 0x%x)\n", how, set, oldset);
+	log_info("rt_sigprocmask(%d, 0x%p, 0x%p)\n", how, set, oldset);
 	/* TODO */
 	return 0;
 }

@@ -128,7 +128,7 @@ static int alloc_fd_slot()
 
 size_t sys_read(int fd, char *buf, size_t count)
 {
-	log_info("read(%d, %x, %d)\n", fd, buf, count);
+	log_info("read(%d, %p, %p)\n", fd, buf, count);
 	struct file *f = vfs->fds[fd];
 	if (f && f->op_vtable->read)
 	{
@@ -142,7 +142,7 @@ size_t sys_read(int fd, char *buf, size_t count)
 
 size_t sys_write(int fd, const char *buf, size_t count)
 {
-	log_info("write(%d, %x, %d)\n", fd, buf, count);
+	log_info("write(%d, %p, %p)\n", fd, buf, count);
 	struct file *f = vfs->fds[fd];
 	if (f && f->op_vtable->write)
 	{
@@ -156,7 +156,7 @@ size_t sys_write(int fd, const char *buf, size_t count)
 
 size_t sys_pread64(int fd, char *buf, size_t count, loff_t offset)
 {
-	log_info("pread64(%d, %x, %d, %lld)\n", fd, buf, count, offset);
+	log_info("pread64(%d, %p, %p, %lld)\n", fd, buf, count, offset);
 	struct file *f = vfs->fds[fd];
 	if (f && f->op_vtable->pread)
 	{
@@ -170,7 +170,7 @@ size_t sys_pread64(int fd, char *buf, size_t count, loff_t offset)
 
 size_t sys_pwrite64(int fd, const char *buf, size_t count, loff_t offset)
 {
-	log_info("pwrite64(%d, %x, %d, %lld)\n", fd, buf, count, offset);
+	log_info("pwrite64(%d, %p, %p, %lld)\n", fd, buf, count, offset);
 	struct file *f = vfs->fds[fd];
 	if (f && f->op_vtable->pwrite)
 	{
@@ -184,7 +184,7 @@ size_t sys_pwrite64(int fd, const char *buf, size_t count, loff_t offset)
 
 size_t sys_readv(int fd, const struct iovec *iov, int iovcnt)
 {
-	log_info("readv(%d, 0x%x, %d)\n", fd, iov, iovcnt);
+	log_info("readv(%d, 0x%p, %d)\n", fd, iov, iovcnt);
 	struct file *f = vfs->fds[fd];
 	if (f && f->op_vtable->read)
 	{
@@ -209,7 +209,7 @@ size_t sys_readv(int fd, const struct iovec *iov, int iovcnt)
 
 size_t sys_writev(int fd, const struct iovec *iov, int iovcnt)
 {
-	log_info("writev(%d, 0x%x, %d)\n", fd, iov, iovcnt);
+	log_info("writev(%d, 0x%p, %d)\n", fd, iov, iovcnt);
 	struct file *f = vfs->fds[fd];
 	if (f && f->op_vtable->write)
 	{
@@ -234,7 +234,7 @@ size_t sys_writev(int fd, const struct iovec *iov, int iovcnt)
 
 size_t sys_preadv(int fd, const struct iovec *iov, int iovcnt, off_t offset)
 {
-	log_info("preadv(%d, 0x%x, %d, 0x%x)\n", fd, iov, iovcnt, offset);
+	log_info("preadv(%d, 0x%p, %d, 0x%x)\n", fd, iov, iovcnt, offset);
 	struct file *f = vfs->fds[fd];
 	if (f && f->op_vtable->pread)
 	{
@@ -260,7 +260,7 @@ size_t sys_preadv(int fd, const struct iovec *iov, int iovcnt, off_t offset)
 
 size_t sys_pwritev(int fd, const struct iovec *iov, int iovcnt, off_t offset)
 {
-	log_info("pwritev(%d, 0x%x, %d, 0x%x)\n", fd, iov, iovcnt, offset);
+	log_info("pwritev(%d, 0x%p, %d, 0x%x)\n", fd, iov, iovcnt, offset);
 	struct file *f = vfs->fds[fd];
 	if (f && f->op_vtable->pwrite)
 	{
@@ -305,7 +305,7 @@ off_t sys_lseek(int fd, off_t offset, int whence)
 int sys_llseek(int fd, unsigned long offset_high, unsigned long offset_low, loff_t *result, int whence)
 {
 	loff_t offset = ((uint64_t) offset_high << 32ULL) + offset_low;
-	log_info("llseek(%d, %lld, %x, %d)\n", fd, offset, result, whence);
+	log_info("llseek(%d, %lld, %p, %d)\n", fd, offset, result, whence);
 	struct file *f = vfs->fds[fd];
 	if (f && f->op_vtable->llseek)
 	{
@@ -541,7 +541,7 @@ int vfs_open(const char *pathname, int flags, int mode, struct file **f)
 
 int sys_open(const char *pathname, int flags, int mode)
 {
-	log_info("open(%x: \"%s\", %x, %x)\n", pathname, pathname, flags, mode);
+	log_info("open(%p: \"%s\", %x, %x)\n", pathname, pathname, flags, mode);
 	if (!mm_check_read_string(pathname))
 		return -EFAULT;
 	struct file *f;
@@ -708,7 +708,7 @@ int sys_symlink(const char *symlink_target, const char *linkpath)
 
 int sys_readlink(const char *pathname, char *buf, int bufsize)
 {
-	log_info("readlink(\"%s\", %x, %d)\n", pathname, buf, bufsize);
+	log_info("readlink(\"%s\", %p, %d)\n", pathname, buf, bufsize);
 	if (!mm_check_read_string(pathname) || !mm_check_write(buf, bufsize))
 		return -EFAULT;
 	char path[MAX_PATH], target[MAX_PATH];
@@ -750,7 +750,7 @@ int sys_pipe2(int pipefd[2], int flags)
 	o O_DIRECT
 	o O_NONBLOCK
 	*/
-	log_info("pipe2(%x, %d)\n", pipefd, flags);
+	log_info("pipe2(%p, %d)\n", pipefd, flags);
 	if ((flags & O_DIRECT) || (flags & O_NONBLOCK))
 	{
 		log_error("Unsupported flags combination: %x\n", flags);
@@ -844,7 +844,7 @@ int sys_mkdir(const char *pathname, int mode)
 
 int sys_getdents64(int fd, struct linux_dirent64 *dirent, unsigned int count)
 {
-	log_info("getdents64(%d, %x, %d)\n", fd, dirent, count);
+	log_info("getdents64(%d, %p, %d)\n", fd, dirent, count);
 	if (!mm_check_write(dirent, count))
 		return -EFAULT;
 	struct file *f = vfs->fds[fd];
@@ -903,7 +903,7 @@ int sys_fstat(int fd, struct stat *buf)
 
 int sys_stat64(const char *pathname, struct stat64 *buf)
 {
-	log_info("stat64(\"%s\", %x)\n", pathname, buf);
+	log_info("stat64(\"%s\", %p)\n", pathname, buf);
 	if (!mm_check_read_string(pathname) || !mm_check_write(buf, sizeof(struct stat64)))
 		return -EFAULT;
 	int fd = sys_open(pathname, O_PATH, 0);
@@ -916,7 +916,7 @@ int sys_stat64(const char *pathname, struct stat64 *buf)
 
 int sys_lstat64(const char *pathname, struct stat64 *buf)
 {
-	log_info("lstat64(\"%s\", %x)\n", pathname, buf);
+	log_info("lstat64(\"%s\", %p)\n", pathname, buf);
 	if (!mm_check_read_string(pathname) || !mm_check_write(buf, sizeof(struct stat64)))
 		return -EFAULT;
 	int fd = sys_open(pathname, O_PATH | O_NOFOLLOW, 0);
@@ -929,7 +929,7 @@ int sys_lstat64(const char *pathname, struct stat64 *buf)
 
 int sys_fstat64(int fd, struct stat64 *buf)
 {
-	log_info("fstat64(%d, %x)\n", fd, buf);
+	log_info("fstat64(%d, %p)\n", fd, buf);
 	if (!mm_check_write(buf, sizeof(struct stat64)))
 		return -EFAULT;
 	struct file *f = vfs->fds[fd];
@@ -951,7 +951,7 @@ int sys_ioctl(int fd, unsigned int cmd, unsigned long arg)
 
 int sys_utime(const char *filename, const struct utimbuf *times)
 {
-	log_info("sys_utime(\"%s\", %x)\n", filename, times);
+	log_info("sys_utime(\"%s\", %p)\n", filename, times);
 	if (!mm_check_read_string(filename) || !mm_check_write(times, sizeof(struct utimbuf)))
 		return -EFAULT;
 	struct file *f;
@@ -972,7 +972,7 @@ int sys_utime(const char *filename, const struct utimbuf *times)
 
 int sys_utimes(const char *filename, const struct timeval times[2])
 {
-	log_info("sys_utimes(\"%s\", %x)\n", filename, times);
+	log_info("sys_utimes(\"%s\", %p)\n", filename, times);
 	if (!mm_check_read_string(filename) || !mm_check_write(times, 2 * sizeof(struct timeval)))
 		return -EFAULT;
 	struct file *f;
@@ -1002,7 +1002,7 @@ int sys_chdir(const char *pathname)
 
 char *sys_getcwd(char *buf, size_t size)
 {
-	log_info("getcwd(%x, %d): %s\n", buf, size, vfs->cwd);
+	log_info("getcwd(%p, %p): %s\n", buf, size, vfs->cwd);
 	if (!mm_check_write(buf, size))
 		return -EFAULT;
 	if (size < strlen(vfs->cwd) + 1)
@@ -1065,7 +1065,7 @@ int sys_openat(int dirfd, const char *pathname, int flags)
 
 int sys_select(int nfds, struct fdset *readfds, struct fdset *writefds, struct fdset *exceptfds, struct timeval *timeout)
 {
-	log_info("select(%d, 0x%x, 0x%x, 0x%x, 0x%x)\n", nfds, readfds, writefds, exceptfds, timeout);
+	log_info("select(%d, 0x%p, 0x%p, 0x%p, 0x%p)\n", nfds, readfds, writefds, exceptfds, timeout);
 	if (!mm_check_write(readfds, sizeof(struct fdset))
 		|| !mm_check_write(writefds, sizeof(struct fdset))
 		|| !mm_check_write(exceptfds, sizeof(struct fdset))
@@ -1117,7 +1117,7 @@ int sys_select(int nfds, struct fdset *readfds, struct fdset *writefds, struct f
 
 int sys_poll(struct pollfd *fds, int nfds, int timeout)
 {
-	log_info("poll(0x%x, %d, %d)\n", fds, nfds, timeout);
+	log_info("poll(0x%p, %d, %d)\n", fds, nfds, timeout);
 	if (!mm_check_write(fds, nfds * sizeof(struct pollfd)))
 		return -EFAULT;
 

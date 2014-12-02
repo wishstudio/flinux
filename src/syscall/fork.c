@@ -144,7 +144,7 @@ pid_t sys_vfork(int _1, int _2, int _3, int _4, int _5, int _6, PCONTEXT context
 
 pid_t sys_clone(unsigned long flags, void *child_stack, void *ptid, int tls, void *ctid, int _6, PCONTEXT context)
 {
-	log_info("sys_clone(flags=%x, child_stack=%x, ptid=%x, ctid=%x)\n", flags, child_stack, ptid, ctid);
+	log_info("sys_clone(flags=%x, child_stack=%p, ptid=%p, ctid=%p)\n", flags, child_stack, ptid, ctid);
 	if (flags & CLONE_THREAD)
 	{
 		log_error("Threads not supported.\n");

@@ -9,7 +9,7 @@
 
 int sys_time(int *c)
 {
-	log_info("time(%x)\n", c);
+	log_info("time(%p)\n", c);
 	if (c && !mm_check_write(c, sizeof(int)))
 		return -EFAULT;
 	SYSTEMTIME systime;
@@ -26,7 +26,7 @@ int sys_time(int *c)
 
 int sys_gettimeofday(struct timeval *tv, struct timezone *tz)
 {
-	log_info("gettimeofday(0x%x, 0x%x)\n", tv, tz);
+	log_info("gettimeofday(0x%p, 0x%p)\n", tv, tz);
 	if (tz)
 		log_error("warning: timezone is not NULL\n");
 	if (tv)
@@ -41,7 +41,7 @@ int sys_gettimeofday(struct timeval *tv, struct timezone *tz)
 
 int sys_nanosleep(const struct timespec *req, struct timespec *rem)
 {
-	log_info("nanospeep(0x%x, 0x%x)\n", req, rem);
+	log_info("nanospeep(0x%p, 0x%p)\n", req, rem);
 	if (!mm_check_read(req, sizeof(struct timespec)) || rem && !mm_check_write(rem, sizeof(struct timespec)))
 		return -EFAULT;
 	LARGE_INTEGER delay_interval;
@@ -52,7 +52,7 @@ int sys_nanosleep(const struct timespec *req, struct timespec *rem)
 
 int sys_clock_gettime(int clk_id, struct timespec *tp)
 {
-	log_debug("sys_clock_gettime(%d, 0x%x)\n", clk_id, tp);
+	log_debug("sys_clock_gettime(%d, 0x%p)\n", clk_id, tp);
 	if (!mm_check_write(tp, sizeof(struct timespec)))
 		return -EFAULT;
 	switch (clk_id)

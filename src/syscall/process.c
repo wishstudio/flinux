@@ -36,8 +36,8 @@ void process_init(void *stack_base)
 		process->stack_base = stack_base;
 	else
 		process->stack_base = VirtualAlloc(NULL, STACK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
-	log_info("Stack base: 0x%x\n", process->stack_base);
-	log_info("Stack top: 0x%x\n", (uint32_t)process->stack_base + STACK_SIZE);
+	log_info("Stack base: 0x%p\n", process->stack_base);
+	log_info("Stack top: 0x%p\n", (uint32_t)process->stack_base + STACK_SIZE);
 }
 
 void *process_get_stack_base()
@@ -54,7 +54,7 @@ void process_add_child(pid_t pid, HANDLE handle)
 
 pid_t sys_waitpid(pid_t pid, int *status, int options)
 {
-	log_info("sys_waitpid(%d, %x, %d)\n", pid, status, options);
+	log_info("sys_waitpid(%d, %p, %d)\n", pid, status, options);
 	if (options & WNOHANG)
 		log_error("Unhandled option WNOHANG\n");
 	if (options & WUNTRACED)
@@ -226,7 +226,7 @@ int sys_olduname(struct old_utsname *buf)
 
 int sys_uname(struct utsname *buf)
 {
-	log_info("sys_uname(%x)\n", buf);
+	log_info("sys_uname(%p)\n", buf);
 	if (!mm_check_write(buf, sizeof(struct utsname)))
 		return -EFAULT;
 	/* Just mimic a reasonable Linux uname */
@@ -245,7 +245,7 @@ int sys_uname(struct utsname *buf)
 
 int sys_getrlimit(int resource, struct rlimit *rlim)
 {
-	log_info("getrlimit(%d, %x)\n", resource, rlim);
+	log_info("getrlimit(%d, %p)\n", resource, rlim);
 	if (!mm_check_write(rlim, sizeof(struct rlimit)))
 		return -EFAULT;
 	switch (resource)
@@ -264,7 +264,7 @@ int sys_getrlimit(int resource, struct rlimit *rlim)
 
 int sys_setrlimit(int resource, const struct rlimit *rlim)
 {
-	log_info("setrlimit(%d, %x)\n", resource, rlim);
+	log_info("setrlimit(%d, %p)\n", resource, rlim);
 	if (!mm_check_read(rlim, sizeof(struct rlimit)))
 		return -EFAULT;
 	switch (resource)
