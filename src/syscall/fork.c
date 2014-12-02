@@ -46,7 +46,55 @@ void fork_init()
 	}
 	else
 	{
-		/* Allocate fork_info memory to avoid possible VirtualAlloc() collision */
+#ifdef _WIN64
+		/* On Win64, the default base address for ET_EXEC executable is 0x400000
+		 * which is problematic that sometimes win32 dlls will allocate memory there
+		 * To workaround this issue, we first check if the address space there is
+		 * occupied. If so, we create a suspended child process and pre-reserve
+		 * the memory region, then transfer control to the child process.
+		 * The child process detects such circumstances and release the preserved
+		 * memory before use.
+		 */
+		size_t region_start = 0x400000;
+		size_t region_size = 0x10000000; /* 256MB maximum executable size */
+		MEMORY_BASIC_INFORMATION info;
+		VirtualQuery(region_start, &info, sizeof(MEMORY_BASIC_INFORMATION));
+		if (info.State == MEM_FREE && info.RegionSize >= region_size)
+		{
+			/* That's good, reserve the space now */
+			VirtualAlloc(region_start, region_size, MEM_RESERVE, PAGE_NOACCESS);
+		}
+		else if (info.State == MEM_RESERVE && info.RegionSize == region_size)
+		{
+			/* We're a child who has the pages protected by the parent, nothing to do here */
+		}
+		else
+		{
+			/* Not good, create a child process and hope this time we can do it better */
+			log_warning("The address %p is occupied, we have to create another process to proceed.\n", region_start);
+			wchar_t filename[MAX_PATH];
+			GetModuleFileNameW(NULL, filename, sizeof(filename));
+			PROCESS_INFORMATION info;
+			STARTUPINFOW si = { 0 };
+			si.cb = sizeof(si);
+			if (!CreateProcessW(filename, GetCommandLineW(), NULL, NULL, TRUE, CREATE_SUSPENDED, NULL, NULL, &si, &info))
+			{
+				log_error("CreateProcessW() failed, error code: %d\n", GetLastError());
+				ExitProcess(1);
+			}
+			/* Pre-reserve the memory */
+			if (!VirtualAllocEx(info.hProcess, region_start, region_size, MEM_RESERVE, PAGE_NOACCESS))
+			{
+				log_error("VirtualAllocEx() failed, error code: %d\n", GetLastError());
+				ExitProcess(1);
+			}
+			/* All done */
+			log_shutdown();
+			ResumeThread(info.hThread);
+			ExitProcess(0);
+		}
+#endif
+		/* Allocate fork_info memory early to avoid possible VirtualAlloc() collision */
 		VirtualAlloc(FORK_INFO_BASE, BLOCK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 		/* Return control flow to main() */
 	}

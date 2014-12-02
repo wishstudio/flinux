@@ -183,6 +183,12 @@ static int load_elf(const char *filename, struct elf_header **executable, struct
 		log_info("ET_DYN load offset: %p, real range [%p, %p)\n", elf->load_base, elf->load_base + elf->low, elf->load_base + elf->high);
 	}
 
+#ifdef _WIN64
+	/* Unmap the pre-reserved executable region (see fork_init() for details) */
+	size_t region_start = 0x400000;
+	VirtualFree(region_start, 0, MEM_RELEASE); /* This will silently fail if it's not the intended case */
+#endif
+
 	/* Map executable segments */
 	/* TODO: Directly use mmap() */
 	for (int i = 0; i < eh.e_phnum; i++)

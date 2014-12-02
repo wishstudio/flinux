@@ -22,9 +22,9 @@
 #ifdef _WIN64
 
 /* Base address of mm_data structure */
-#define MM_DATA_BASE			0x0000000010000000ULL
+#define MM_DATA_BASE			0x0000000020000000ULL
 /* Base address of section handles table */
-#define MM_SECTION_HANDLE_BASE	0x0000000020000000ULL
+#define MM_SECTION_HANDLE_BASE	0x0000000030000000ULL
 /* Base address of process_data structure */
 #define PROCESS_DATA_BASE		0x00000000EC000000ULL
 /* Base address of mm_heap structure */
