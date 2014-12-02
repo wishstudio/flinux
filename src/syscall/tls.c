@@ -103,7 +103,7 @@ static struct tls_data *const tls = TLS_DATA_BASE;
 
 void tls_init()
 {
-	mm_mmap(TLS_DATA_BASE, sizeof(struct tls_data), PROT_READ | PROT_WRITE | PROT_EXEC, MAP_FIXED | MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	mm_mmap(TLS_DATA_BASE, sizeof(struct tls_data), PROT_READ | PROT_WRITE | PROT_EXEC, MAP_FIXED | MAP_PRIVATE | MAP_ANONYMOUS, NULL, 0);
 	for (int i = 0; i < MAX_TLS_ENTRIES; i++)
 		tls->entries_slot[i] = -1;
 	tls->gs_slot = TlsAlloc();
