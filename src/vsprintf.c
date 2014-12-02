@@ -49,6 +49,18 @@ int kvsprintf(char *buffer, const char *format, va_list args)
 		if (*format == '%')
 		{
 			const char *f = format + 1;
+			char fillchar = ' ';
+			if (*f == '0')
+			{
+				fillchar = '0';
+				f++;
+			}
+			int width = 0;
+			if (*f >= '1' && *f <= '9')
+			{
+				while (*f >= '0' && *f <= '9')
+					width = width * 10 + (*f++ - '0');
+			}
 			switch (*f++)
 			{
 			case '%':
@@ -67,28 +79,28 @@ int kvsprintf(char *buffer, const char *format, va_list args)
 			case 'd':
 			{
 				format = f;
-				PRINT_NUM(buf, va_arg(args, int32_t), int32_t, uint32_t, 10, lowercase, 0, ' ');
+				PRINT_NUM(buf, va_arg(args, int32_t), int32_t, uint32_t, 10, lowercase, width, fillchar);
 				continue;
 			}
 
 			case 'u':
 			{
 				format = f;
-				PRINT_NUM(buf, va_arg(args, uint32_t), uint32_t, uint32_t, 10, lowercase, 0, ' ');
+				PRINT_NUM(buf, va_arg(args, uint32_t), uint32_t, uint32_t, 10, lowercase, width, fillchar);
 				continue;
 			}
 
 			case 'x':
 			{
 				format = f;
-				PRINT_NUM(buf, va_arg(args, uint32_t), uint32_t, uint32_t, 16, lowercase, 0, ' ');
+				PRINT_NUM(buf, va_arg(args, uint32_t), uint32_t, uint32_t, 16, lowercase, width, fillchar);
 				continue;
 			}
 
 			case 'X':
 			{
 				format = f;
-				PRINT_NUM(buf, va_arg(args, uint32_t), uint32_t, uint32_t, 16, uppercase, 0, ' ');
+				PRINT_NUM(buf, va_arg(args, uint32_t), uint32_t, uint32_t, 16, uppercase, width, fillchar);
 				continue;
 			}
 
@@ -97,7 +109,7 @@ int kvsprintf(char *buffer, const char *format, va_list args)
 				if (f[0] == 'l' && f[1] == 'x')
 				{
 					format = f + 2;
-					PRINT_NUM(buf, va_arg(args, uint64_t), uint64_t, uint64_t, 16, lowercase, 0, ' ');
+					PRINT_NUM(buf, va_arg(args, uint64_t), uint64_t, uint64_t, 16, lowercase, width, fillchar);
 					continue;
 				}
 			}
