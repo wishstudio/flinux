@@ -3,6 +3,7 @@
 #include <common/wait.h>
 #include <syscall/mm.h>
 #include <syscall/process.h>
+#include <syscall/syscall.h>
 #include <datetime.h>
 #include <log.h>
 #include <ntdll.h>
@@ -52,7 +53,7 @@ void process_add_child(pid_t pid, HANDLE handle)
 	process->child_handles[i] = handle;
 }
 
-pid_t sys_waitpid(pid_t pid, int *status, int options)
+DEFINE_SYSCALL(waitpid)(pid_t pid, int *status, int options)
 {
 	log_info("sys_waitpid(%d, %p, %d)\n", pid, status, options);
 	if (options & WNOHANG)
@@ -112,75 +113,75 @@ pid_t sys_waitpid(pid_t pid, int *status, int options)
 	return pid;
 }
 
-pid_t sys_getpid()
+DEFINE_SYSCALL(getpid)()
 {
 	log_info("getpid(): %d\n", GetCurrentProcessId());
 	return GetCurrentProcessId();
 }
 
-pid_t sys_getppid()
+DEFINE_SYSCALL(getppid)()
 {
 	log_info("getppid(): %d\n", 0);
 	return 0;
 }
 
-int sys_setpgid(pid_t pid, pid_t pgid)
+DEFINE_SYSCALL(setpgid)(pid_t pid, pid_t pgid)
 {
 	log_info("setpgid(%d, %d)\n", pid, pgid);
 	return 0;
 }
 
-pid_t sys_getpgid(pid_t pid)
+DEFINE_SYSCALL(getpgid)(pid_t pid)
 {
 	log_info("getpgid(%d): %d\n", pid, 0);
 	return 0;
 }
 
-pid_t sys_getpgrp()
+DEFINE_SYSCALL(getpgrp)()
 {
 	pid_t pgrp = GetCurrentProcessId();
 	log_info("getpgrp(): %d\n", pgrp);
 	return pgrp;
 }
 
-pid_t sys_gettid()
+DEFINE_SYSCALL(gettid)()
 {
 	pid_t tid = GetCurrentThreadId();
 	log_info("gettid(): %d\n", tid);
 	return tid;
 }
 
-uid_t sys_getuid()
+DEFINE_SYSCALL(getuid)()
 {
 	log_info("getuid(): %d\n", 0);
 	return 0;
 }
 
-gid_t sys_getgid()
+DEFINE_SYSCALL(getgid)()
 {
 	log_info("getgid(): %d\n", 0);
 	return 0;
 }
 
-uid_t sys_geteuid()
+DEFINE_SYSCALL(geteuid)()
 {
 	log_info("geteuid(): %d\n", 0);
 	return 0;
 }
 
-gid_t sys_getegid()
+DEFINE_SYSCALL(getegid)()
 {
 	log_info("getegid(): %d\n", 0);
 	return 0;
 }
 
-int sys_setuid(uid_t uid)
+DEFINE_SYSCALL(setuid)(uid_t uid)
 {
 	log_info("setuid(%d)\n", uid);
 	return -EPERM;
 }
 
-void sys_exit(int status)
+DEFINE_SYSCALL(exit)(int status)
 {
 	log_info("exit(%d)\n", status);
 	/* TODO: Gracefully shutdown mm, vfs, etc. */
@@ -188,7 +189,7 @@ void sys_exit(int status)
 	ExitProcess(status);
 }
 
-void sys_exit_group(int status)
+DEFINE_SYSCALL(exit_group)(int status)
 {
 	log_info("exit_group(%d)\n", status);
 	/* TODO: Gracefully shutdown mm, vfs, etc. */
@@ -196,35 +197,7 @@ void sys_exit_group(int status)
 	ExitProcess(status);
 }
 
-int sys_oldolduname(struct oldold_utsname *buf)
-{
-	if (!mm_check_write(buf, sizeof(struct oldold_utsname)))
-		return -EFAULT;
-	struct utsname newbuf;
-	sys_uname(&newbuf);
-	strncpy(buf->sysname, newbuf.sysname, __OLD_UTS_LEN + 1);
-	strncpy(buf->nodename, newbuf.nodename, __OLD_UTS_LEN + 1);
-	strncpy(buf->release, newbuf.release, __OLD_UTS_LEN + 1);
-	strncpy(buf->version, newbuf.version, __OLD_UTS_LEN + 1);
-	strncpy(buf->machine, newbuf.machine, __OLD_UTS_LEN + 1);
-	return 0;
-}
-
-int sys_olduname(struct old_utsname *buf)
-{
-	if (!mm_check_write(buf, sizeof(struct old_utsname)))
-		return -EFAULT;
-	struct utsname newbuf;
-	sys_uname(&newbuf);
-	strcpy(buf->sysname, newbuf.sysname);
-	strcpy(buf->nodename, newbuf.nodename);
-	strcpy(buf->release, newbuf.release);
-	strcpy(buf->version, newbuf.version);
-	strcpy(buf->machine, newbuf.machine);
-	return 0;
-}
-
-int sys_uname(struct utsname *buf)
+DEFINE_SYSCALL(uname)(struct utsname *buf)
 {
 	log_info("sys_uname(%p)\n", buf);
 	if (!mm_check_write(buf, sizeof(struct utsname)))
@@ -243,7 +216,35 @@ int sys_uname(struct utsname *buf)
 	return 0;
 }
 
-int sys_getrlimit(int resource, struct rlimit *rlim)
+DEFINE_SYSCALL(olduname)(struct old_utsname *buf)
+{
+	if (!mm_check_write(buf, sizeof(struct old_utsname)))
+		return -EFAULT;
+	struct utsname newbuf;
+	sys_uname(&newbuf);
+	strcpy(buf->sysname, newbuf.sysname);
+	strcpy(buf->nodename, newbuf.nodename);
+	strcpy(buf->release, newbuf.release);
+	strcpy(buf->version, newbuf.version);
+	strcpy(buf->machine, newbuf.machine);
+	return 0;
+}
+
+DEFINE_SYSCALL(oldolduname)(struct oldold_utsname *buf)
+{
+	if (!mm_check_write(buf, sizeof(struct oldold_utsname)))
+		return -EFAULT;
+	struct utsname newbuf;
+	sys_uname(&newbuf);
+	strncpy(buf->sysname, newbuf.sysname, __OLD_UTS_LEN + 1);
+	strncpy(buf->nodename, newbuf.nodename, __OLD_UTS_LEN + 1);
+	strncpy(buf->release, newbuf.release, __OLD_UTS_LEN + 1);
+	strncpy(buf->version, newbuf.version, __OLD_UTS_LEN + 1);
+	strncpy(buf->machine, newbuf.machine, __OLD_UTS_LEN + 1);
+	return 0;
+}
+
+DEFINE_SYSCALL(getrlimit)(int resource, struct rlimit *rlim)
 {
 	log_info("getrlimit(%d, %p)\n", resource, rlim);
 	if (!mm_check_write(rlim, sizeof(struct rlimit)))
@@ -262,7 +263,7 @@ int sys_getrlimit(int resource, struct rlimit *rlim)
 	return 0;
 }
 
-int sys_setrlimit(int resource, const struct rlimit *rlim)
+DEFINE_SYSCALL(setrlimit)(int resource, const struct rlimit *rlim)
 {
 	log_info("setrlimit(%d, %p)\n", resource, rlim);
 	if (!mm_check_read(rlim, sizeof(struct rlimit)))

@@ -86,14 +86,3 @@ size_t mm_find_free_pages(size_t count_bytes);
 struct file;
 void *mm_mmap(void *addr, size_t len, int prot, int flags, struct file *f, off_t offset_pages);
 int mm_munmap(void *addr, size_t len);
-
-void *sys_mmap(void *addr, size_t len, int prot, int flags, int fd, off_t offset_pages);
-void *sys_oldmmap(void *args);
-void *sys_mmap2(void *addr, size_t len, int prot, int flags, int fd, off_t offset);
-int sys_munmap(void *addr, size_t len);
-int sys_mprotect(void *addr, size_t len, int prot);
-int sys_msync(void *addr, size_t len, int flags);
-int sys_mlock(const void *addr, size_t len);
-int sys_munlock(const void *addr, size_t len);
-
-void *sys_brk(void *addr);

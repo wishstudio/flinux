@@ -1,4 +1,5 @@
 #include <syscall/mm.h>
+#include <syscall/syscall.h>
 #include <syscall/tls.h>
 #include <errno.h>
 #include <intrin.h>
@@ -102,7 +103,7 @@ static struct tls_data *const tls = TLS_DATA_BASE;
 
 void tls_init()
 {
-	sys_mmap(TLS_DATA_BASE, sizeof(struct tls_data), PROT_READ | PROT_WRITE | PROT_EXEC, MAP_FIXED | MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	mm_mmap(TLS_DATA_BASE, sizeof(struct tls_data), PROT_READ | PROT_WRITE | PROT_EXEC, MAP_FIXED | MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 	for (int i = 0; i < MAX_TLS_ENTRIES; i++)
 		tls->entries_slot[i] = -1;
 	tls->gs_slot = TlsAlloc();
@@ -124,7 +125,7 @@ void tls_shutdown()
 	for (int i = 0; i < MAX_TLS_ENTRIES; i++)
 		if (tls->entries_slot[i] != -1)
 			TlsFree(tls->entries_slot[i]);
-	sys_munmap(TLS_DATA_BASE, sizeof(struct tls_data));
+	mm_munmap(TLS_DATA_BASE, sizeof(struct tls_data));
 }
 
 void tls_beforefork()
@@ -181,7 +182,7 @@ static DWORD tls_offset_to_slot(size_t offset)
  * RPL: Ring 3
  */
 
-int sys_set_thread_area(struct user_desc *u_info)
+DEFINE_SYSCALL(set_thread_area)(struct user_desc *u_info)
 {
 	log_info("set_thread_area(%p): entry=%d, base=%p, limit=%p\n", u_info, u_info->entry_number, u_info->base_addr, u_info->limit);
 	if (u_info->entry_number == -1)

@@ -1,4 +1,5 @@
 #include <syscall/mm.h>
+#include <syscall/syscall.h>
 #include <syscall/timer.h>
 #include <datetime.h>
 #include <errno.h>
@@ -7,7 +8,7 @@
 #include <Windows.h>
 #include <ntdll.h>
 
-int sys_time(int *c)
+DEFINE_SYSCALL(time)(int *c)
 {
 	log_info("time(%p)\n", c);
 	if (c && !mm_check_write(c, sizeof(int)))
@@ -24,7 +25,7 @@ int sys_time(int *c)
 	return t;
 }
 
-int sys_gettimeofday(struct timeval *tv, struct timezone *tz)
+DEFINE_SYSCALL(gettimeofday)(struct timeval *tv, struct timezone *tz)
 {
 	log_info("gettimeofday(0x%p, 0x%p)\n", tv, tz);
 	if (tz)
@@ -39,7 +40,7 @@ int sys_gettimeofday(struct timeval *tv, struct timezone *tz)
 	return 0;
 }
 
-int sys_nanosleep(const struct timespec *req, struct timespec *rem)
+DEFINE_SYSCALL(nanosleep)(const struct timespec *req, struct timespec *rem)
 {
 	log_info("nanospeep(0x%p, 0x%p)\n", req, rem);
 	if (!mm_check_read(req, sizeof(struct timespec)) || rem && !mm_check_write(rem, sizeof(struct timespec)))
@@ -50,7 +51,7 @@ int sys_nanosleep(const struct timespec *req, struct timespec *rem)
 	return 0;
 }
 
-int sys_clock_gettime(int clk_id, struct timespec *tp)
+DEFINE_SYSCALL(clock_gettime)(int clk_id, struct timespec *tp)
 {
 	log_debug("sys_clock_gettime(%d, 0x%p)\n", clk_id, tp);
 	if (!mm_check_write(tp, sizeof(struct timespec)))

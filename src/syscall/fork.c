@@ -1,10 +1,14 @@
 #include <common/sched.h>
+#include <common/types.h>
+#include <common/ptrace.h>
 #include <syscall/fork.h>
 #include <syscall/mm.h>
 #include <syscall/process.h>
 #include <syscall/syscall.h>
 #include <syscall/tls.h>
 #include <log.h>
+
+#include <Windows.h>
 
 /* Fork process
  *
@@ -178,19 +182,19 @@ fail:
 	return -1;
 }
 
-pid_t sys_fork(int _1, int _2, int _3, int _4, int _5, int _6, PCONTEXT context)
+DEFINE_SYSCALL(fork)(int _1, int _2, int _3, int _4, int _5, int _6, PCONTEXT context)
 {
 	log_info("fork()\n");
 	return fork_process(context, 0, NULL, NULL);
 }
 
-pid_t sys_vfork(int _1, int _2, int _3, int _4, int _5, int _6, PCONTEXT context)
+DEFINE_SYSCALL(vfork)(int _1, int _2, int _3, int _4, int _5, int _6, PCONTEXT context)
 {
 	log_info("vfork()\n");
 	return fork_process(context, 0, NULL, NULL);
 }
 
-pid_t sys_clone(unsigned long flags, void *child_stack, void *ptid, int tls, void *ctid, int _6, PCONTEXT context)
+DEFINE_SYSCALL(clone)(unsigned long flags, void *child_stack, void *ptid, int tls, void *ctid, int _6, PCONTEXT context)
 {
 	log_info("sys_clone(flags=%x, child_stack=%p, ptid=%p, ctid=%p)\n", flags, child_stack, ptid, ctid);
 	if (flags & CLONE_THREAD)

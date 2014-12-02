@@ -5,6 +5,7 @@
 #include <fs/pipe.h>
 #include <fs/winfs.h>
 #include <syscall/mm.h>
+#include <syscall/syscall.h>
 #include <syscall/vfs.h>
 #include <log.h>
 #include <Windows.h>
@@ -126,7 +127,7 @@ static int alloc_fd_slot()
 	return -1;
 }
 
-size_t sys_read(int fd, char *buf, size_t count)
+DEFINE_SYSCALL(read)(int fd, char *buf, size_t count)
 {
 	log_info("read(%d, %p, %p)\n", fd, buf, count);
 	struct file *f = vfs->fds[fd];
@@ -140,7 +141,7 @@ size_t sys_read(int fd, char *buf, size_t count)
 		return -EBADF;
 }
 
-size_t sys_write(int fd, const char *buf, size_t count)
+DEFINE_SYSCALL(write)(int fd, const char *buf, size_t count)
 {
 	log_info("write(%d, %p, %p)\n", fd, buf, count);
 	struct file *f = vfs->fds[fd];
@@ -154,7 +155,7 @@ size_t sys_write(int fd, const char *buf, size_t count)
 		return -EBADF;
 }
 
-size_t sys_pread64(int fd, char *buf, size_t count, loff_t offset)
+DEFINE_SYSCALL(pread64)(int fd, char *buf, size_t count, loff_t offset)
 {
 	log_info("pread64(%d, %p, %p, %lld)\n", fd, buf, count, offset);
 	struct file *f = vfs->fds[fd];
@@ -168,7 +169,7 @@ size_t sys_pread64(int fd, char *buf, size_t count, loff_t offset)
 		return -EBADF;
 }
 
-size_t sys_pwrite64(int fd, const char *buf, size_t count, loff_t offset)
+DEFINE_SYSCALL(pwrite64)(int fd, const char *buf, size_t count, loff_t offset)
 {
 	log_info("pwrite64(%d, %p, %p, %lld)\n", fd, buf, count, offset);
 	struct file *f = vfs->fds[fd];
@@ -182,7 +183,7 @@ size_t sys_pwrite64(int fd, const char *buf, size_t count, loff_t offset)
 		return -EBADF;
 }
 
-size_t sys_readv(int fd, const struct iovec *iov, int iovcnt)
+DEFINE_SYSCALL(readv)(int fd, const struct iovec *iov, int iovcnt)
 {
 	log_info("readv(%d, 0x%p, %d)\n", fd, iov, iovcnt);
 	struct file *f = vfs->fds[fd];
@@ -207,7 +208,7 @@ size_t sys_readv(int fd, const struct iovec *iov, int iovcnt)
 		return -EBADF;
 }
 
-size_t sys_writev(int fd, const struct iovec *iov, int iovcnt)
+DEFINE_SYSCALL(writev)(int fd, const struct iovec *iov, int iovcnt)
 {
 	log_info("writev(%d, 0x%p, %d)\n", fd, iov, iovcnt);
 	struct file *f = vfs->fds[fd];
@@ -232,7 +233,7 @@ size_t sys_writev(int fd, const struct iovec *iov, int iovcnt)
 		return -EBADF;
 }
 
-size_t sys_preadv(int fd, const struct iovec *iov, int iovcnt, off_t offset)
+DEFINE_SYSCALL(preadv)(int fd, const struct iovec *iov, int iovcnt, off_t offset)
 {
 	log_info("preadv(%d, 0x%p, %d, 0x%x)\n", fd, iov, iovcnt, offset);
 	struct file *f = vfs->fds[fd];
@@ -258,7 +259,7 @@ size_t sys_preadv(int fd, const struct iovec *iov, int iovcnt, off_t offset)
 		return -EBADF;
 }
 
-size_t sys_pwritev(int fd, const struct iovec *iov, int iovcnt, off_t offset)
+DEFINE_SYSCALL(pwritev)(int fd, const struct iovec *iov, int iovcnt, off_t offset)
 {
 	log_info("pwritev(%d, 0x%p, %d, 0x%x)\n", fd, iov, iovcnt, offset);
 	struct file *f = vfs->fds[fd];
@@ -284,7 +285,7 @@ size_t sys_pwritev(int fd, const struct iovec *iov, int iovcnt, off_t offset)
 		return -EBADF;
 }
 
-off_t sys_lseek(int fd, off_t offset, int whence)
+DEFINE_SYSCALL(lseek)(int fd, off_t offset, int whence)
 {
 	log_info("lseek(%d, %d, %d)\n", fd, offset, whence);
 	struct file *f = vfs->fds[fd];
@@ -302,7 +303,7 @@ off_t sys_lseek(int fd, off_t offset, int whence)
 		return -EBADF;
 }
 
-int sys_llseek(int fd, unsigned long offset_high, unsigned long offset_low, loff_t *result, int whence)
+DEFINE_SYSCALL(llseek)(int fd, unsigned long offset_high, unsigned long offset_low, loff_t *result, int whence)
 {
 	loff_t offset = ((uint64_t) offset_high << 32ULL) + offset_low;
 	log_info("llseek(%d, %lld, %p, %d)\n", fd, offset, result, whence);
@@ -539,7 +540,7 @@ int vfs_open(const char *pathname, int flags, int mode, struct file **f)
 	}
 }
 
-int sys_open(const char *pathname, int flags, int mode)
+DEFINE_SYSCALL(open)(const char *pathname, int flags, int mode)
 {
 	log_info("open(%p: \"%s\", %x, %x)\n", pathname, pathname, flags, mode);
 	if (!mm_check_read_string(pathname))
@@ -559,7 +560,7 @@ int sys_open(const char *pathname, int flags, int mode)
 	return fd;
 }
 
-int sys_close(int fd)
+DEFINE_SYSCALL(close)(int fd)
 {
 	log_info("close(%d)\n", fd);
 	struct file *f = vfs->fds[fd];
@@ -569,7 +570,7 @@ int sys_close(int fd)
 	return 0;
 }
 
-int sys_mknod(const char *pathname, int mode, unsigned int dev)
+DEFINE_SYSCALL(mknod)(const char *pathname, int mode, unsigned int dev)
 {
 	log_info("mknod(\"%s\", %x, (%d:%d))", pathname, mode, major(dev), minor(dev));
 	if (!mm_check_read_string(pathname))
@@ -578,7 +579,7 @@ int sys_mknod(const char *pathname, int mode, unsigned int dev)
 	return 0;
 }
 
-int sys_link(const char *oldpath, const char *newpath)
+DEFINE_SYSCALL(link)(const char *oldpath, const char *newpath)
 {
 	log_info("link(\"%s\", \"%s\")\n", oldpath, newpath);
 	if (!mm_check_read_string(oldpath) || !mm_check_read_string(newpath))
@@ -634,7 +635,7 @@ int sys_link(const char *oldpath, const char *newpath)
 	}
 }
 
-int sys_unlink(const char *pathname)
+DEFINE_SYSCALL(unlink)(const char *pathname)
 {
 	log_info("unlink(\"%s\")\n", pathname);
 	if (!mm_check_read_string(pathname))
@@ -670,7 +671,7 @@ int sys_unlink(const char *pathname)
 	}
 }
 
-int sys_symlink(const char *symlink_target, const char *linkpath)
+DEFINE_SYSCALL(symlink)(const char *symlink_target, const char *linkpath)
 {
 	log_info("symlink(\"%s\", \"%s\")\n", symlink_target, linkpath);
 	if (!mm_check_read_string(symlink_target) || !mm_check_read_string(linkpath))
@@ -706,7 +707,7 @@ int sys_symlink(const char *symlink_target, const char *linkpath)
 	}
 }
 
-int sys_readlink(const char *pathname, char *buf, int bufsize)
+DEFINE_SYSCALL(readlink)(const char *pathname, char *buf, int bufsize)
 {
 	log_info("readlink(\"%s\", %p, %d)\n", pathname, buf, bufsize);
 	if (!mm_check_read_string(pathname) || !mm_check_write(buf, bufsize))
@@ -737,12 +738,7 @@ int sys_readlink(const char *pathname, char *buf, int bufsize)
 	}
 }
 
-int sys_pipe(int pipefd[2])
-{
-	return sys_pipe2(pipefd, 0);
-}
-
-int sys_pipe2(int pipefd[2], int flags)
+DEFINE_SYSCALL(pipe2)(int pipefd[2], int flags)
 {
 	/*
 	Supported flags:
@@ -776,7 +772,12 @@ int sys_pipe2(int pipefd[2], int flags)
 	return 0;
 }
 
-int sys_dup(int fd)
+DEFINE_SYSCALL(pipe)(int pipefd[2])
+{
+	return sys_pipe2(pipefd, 0);
+}
+
+DEFINE_SYSCALL(dup)(int fd)
 {
 	log_info("dup(%d)\n", fd);
 	struct file *f = vfs->fds[fd];
@@ -793,7 +794,7 @@ int sys_dup(int fd)
 	return -EMFILE;
 }
 
-int sys_dup2(int fd, int newfd)
+DEFINE_SYSCALL(dup2)(int fd, int newfd)
 {
 	log_info("dup2(%d, %d)\n", fd, newfd);
 	struct file *f = vfs->fds[fd];
@@ -809,7 +810,7 @@ int sys_dup2(int fd, int newfd)
 	return newfd;
 }
 
-int sys_mkdir(const char *pathname, int mode)
+DEFINE_SYSCALL(mkdir)(const char *pathname, int mode)
 {
 	log_info("mkdir(\"%s\", %x)\n", pathname, mode);
 	if (mode != 0)
@@ -842,7 +843,7 @@ int sys_mkdir(const char *pathname, int mode)
 	}
 }
 
-int sys_getdents64(int fd, struct linux_dirent64 *dirent, unsigned int count)
+DEFINE_SYSCALL(getdents64)(int fd, struct linux_dirent64 *dirent, unsigned int count)
 {
 	log_info("getdents64(%d, %p, %d)\n", fd, dirent, count);
 	if (!mm_check_write(dirent, count))
@@ -854,7 +855,45 @@ int sys_getdents64(int fd, struct linux_dirent64 *dirent, unsigned int count)
 		return -EBADF;
 }
 
-void stat_from_stat64(struct stat *stat, struct stat64 *stat64)
+DEFINE_SYSCALL(fstat64)(int fd, struct stat64 *buf)
+{
+	log_info("fstat64(%d, %p)\n", fd, buf);
+	if (!mm_check_write(buf, sizeof(struct stat64)))
+		return -EFAULT;
+	struct file *f = vfs->fds[fd];
+	if (f && f->op_vtable->stat)
+		return f->op_vtable->stat(f, buf);
+	else
+		return -EBADF;
+}
+
+DEFINE_SYSCALL(stat64)(const char *pathname, struct stat64 *buf)
+{
+	log_info("stat64(\"%s\", %p)\n", pathname, buf);
+	if (!mm_check_read_string(pathname) || !mm_check_write(buf, sizeof(struct stat64)))
+		return -EFAULT;
+	int fd = sys_open(pathname, O_PATH, 0);
+	if (fd < 0)
+		return fd;
+	int ret = sys_fstat64(fd, buf);
+	sys_close(fd);
+	return ret;
+}
+
+DEFINE_SYSCALL(lstat64)(const char *pathname, struct stat64 *buf)
+{
+	log_info("lstat64(\"%s\", %p)\n", pathname, buf);
+	if (!mm_check_read_string(pathname) || !mm_check_write(buf, sizeof(struct stat64)))
+		return -EFAULT;
+	int fd = sys_open(pathname, O_PATH | O_NOFOLLOW, 0);
+	if (fd < 0)
+		return fd;
+	int ret = sys_fstat64(fd, buf);
+	sys_close(fd);
+	return ret;
+}
+
+static void stat_from_stat64(struct stat *stat, struct stat64 *stat64)
 {
 	stat->st_dev = stat64->st_dev;
 	stat->st_ino = stat64->st_ino;
@@ -874,25 +913,7 @@ void stat_from_stat64(struct stat *stat, struct stat64 *stat64)
 	stat->st_ctime_nsec = stat64->st_ctime_nsec;
 }
 
-int sys_stat(const char *pathname, struct stat *buf)
-{
-	struct stat64 buf64;
-	int r = sys_stat64(pathname, &buf64);
-	if (r == 0)
-		stat_from_stat64(buf, &buf64);
-	return r;
-}
-
-int sys_lstat(const char *pathname, struct stat *buf)
-{
-	struct stat64 buf64;
-	int r = sys_lstat64(pathname, &buf64);
-	if (r == 0)
-		stat_from_stat64(buf, &buf64);
-	return r;
-}
-
-int sys_fstat(int fd, struct stat *buf)
+DEFINE_SYSCALL(fstat)(int fd, struct stat *buf)
 {
 	struct stat64 buf64;
 	int r = sys_fstat64(fd, &buf64);
@@ -901,45 +922,25 @@ int sys_fstat(int fd, struct stat *buf)
 	return r;
 }
 
-int sys_stat64(const char *pathname, struct stat64 *buf)
+DEFINE_SYSCALL(stat)(const char *pathname, struct stat *buf)
 {
-	log_info("stat64(\"%s\", %p)\n", pathname, buf);
-	if (!mm_check_read_string(pathname) || !mm_check_write(buf, sizeof(struct stat64)))
-		return -EFAULT;
-	int fd = sys_open(pathname, O_PATH, 0);
-	if (fd < 0)
-		return fd;
-	int ret = sys_fstat64(fd, buf);
-	sys_close(fd);
-	return ret;
+	struct stat64 buf64;
+	int r = sys_stat64(pathname, &buf64);
+	if (r == 0)
+		stat_from_stat64(buf, &buf64);
+	return r;
 }
 
-int sys_lstat64(const char *pathname, struct stat64 *buf)
+DEFINE_SYSCALL(lstat)(const char *pathname, struct stat *buf)
 {
-	log_info("lstat64(\"%s\", %p)\n", pathname, buf);
-	if (!mm_check_read_string(pathname) || !mm_check_write(buf, sizeof(struct stat64)))
-		return -EFAULT;
-	int fd = sys_open(pathname, O_PATH | O_NOFOLLOW, 0);
-	if (fd < 0)
-		return fd;
-	int ret = sys_fstat64(fd, buf);
-	sys_close(fd);
-	return ret;
+	struct stat64 buf64;
+	int r = sys_lstat64(pathname, &buf64);
+	if (r == 0)
+		stat_from_stat64(buf, &buf64);
+	return r;
 }
 
-int sys_fstat64(int fd, struct stat64 *buf)
-{
-	log_info("fstat64(%d, %p)\n", fd, buf);
-	if (!mm_check_write(buf, sizeof(struct stat64)))
-		return -EFAULT;
-	struct file *f = vfs->fds[fd];
-	if (f && f->op_vtable->stat)
-		return f->op_vtable->stat(f, buf);
-	else
-		return -EBADF;
-}
-
-int sys_ioctl(int fd, unsigned int cmd, unsigned long arg)
+DEFINE_SYSCALL(ioctl)(int fd, unsigned int cmd, unsigned long arg)
 {
 	log_info("ioctl(%d, %x, %x)\n", fd, cmd, arg);
 	struct file *f = vfs->fds[fd];
@@ -949,7 +950,7 @@ int sys_ioctl(int fd, unsigned int cmd, unsigned long arg)
 		return -EBADF;
 }
 
-int sys_utime(const char *filename, const struct utimbuf *times)
+DEFINE_SYSCALL(utime)(const char *filename, const struct utimbuf *times)
 {
 	log_info("sys_utime(\"%s\", %p)\n", filename, times);
 	if (!mm_check_read_string(filename) || !mm_check_write(times, sizeof(struct utimbuf)))
@@ -970,7 +971,7 @@ int sys_utime(const char *filename, const struct utimbuf *times)
 	return 0;
 }
 
-int sys_utimes(const char *filename, const struct timeval times[2])
+DEFINE_SYSCALL(utimes)(const char *filename, const struct timeval times[2])
 {
 	log_info("sys_utimes(\"%s\", %p)\n", filename, times);
 	if (!mm_check_read_string(filename) || !mm_check_write(times, 2 * sizeof(struct timeval)))
@@ -986,7 +987,7 @@ int sys_utimes(const char *filename, const struct timeval times[2])
 	return 0;
 }
 
-int sys_chdir(const char *pathname)
+DEFINE_SYSCALL(chdir)(const char *pathname)
 {
 	log_info("chdir(%s)\n", pathname);
 	if (!mm_check_read_string(pathname))
@@ -1000,7 +1001,7 @@ int sys_chdir(const char *pathname)
 	return 0;
 }
 
-char *sys_getcwd(char *buf, size_t size)
+DEFINE_SYSCALL(getcwd)(char *buf, size_t size)
 {
 	log_info("getcwd(%p, %p): %s\n", buf, size, vfs->cwd);
 	if (!mm_check_write(buf, size))
@@ -1011,13 +1012,13 @@ char *sys_getcwd(char *buf, size_t size)
 	return buf;
 }
 
-int sys_fcntl64(int fd, int cmd, ...)
+DEFINE_SYSCALL(fcntl64)(int fd, int cmd, ...)
 {
 	log_info("fcntl64(%d, %d)\n", fd, cmd);
 	return 0;
 }
 
-int sys_access(const char *pathname, int mode)
+DEFINE_SYSCALL(access)(const char *pathname, int mode)
 {
 	log_info("access(\"%s\", %d)\n", pathname, mode);
 	if (!mm_check_read_string(pathname))
@@ -1025,7 +1026,7 @@ int sys_access(const char *pathname, int mode)
 	return 0;
 }
 
-int sys_chmod(const char *pathname, int mode)
+DEFINE_SYSCALL(chmod)(const char *pathname, int mode)
 {
 	log_info("chmod(\"%s\", %d)\n", pathname, mode);
 	if (!mm_check_read_string(pathname))
@@ -1033,14 +1034,14 @@ int sys_chmod(const char *pathname, int mode)
 	return 0;
 }
 
-int sys_umask(int mask)
+DEFINE_SYSCALL(umask)(int mask)
 {
 	int old = vfs->umask;
 	vfs->umask = mask;
 	return old;
 }
 
-int sys_chown(const char *pathname, uid_t owner, gid_t group)
+DEFINE_SYSCALL(chown)(const char *pathname, uid_t owner, gid_t group)
 {
 	log_info("chown(\"%s\", %d, %d)\n", pathname, owner, group);
 	if (!mm_check_read_string(pathname))
@@ -1048,7 +1049,7 @@ int sys_chown(const char *pathname, uid_t owner, gid_t group)
 	return 0;
 }
 
-int sys_openat(int dirfd, const char *pathname, int flags)
+DEFINE_SYSCALL(openat)(int dirfd, const char *pathname, int flags)
 {
 	log_info("openat(%d, %s, 0x%x)\n", dirfd, pathname, flags);
 	if (!mm_check_read_string(pathname))
@@ -1058,64 +1059,7 @@ int sys_openat(int dirfd, const char *pathname, int flags)
 	return -ENOENT;
 }
 
-#define FD_ZERO(nfds, set) memset((set)->fds_bits, 0, ((nfds) + FD_BITPERLONG) / FD_BITPERLONG)
-#define FD_CLR(fd, set) (set)->fds_bits[(fd) / FD_BITPERLONG] &= ~(1 << ((fd) % FD_BITPERLONG))
-#define FD_SET(fd, set) (set)->fds_bits[(fd) / FD_BITPERLONG] |= 1 << ((fd) % FD_BITPERLONG)
-#define FD_ISSET(fd, set) (((set)->fds_bits[(fd) / FD_BITPERLONG] >> ((fd) % FD_BITPERLONG)) & 1)
-
-int sys_select(int nfds, struct fdset *readfds, struct fdset *writefds, struct fdset *exceptfds, struct timeval *timeout)
-{
-	log_info("select(%d, 0x%p, 0x%p, 0x%p, 0x%p)\n", nfds, readfds, writefds, exceptfds, timeout);
-	if (!mm_check_write(readfds, sizeof(struct fdset))
-		|| !mm_check_write(writefds, sizeof(struct fdset))
-		|| !mm_check_write(exceptfds, sizeof(struct fdset))
-		|| !mm_check_read(timeout, sizeof(struct timeval)))
-		return -EFAULT;
-	int time;
-	if (timeout)
-		time = timeout->tv_sec * 1000 + timeout->tv_usec / 1000;
-	else
-		time = -1;
-	int cnt = 0;
-	struct pollfd *fds = (struct pollfd *)alloca(sizeof(struct pollfd) * nfds);
-	for (int i = 0; i < nfds; i++)
-	{
-		int events = 0;
-		if (readfds && FD_ISSET(i, readfds))
-			events |= POLLIN;
-		if (writefds && FD_ISSET(i, writefds))
-			events |= POLLOUT;
-		if (exceptfds && FD_ISSET(i, exceptfds))
-			events |= POLLERR;
-		if (events)
-		{
-			fds[cnt].fd = i;
-			fds[cnt].events = events;
-			cnt++;
-		}
-	}
-	int r = sys_poll(fds, cnt, time);
-	if (r <= 0)
-		return r;
-	if (readfds)
-		FD_ZERO(nfds, readfds);
-	if (writefds)
-		FD_ZERO(nfds, writefds);
-	if (exceptfds)
-		FD_ZERO(nfds, exceptfds);
-	for (int i = 0; i < nfds; i++)
-	{
-		if (readfds && (fds[i].revents & POLLIN))
-			FD_SET(i, readfds);
-		if (writefds && (fds[i].revents & POLLOUT))
-			FD_SET(i, writefds);
-		if (exceptfds && (fds[i].revents & POLLERR))
-			FD_SET(i, exceptfds);
-	}
-	return r;
-}
-
-int sys_poll(struct pollfd *fds, int nfds, int timeout)
+DEFINE_SYSCALL(poll)(struct pollfd *fds, int nfds, int timeout)
 {
 	log_info("poll(0x%p, %d, %d)\n", fds, nfds, timeout);
 	if (!mm_check_write(fds, nfds * sizeof(struct pollfd)))
@@ -1213,4 +1157,61 @@ int sys_poll(struct pollfd *fds, int nfds, int timeout)
 		}
 	}
 	return num_result;
+}
+
+#define FD_ZERO(nfds, set) memset((set)->fds_bits, 0, ((nfds) + FD_BITPERLONG) / FD_BITPERLONG)
+#define FD_CLR(fd, set) (set)->fds_bits[(fd) / FD_BITPERLONG] &= ~(1 << ((fd) % FD_BITPERLONG))
+#define FD_SET(fd, set) (set)->fds_bits[(fd) / FD_BITPERLONG] |= 1 << ((fd) % FD_BITPERLONG)
+#define FD_ISSET(fd, set) (((set)->fds_bits[(fd) / FD_BITPERLONG] >> ((fd) % FD_BITPERLONG)) & 1)
+
+DEFINE_SYSCALL(select)(int nfds, struct fdset *readfds, struct fdset *writefds, struct fdset *exceptfds, struct timeval *timeout)
+{
+	log_info("select(%d, 0x%p, 0x%p, 0x%p, 0x%p)\n", nfds, readfds, writefds, exceptfds, timeout);
+	if (!mm_check_write(readfds, sizeof(struct fdset))
+		|| !mm_check_write(writefds, sizeof(struct fdset))
+		|| !mm_check_write(exceptfds, sizeof(struct fdset))
+		|| !mm_check_read(timeout, sizeof(struct timeval)))
+		return -EFAULT;
+	int time;
+	if (timeout)
+		time = timeout->tv_sec * 1000 + timeout->tv_usec / 1000;
+	else
+		time = -1;
+	int cnt = 0;
+	struct pollfd *fds = (struct pollfd *)alloca(sizeof(struct pollfd) * nfds);
+	for (int i = 0; i < nfds; i++)
+	{
+		int events = 0;
+		if (readfds && FD_ISSET(i, readfds))
+			events |= POLLIN;
+		if (writefds && FD_ISSET(i, writefds))
+			events |= POLLOUT;
+		if (exceptfds && FD_ISSET(i, exceptfds))
+			events |= POLLERR;
+		if (events)
+		{
+			fds[cnt].fd = i;
+			fds[cnt].events = events;
+			cnt++;
+		}
+	}
+	int r = sys_poll(fds, cnt, time);
+	if (r <= 0)
+		return r;
+	if (readfds)
+		FD_ZERO(nfds, readfds);
+	if (writefds)
+		FD_ZERO(nfds, writefds);
+	if (exceptfds)
+		FD_ZERO(nfds, exceptfds);
+	for (int i = 0; i < nfds; i++)
+	{
+		if (readfds && (fds[i].revents & POLLIN))
+			FD_SET(i, readfds);
+		if (writefds && (fds[i].revents & POLLOUT))
+			FD_SET(i, writefds);
+		if (exceptfds && (fds[i].revents & POLLERR))
+			FD_SET(i, exceptfds);
+	}
+	return r;
 }
