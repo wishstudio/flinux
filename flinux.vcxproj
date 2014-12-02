@@ -61,7 +61,9 @@
     <ClInclude Include="src\syscall\process.h" />
     <ClInclude Include="src\syscall\sig.h" />
     <ClInclude Include="src\syscall\syscall.h" />
-    <ClInclude Include="src\syscall\syscall_table.h" />
+    <ClInclude Include="src\syscall\syscall_dispatch.h" />
+    <ClInclude Include="src\syscall\syscall_table_x86.h" />
+    <ClInclude Include="src\syscall\syscall_table_x64.h" />
     <ClInclude Include="src\syscall\timer.h" />
     <ClInclude Include="src\syscall\tls.h" />
     <ClInclude Include="src\syscall\vfs.h" />
@@ -84,6 +86,7 @@
     <ClCompile Include="src\syscall\process.c" />
     <ClCompile Include="src\syscall\sig.c" />
     <ClCompile Include="src\syscall\syscall.c" />
+    <ClCompile Include="src\syscall\syscall_dispatch.c" />
     <ClCompile Include="src\syscall\timer.c" />
     <ClCompile Include="src\syscall\tls.c" />
     <ClCompile Include="src\syscall\vfs.c" />

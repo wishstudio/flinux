@@ -1,44 +1,12 @@
+#include <syscall/mm.h>
 #include <syscall/syscall.h>
+#include <syscall/syscall_dispatch.h>
 #include <syscall/tls.h>
 #include <log.h>
 #include <platform.h>
 
 #include <stdint.h>
 #include <Windows.h>
-
-typedef int syscall_fn(int ebx, int ecx, int edx, int esi, int edi, int ebp, PCONTEXT context);
-
-#define SYSCALL_COUNT 338
-#define SYSCALL(name) extern int name(int ebx, int ecx, int edx, int esi, int edi, int ebp, PCONTEXT context);
-#include "syscall_table.h"
-#undef SYSCALL
-
-#define SYSCALL(name) name,
-static syscall_fn* syscall_table[SYSCALL_COUNT] =
-{
-	sys_unimplemented, /* syscall 0 */
-#include "syscall_table.h"
-};
-#undef SYSCALL
-
-int sys_unimplemented(int _1, int _2, int _3, int _4, int _5, int _6, PCONTEXT context)
-{
-#ifdef _WIN64
-	log_error("FATAL: Unimplemented syscall: %d\n", (int)context->Rax);
-#else
-	log_error("FATAL: Unimplemented syscall: %d\n", context->Eax);
-#endif
-	ExitProcess(1);
-}
-
-static void dispatch_syscall(PCONTEXT context)
-{
-#ifdef _WIN64
-	context->Rax = (*syscall_table[context->Rax])(context->Rdi, context->Rsi, context->Rdx, context->R10, context->R8, context->R9, context);
-#else
-	context->Eax = (*syscall_table[context->Eax])(context->Ebx, context->Ecx, context->Edx, context->Esi, context->Edi, context->Ebp, context);
-#endif
-}
 
 extern void *mm_check_read_begin, *mm_check_read_end, *mm_check_read_fail;
 extern void *mm_check_read_string_begin, *mm_check_read_string_end, *mm_check_read_string_fail;

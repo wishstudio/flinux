@@ -31,9 +31,6 @@
     <ClInclude Include="src\syscall\syscall.h">
       <Filter>syscall</Filter>
     </ClInclude>
-    <ClInclude Include="src\syscall\syscall_table.h">
-      <Filter>syscall</Filter>
-    </ClInclude>
     <ClInclude Include="src\syscall\process.h">
       <Filter>syscall</Filter>
     </ClInclude>
@@ -148,6 +145,15 @@
     </ClInclude>
     <ClInclude Include="src\platform.h" />
     <ClInclude Include="src\vsprintf.h" />
+    <ClInclude Include="src\syscall\syscall_table_x64.h">
+      <Filter>syscall</Filter>
+    </ClInclude>
+    <ClInclude Include="src\syscall\syscall_table_x86.h">
+      <Filter>syscall</Filter>
+    </ClInclude>
+    <ClInclude Include="src\syscall\syscall_dispatch.h">
+      <Filter>syscall</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
@@ -195,6 +201,9 @@
       <Filter>syscall</Filter>
     </ClCompile>
     <ClCompile Include="src\vsprintf.c" />
+    <ClCompile Include="src\syscall\syscall_dispatch.c">
+      <Filter>syscall</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="src\ntdll.def" />
