@@ -54,7 +54,7 @@ For optimal performance, caller should ensure the handle is a regular file with 
 static int winfs_read_symlink(HANDLE hFile, char *target, int buflen)
 {
 	char header[WINFS_SYMLINK_HEADER_LEN];
-	size_t num_read;
+	DWORD num_read;
 	/* Use overlapped structure to avoid changing file pointer */
 	OVERLAPPED overlapped;
 	overlapped.Internal = 0;
@@ -98,13 +98,20 @@ static int winfs_close(struct file *f)
 static size_t winfs_read(struct file *f, char *buf, size_t count)
 {
 	struct winfs_file *winfile = (struct winfs_file *) f;
-	size_t num_read;
-	if (!ReadFile(winfile->handle, buf, count, &num_read, NULL))
+	size_t num_read = 0;
+	while (count > 0)
 	{
-		if (GetLastError() == ERROR_HANDLE_EOF)
-			return 0;
-		log_warning("ReadFile() failed, error code: %d\n", GetLastError());
-		return -1;
+		DWORD count_dword = (DWORD)min(count, (size_t)UINT_MAX);
+		DWORD num_read_dword;
+		if (!ReadFile(winfile->handle, buf, count_dword, &num_read_dword, NULL))
+		{
+			if (GetLastError() == ERROR_HANDLE_EOF)
+				return num_read;
+			log_warning("ReadFile() failed, error code: %d\n", GetLastError());
+			return -EIO;
+		}
+		num_read += num_read_dword;
+		count -= num_read_dword;
 	}
 	return num_read;
 }
@@ -112,28 +119,46 @@ static size_t winfs_read(struct file *f, char *buf, size_t count)
 static size_t winfs_write(struct file *f, const char *buf, size_t count)
 {
 	struct winfs_file *winfile = (struct winfs_file *) f;
-	size_t num_written;
-	if (!WriteFile(winfile->handle, buf, count, &num_written, NULL))
-		return -1;
+	size_t num_written = 0;
+	while (count > 0)
+	{
+		DWORD count_dword = (DWORD)min(count, (size_t)UINT_MAX);
+		DWORD num_written_dword;
+		if (!WriteFile(winfile->handle, buf, count_dword, &num_written_dword, NULL))
+		{
+			log_warning("WriteFile() failed, error code: %d\n", GetLastError());
+			return -EIO;
+		}
+		num_written += num_written_dword;
+		count -= num_written_dword;
+	}
 	return num_written;
 }
 
 static size_t winfs_pread(struct file *f, char *buf, size_t count, loff_t offset)
 {
 	struct winfs_file *winfile = (struct winfs_file *) f;
-	size_t num_read;
-	OVERLAPPED overlapped;
-	overlapped.Internal = 0;
-	overlapped.InternalHigh = 0;
-	overlapped.Offset = offset & 0xFFFFFFFF;
-	overlapped.OffsetHigh = offset >> 32ULL;
-	overlapped.hEvent = 0;
-	if (!ReadFile(winfile->handle, buf, count, &num_read, &overlapped))
+	size_t num_read = 0;
+	while (count > 0)
 	{
-		if (GetLastError() == ERROR_HANDLE_EOF)
-			return 0;
-		log_warning("ReadFile() failed, error code: %d\n", GetLastError());
-		return -1;
+		OVERLAPPED overlapped;
+		overlapped.Internal = 0;
+		overlapped.InternalHigh = 0;
+		overlapped.Offset = offset & 0xFFFFFFFF;
+		overlapped.OffsetHigh = offset >> 32ULL;
+		overlapped.hEvent = 0;
+		DWORD count_dword = (DWORD)min(count, (size_t)UINT_MAX);
+		DWORD num_read_dword;
+		if (!ReadFile(winfile->handle, buf, count_dword, &num_read_dword, &overlapped))
+		{
+			if (GetLastError() == ERROR_HANDLE_EOF)
+				return num_read;
+			log_warning("ReadFile() failed, error code: %d\n", GetLastError());
+			return -EIO;
+		}
+		num_read += num_read_dword;
+		offset += num_read_dword;
+		count -= num_read_dword;
 	}
 	return num_read;
 }
@@ -141,15 +166,26 @@ static size_t winfs_pread(struct file *f, char *buf, size_t count, loff_t offset
 static size_t winfs_pwrite(struct file *f, const char *buf, size_t count, loff_t offset)
 {
 	struct winfs_file *winfile = (struct winfs_file *) f;
-	size_t num_written;
-	OVERLAPPED overlapped;
-	overlapped.Internal = 0;
-	overlapped.InternalHigh = 0;
-	overlapped.Offset = offset & 0xFFFFFFFF;
-	overlapped.OffsetHigh = offset >> 32ULL;
-	overlapped.hEvent = 0;
-	if (!WriteFile(winfile->handle, buf, count, &num_written, &overlapped))
-		return -1;
+	size_t num_written = 0;
+	while (count > 0)
+	{
+		OVERLAPPED overlapped;
+		overlapped.Internal = 0;
+		overlapped.InternalHigh = 0;
+		overlapped.Offset = offset & 0xFFFFFFFF;
+		overlapped.OffsetHigh = offset >> 32ULL;
+		overlapped.hEvent = 0;
+		DWORD count_dword = (DWORD)min(count, (size_t)UINT_MAX);
+		DWORD num_written_dword;
+		if (!WriteFile(winfile->handle, buf, count_dword, &num_written_dword, &overlapped))
+		{
+			log_warning("WriteFile() failed, error code: %d\n", GetLastError());
+			return -EIO;
+		}
+		num_written += num_written_dword;
+		offset += num_written_dword;
+		count -= num_written_dword;
+	}
 	return num_written;
 }
 
@@ -318,14 +354,14 @@ static int winfs_symlink(const char *target, const char *linkpath)
 		log_warning("CreateFileW() failed, error code: %d.\n", GetLastError());
 		return -ENOENT;
 	}
-	size_t num_written;
+	DWORD num_written;
 	if (!WriteFile(handle, WINFS_SYMLINK_HEADER, WINFS_SYMLINK_HEADER_LEN, &num_written, NULL) || num_written < WINFS_SYMLINK_HEADER_LEN)
 	{
 		log_warning("WriteFile() failed, error code: %d.\n", GetLastError());
 		CloseHandle(handle);
 		return -EIO;
 	}
-	size_t targetlen = strlen(target);
+	DWORD targetlen = strlen(target);
 	if (!WriteFile(handle, target, targetlen, &num_written, NULL) || num_written < targetlen)
 	{
 		log_warning("WriteFile() failed, error code: %d.\n", GetLastError());
@@ -353,7 +389,7 @@ static size_t winfs_readlink(const char *pathname, char *target, size_t buflen)
 	hFile = CreateFileW(wpathname, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (hFile == INVALID_HANDLE_VALUE)
 		return -EIO;
-	int ret = winfs_read_symlink(hFile, target, buflen);
+	int ret = winfs_read_symlink(hFile, target, (int)buflen);
 	CloseHandle(hFile);
 	return ret;
 }
