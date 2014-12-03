@@ -182,7 +182,7 @@ static DWORD tls_offset_to_slot(size_t offset)
  * RPL: Ring 3
  */
 
-DEFINE_SYSCALL(set_thread_area)(struct user_desc *u_info)
+DEFINE_SYSCALL(set_thread_area, struct user_desc *, u_info)
 {
 	log_info("set_thread_area(%p): entry=%d, base=%p, limit=%p\n", u_info, u_info->entry_number, u_info->base_addr, u_info->limit);
 	if (u_info->entry_number == -1)

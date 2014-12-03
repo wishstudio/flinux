@@ -182,19 +182,19 @@ fail:
 	return -1;
 }
 
-DEFINE_SYSCALL(fork)(int _1, int _2, int _3, int _4, int _5, int _6, PCONTEXT context)
+DEFINE_SYSCALL(fork, int, _1, int, _2, int, _3, int, _4, int, _5, int, _6, PCONTEXT, context)
 {
 	log_info("fork()\n");
 	return fork_process(context, 0, NULL, NULL);
 }
 
-DEFINE_SYSCALL(vfork)(int _1, int _2, int _3, int _4, int _5, int _6, PCONTEXT context)
+DEFINE_SYSCALL(vfork, int, _1, int, _2, int, _3, int, _4, int, _5, int, _6, PCONTEXT, context)
 {
 	log_info("vfork()\n");
 	return fork_process(context, 0, NULL, NULL);
 }
 
-DEFINE_SYSCALL(clone)(unsigned long flags, void *child_stack, void *ptid, int tls, void *ctid, int _6, PCONTEXT context)
+DEFINE_SYSCALL(clone, unsigned long, flags, void *, child_stack, void *, ptid, int, tls, void *, ctid, int, _6, PCONTEXT, context)
 {
 	log_info("sys_clone(flags=%x, child_stack=%p, ptid=%p, ctid=%p)\n", flags, child_stack, ptid, ctid);
 	if (flags & CLONE_THREAD)

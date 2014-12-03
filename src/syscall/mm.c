@@ -943,7 +943,7 @@ int mm_munmap(void *addr, size_t length)
 	return 0;
 }
 
-DEFINE_SYSCALL(mmap)(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
+DEFINE_SYSCALL(mmap, void *, addr, size_t, length, int, prot, int, flags, int, fd, off_t, offset)
 {
 	/* TODO: We should mark NOACCESS for VirtualAlloc()-ed but currently unused pages */
 	log_info("mmap(%p, %p, %x, %x, %d, %x)\n", addr, length, prot, flags, fd, offset);
@@ -953,7 +953,7 @@ DEFINE_SYSCALL(mmap)(void *addr, size_t length, int prot, int flags, int fd, off
 	return mm_mmap(addr, length, prot, flags, vfs_get(fd), offset / PAGE_SIZE);
 }
 
-DEFINE_SYSCALL(oldmmap)(void *_args)
+DEFINE_SYSCALL(oldmmap, void *, _args)
 {
 	log_info("oldmmap(%p)\n", _args);
 	struct oldmmap_args_t
@@ -969,19 +969,19 @@ DEFINE_SYSCALL(oldmmap)(void *_args)
 	return sys_mmap(args->addr, args->len, args->prot, args->flags, args->fd, args->offset);
 }
 
-DEFINE_SYSCALL(mmap2)(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
+DEFINE_SYSCALL(mmap2, void *, addr, size_t, length, int, prot, int, flags, int, fd, off_t, offset)
 {
-	log_info("mmap2(%p, %p, %x, %x, %d, %x)\n", addr, length, prot, flags, fd, offset);
+	log_info("mmap2(%p, %p, %x, %x, %d, %p)\n", addr, length, prot, flags, fd, offset);
 	return mm_mmap(addr, length, prot, flags, vfs_get(fd), offset);
 }
 
-DEFINE_SYSCALL(munmap)(void *addr, size_t length)
+DEFINE_SYSCALL(munmap, void *, addr, size_t, length)
 {
 	log_info("munmap(%p, %p)\n", addr, length);
 	return mm_munmap(addr, length);
 }
 
-DEFINE_SYSCALL(mprotect)(void *addr, size_t length, int prot)
+DEFINE_SYSCALL(mprotect, void *, addr, size_t, length, int, prot)
 {
 	log_info("mprotect(%p, %p, %x)\n", addr, length, prot);
 	if (!IS_ALIGNED(addr, PAGE_SIZE))
@@ -1047,25 +1047,25 @@ DEFINE_SYSCALL(mprotect)(void *addr, size_t length, int prot)
 	return 0;
 }
 
-DEFINE_SYSCALL(msync)(void *addr, size_t len, int flags)
+DEFINE_SYSCALL(msync, void *, addr, size_t, len, int, flags)
 {
 	log_info("msync(0x%p, 0x%p, %d)\n", addr, len, flags);
 	/* TODO */
 }
 
-DEFINE_SYSCALL(mlock)(const void *addr, size_t len)
+DEFINE_SYSCALL(mlock, const void *, addr, size_t, len)
 {
 	log_info("mlock(0x%p, 0x%p)\n", addr, len);
 	/* TODO */
 }
 
-DEFINE_SYSCALL(munlock)(const void *addr, size_t len)
+DEFINE_SYSCALL(munlock, const void *, addr, size_t, len)
 {
 	log_info("munlock(0x%p, 0x%p)\n", addr, len);
 	/* TODO */
 }
 
-DEFINE_SYSCALL(brk)(void *addr)
+DEFINE_SYSCALL(brk, void *, addr)
 {
 	log_info("brk(%p)\n", addr);
 	log_info("Last brk: %p\n", mm->brk);

@@ -53,7 +53,7 @@ void process_add_child(pid_t pid, HANDLE handle)
 	process->child_handles[i] = handle;
 }
 
-DEFINE_SYSCALL(waitpid)(pid_t pid, int *status, int options)
+DEFINE_SYSCALL(waitpid, pid_t, pid, int *, status, int, options)
 {
 	log_info("sys_waitpid(%d, %p, %d)\n", pid, status, options);
 	if (options & WNOHANG)
@@ -113,75 +113,75 @@ DEFINE_SYSCALL(waitpid)(pid_t pid, int *status, int options)
 	return pid;
 }
 
-DEFINE_SYSCALL(getpid)()
+DEFINE_SYSCALL(getpid)
 {
 	log_info("getpid(): %d\n", GetCurrentProcessId());
 	return GetCurrentProcessId();
 }
 
-DEFINE_SYSCALL(getppid)()
+DEFINE_SYSCALL(getppid)
 {
 	log_info("getppid(): %d\n", 0);
 	return 0;
 }
 
-DEFINE_SYSCALL(setpgid)(pid_t pid, pid_t pgid)
+DEFINE_SYSCALL(setpgid, pid_t, pid, pid_t, pgid)
 {
 	log_info("setpgid(%d, %d)\n", pid, pgid);
 	return 0;
 }
 
-DEFINE_SYSCALL(getpgid)(pid_t pid)
+DEFINE_SYSCALL(getpgid, pid_t, pid)
 {
 	log_info("getpgid(%d): %d\n", pid, 0);
 	return 0;
 }
 
-DEFINE_SYSCALL(getpgrp)()
+DEFINE_SYSCALL(getpgrp)
 {
 	pid_t pgrp = GetCurrentProcessId();
 	log_info("getpgrp(): %d\n", pgrp);
 	return pgrp;
 }
 
-DEFINE_SYSCALL(gettid)()
+DEFINE_SYSCALL(gettid)
 {
 	pid_t tid = GetCurrentThreadId();
 	log_info("gettid(): %d\n", tid);
 	return tid;
 }
 
-DEFINE_SYSCALL(getuid)()
+DEFINE_SYSCALL(getuid)
 {
 	log_info("getuid(): %d\n", 0);
 	return 0;
 }
 
-DEFINE_SYSCALL(getgid)()
+DEFINE_SYSCALL(getgid)
 {
 	log_info("getgid(): %d\n", 0);
 	return 0;
 }
 
-DEFINE_SYSCALL(geteuid)()
+DEFINE_SYSCALL(geteuid)
 {
 	log_info("geteuid(): %d\n", 0);
 	return 0;
 }
 
-DEFINE_SYSCALL(getegid)()
+DEFINE_SYSCALL(getegid)
 {
 	log_info("getegid(): %d\n", 0);
 	return 0;
 }
 
-DEFINE_SYSCALL(setuid)(uid_t uid)
+DEFINE_SYSCALL(setuid, uid_t, uid)
 {
 	log_info("setuid(%d)\n", uid);
 	return -EPERM;
 }
 
-DEFINE_SYSCALL(exit)(int status)
+DEFINE_SYSCALL(exit, int, status)
 {
 	log_info("exit(%d)\n", status);
 	/* TODO: Gracefully shutdown mm, vfs, etc. */
@@ -189,7 +189,7 @@ DEFINE_SYSCALL(exit)(int status)
 	ExitProcess(status);
 }
 
-DEFINE_SYSCALL(exit_group)(int status)
+DEFINE_SYSCALL(exit_group, int, status)
 {
 	log_info("exit_group(%d)\n", status);
 	/* TODO: Gracefully shutdown mm, vfs, etc. */
@@ -197,7 +197,7 @@ DEFINE_SYSCALL(exit_group)(int status)
 	ExitProcess(status);
 }
 
-DEFINE_SYSCALL(uname)(struct utsname *buf)
+DEFINE_SYSCALL(uname, struct utsname *, buf)
 {
 	log_info("sys_uname(%p)\n", buf);
 	if (!mm_check_write(buf, sizeof(struct utsname)))
@@ -216,7 +216,7 @@ DEFINE_SYSCALL(uname)(struct utsname *buf)
 	return 0;
 }
 
-DEFINE_SYSCALL(olduname)(struct old_utsname *buf)
+DEFINE_SYSCALL(olduname, struct old_utsname *, buf)
 {
 	if (!mm_check_write(buf, sizeof(struct old_utsname)))
 		return -EFAULT;
@@ -230,7 +230,7 @@ DEFINE_SYSCALL(olduname)(struct old_utsname *buf)
 	return 0;
 }
 
-DEFINE_SYSCALL(oldolduname)(struct oldold_utsname *buf)
+DEFINE_SYSCALL(oldolduname, struct oldold_utsname *, buf)
 {
 	if (!mm_check_write(buf, sizeof(struct oldold_utsname)))
 		return -EFAULT;
@@ -244,7 +244,7 @@ DEFINE_SYSCALL(oldolduname)(struct oldold_utsname *buf)
 	return 0;
 }
 
-DEFINE_SYSCALL(getrlimit)(int resource, struct rlimit *rlim)
+DEFINE_SYSCALL(getrlimit, int, resource, struct rlimit *, rlim)
 {
 	log_info("getrlimit(%d, %p)\n", resource, rlim);
 	if (!mm_check_write(rlim, sizeof(struct rlimit)))
@@ -263,7 +263,7 @@ DEFINE_SYSCALL(getrlimit)(int resource, struct rlimit *rlim)
 	return 0;
 }
 
-DEFINE_SYSCALL(setrlimit)(int resource, const struct rlimit *rlim)
+DEFINE_SYSCALL(setrlimit, int, resource, const struct rlimit *, rlim)
 {
 	log_info("setrlimit(%d, %p)\n", resource, rlim);
 	if (!mm_check_read(rlim, sizeof(struct rlimit)))

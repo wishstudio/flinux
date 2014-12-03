@@ -1,13 +1,14 @@
+#include <syscall/syscall.h>
 #include <syscall/syscall_dispatch.h>
 
 #include <stdint.h>
 
 #ifdef _WIN64
 
-typedef int64_t syscall_fn(int64_t rdi, int64_t rsi, int64_t rdx, int64_t r10, int r8, int r9, PCONTEXT context);
+typedef int64_t syscall_fn(int64_t rdi, int64_t rsi, int64_t rdx, int64_t r10, intptr_t r8, intptr_t r9, PCONTEXT context);
 
 #define SYSCALL_COUNT 312
-#define SYSCALL(name) extern int64_t name(int64_t rdi, int64_t rsi, int64_t rdx, int64_t r10, int r8, int r9, PCONTEXT context);
+#define SYSCALL(name) extern int64_t name(int64_t rdi, int64_t rsi, int64_t rdx, int64_t r10, intptr_t r8, intptr_t r9, PCONTEXT context);
 SYSCALL(sys_read) /* syscall 0 */
 #include "syscall_table_x64.h"
 #undef SYSCALL
@@ -38,7 +39,7 @@ static syscall_fn* syscall_table[SYSCALL_COUNT] =
 #undef SYSCALL
 #endif
 
-size_t sys_unimplemented(size_t _1, size_t _2, size_t _3, size_t _4, size_t _5, size_t _6, PCONTEXT context)
+DEFINE_SYSCALL(unimplemented, intptr_t, _1, intptr_t, _2, intptr_t, _3, intptr_t, _4, intptr_t, _5, intptr_t, _6, PCONTEXT, context)
 {
 #ifdef _WIN64
 	log_error("FATAL: Unimplemented syscall: %d\n", (int)context->Rax);
