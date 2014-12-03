@@ -432,7 +432,7 @@ static void map_entry_range(struct map_entry *e, size_t start_page, size_t end_p
 		if (r < desired_size)
 		{
 			size_t remain = desired_size - r;
-			RtlSecureZeroMemory((char*)GET_PAGE_ADDRESS(end_page) - remain, remain);
+			RtlSecureZeroMemory((char*)GET_PAGE_ADDRESS(end_page + 1) - remain, remain);
 		}
 	}
 	else
