@@ -1,5 +1,6 @@
 #include <syscall/syscall.h>
 #include <syscall/syscall_dispatch.h>
+#include <log.h>
 
 #include <stdint.h>
 
