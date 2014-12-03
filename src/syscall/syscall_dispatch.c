@@ -9,15 +9,15 @@
 typedef int64_t syscall_fn(int64_t rdi, int64_t rsi, int64_t rdx, int64_t r10, intptr_t r8, intptr_t r9, PCONTEXT context);
 
 #define SYSCALL_COUNT 312
-#define SYSCALL(name) extern int64_t name(int64_t rdi, int64_t rsi, int64_t rdx, int64_t r10, intptr_t r8, intptr_t r9, PCONTEXT context);
-SYSCALL(sys_read) /* syscall 0 */
+#define SYSCALL(name) extern int64_t sys_##name(int64_t rdi, int64_t rsi, int64_t rdx, int64_t r10, intptr_t r8, intptr_t r9, PCONTEXT context);
+SYSCALL(read) /* syscall 0 */
 #include "syscall_table_x64.h"
 #undef SYSCALL
 
-#define SYSCALL(name) name,
+#define SYSCALL(name) sys_##name,
 static syscall_fn* syscall_table[SYSCALL_COUNT] =
 {
-	sys_read, /* syscall 0 */
+	SYSCALL(read) /* syscall 0 */
 #include "syscall_table_x64.h"
 };
 #undef SYSCALL
