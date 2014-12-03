@@ -90,7 +90,7 @@ mm_check_read_begin LABEL PTR
 	mov eax, edx
 	shr eax, 12
 	; eax - start page
-	add ecx, edx
+	lea ecx, [edx + ecx - 1]
 	shr ecx, 12
 	; ecx - end page
 	sub ecx, eax
@@ -148,7 +148,7 @@ mm_check_write_begin LABEL PTR
 	mov eax, edx
 	shr eax, 12
 	; eax - start page
-	add ecx, edx
+	lea ecx, [edx + ecx - 1]
 	shr ecx, 12
 	; ecx - end page
 	sub ecx, eax

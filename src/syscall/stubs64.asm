@@ -134,7 +134,7 @@ mm_check_read_begin LABEL PTR
 	mov rax, rdx
 	shr rax, 12
 	; rax - start page
-	add rcx, rdx
+	lea rcx, [rdx + rcx - 1]
 	shr rcx, 12
 	; rcx - end page
 	sub rcx, rax
@@ -193,7 +193,7 @@ mm_check_write_begin LABEL PTR
 	mov rax, rdx
 	shr rax, 12
 	; rax - start page
-	add rcx, rdx
+	lea rcx, [rdx + rcx - 1]
 	shr rcx, 12
 	; rcx - end page
 	sub rcx, rax
