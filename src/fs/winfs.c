@@ -110,6 +110,8 @@ static size_t winfs_read(struct file *f, char *buf, size_t count)
 			log_warning("ReadFile() failed, error code: %d\n", GetLastError());
 			return -EIO;
 		}
+		if (num_read_dword == 0)
+			return num_read;
 		num_read += num_read_dword;
 		count -= num_read_dword;
 	}
@@ -156,6 +158,8 @@ static size_t winfs_pread(struct file *f, char *buf, size_t count, loff_t offset
 			log_warning("ReadFile() failed, error code: %d\n", GetLastError());
 			return -EIO;
 		}
+		if (num_read_dword == 0)
+			return num_read;
 		num_read += num_read_dword;
 		offset += num_read_dword;
 		count -= num_read_dword;
