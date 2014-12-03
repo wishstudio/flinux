@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdint.h>
+
 #define S_IFMT		0170000
 #define S_IFSOCK	0140000
 #define S_IFLNK		0120000
@@ -35,47 +37,76 @@
 #define S_IWOTH		00002
 #define S_IXOTH		00001
 
-struct stat {
-	unsigned long st_dev;
-	unsigned long __st_ino;
-	unsigned short st_mode;
-	unsigned short st_nlink;
-	unsigned short st_uid;
-	unsigned short st_gid;
-	unsigned long st_rdev;
-	unsigned long st_size;
-	unsigned long st_blksize;
-	unsigned long st_blocks;
-	unsigned long st_atime;
-	unsigned long st_atime_nsec;
-	unsigned long st_mtime;
-	unsigned long st_mtime_nsec;
-	unsigned long st_ctime;
-	unsigned long st_ctime_nsec;
-	unsigned long long st_ino;
+#ifdef _WIN64
+#pragma pack(push, 4)
+struct stat
+{
+	uint64_t st_dev;
+	uint64_t st_ino;
+	uint64_t st_nlink;
+	uint32_t st_mode;
+	uint32_t st_uid;
+	uint32_t st_gid;
+	uint32_t __pad0;
+	uint64_t st_rdev;
+	uint64_t st_size;
+	uint64_t st_blksize;
+	uint64_t st_blocks;
+	uint64_t st_atime;
+	uint64_t st_atime_nsec;
+	uint64_t st_mtime;
+	uint64_t st_mtime_nsec;
+	uint64_t st_ctime;
+	uint64_t st_ctime_nsec;
+	uint64_t __unused[3];
 };
+#pragma pack(pop)
+#else
+struct stat
+{
+	uint16_t st_dev;
+	uint16_t __pad1;
+	uint32_t st_ino;
+	uint16_t st_mode;
+	uint16_t st_nlink;
+	uint16_t st_uid;
+	uint16_t st_gid;
+	uint16_t st_rdev;
+	uint16_t __pad2;
+	uint32_t st_size;
+	uint32_t st_blksize;
+	uint32_t st_blocks;
+	uint32_t st_atime;
+	uint32_t st_atime_nsec;
+	uint32_t st_mtime;
+	uint32_t st_mtime_nsec;
+	uint32_t st_ctime;
+	uint32_t st_ctime_nsec;
+};
+#endif
 
 #pragma pack(push, 4)
-struct stat64 {
-	unsigned long long st_dev;
-	unsigned int __pad0;
-	unsigned long __st_ino;
-	unsigned int st_mode;
-	unsigned int st_nlink;
-	unsigned int st_uid;
-	unsigned int st_gid;
-	unsigned long long st_rdev;
-	unsigned int __pad1;
-	long long st_size;
-	int st_blksize;
-	long long st_blocks;
-	int st_atime;
-	unsigned int st_atime_nsec;
-	int st_mtime;
-	unsigned int st_mtime_nsec;
-	int st_ctime;
-	unsigned int st_ctime_nsec;
-	unsigned long long st_ino;
+struct stat64
+{
+	uint64_t st_dev;
+	uint32_t __pad1;
+	uint32_t __st_ino;
+	uint32_t st_mode;
+	uint32_t st_nlink;
+	uint32_t st_uid;
+	uint32_t st_gid;
+	uint64_t st_rdev;
+	uint32_t __pad2;
+	uint64_t st_size;
+	uint32_t st_blksize;
+	uint64_t st_blocks;
+	uint32_t st_atime;
+	uint32_t st_atime_nsec;
+	uint32_t st_mtime;
+	uint32_t st_mtime_nsec;
+	uint32_t st_ctime;
+	uint32_t st_ctime_nsec;
+	uint64_t st_ino;
 };
 #pragma pack(pop)
 
