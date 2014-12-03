@@ -27,14 +27,14 @@ static syscall_fn* syscall_table[SYSCALL_COUNT] =
 typedef int syscall_fn(int ebx, int ecx, int edx, int esi, int edi, int ebp, PCONTEXT context);
 
 #define SYSCALL_COUNT 338
-#define SYSCALL(name) extern int name(int ebx, int ecx, int edx, int esi, int edi, int ebp, PCONTEXT context);
+#define SYSCALL(name) extern int sys_##name(int ebx, int ecx, int edx, int esi, int edi, int ebp, PCONTEXT context);
 #include "syscall_table_x86.h"
 #undef SYSCALL
 
-#define SYSCALL(name) name,
+#define SYSCALL(name) sys_##name,
 static syscall_fn* syscall_table[SYSCALL_COUNT] =
 {
-	sys_unimplemented, /* syscall 0 */
+	SYSCALL(unimplemented) /* syscall 0 */
 #include "syscall_table_x86.h"
 };
 #undef SYSCALL
