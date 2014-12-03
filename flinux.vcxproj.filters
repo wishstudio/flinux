@@ -154,6 +154,9 @@
     <ClInclude Include="src\syscall\syscall_dispatch.h">
       <Filter>syscall</Filter>
     </ClInclude>
+    <ClInclude Include="src\common\prctl.h">
+      <Filter>common</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />

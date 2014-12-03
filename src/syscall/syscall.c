@@ -33,7 +33,7 @@ static LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
 				dispatch_syscall(ep->ContextRecord);
 				return EXCEPTION_CONTINUE_EXECUTION;
 			}
-			else if (tls_gs_emulation(ep->ContextRecord, code))
+			else if (tls_emulation(ep->ContextRecord, code))
 				return EXCEPTION_CONTINUE_EXECUTION;
 			else if (mm_handle_page_fault(ep->ExceptionRecord->ExceptionInformation[1]))
 				return EXCEPTION_CONTINUE_EXECUTION;

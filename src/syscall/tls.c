@@ -1,3 +1,5 @@
+#include <common/ldt.h>
+#include <common/prctl.h>
 #include <syscall/mm.h>
 #include <syscall/syscall.h>
 #include <syscall/tls.h>
@@ -85,17 +87,32 @@
  *
  */
 
+/* Notes for x64
+ * On x64 one can directly set the base address of FS and GS segment register
+ * through SWAPFS and SWAPGS instructions. A system call arch_prctl() is
+ * provided for this purpose. Windowx uses GS register and glibc uses FS
+ * register for TLS storage. We do not need to fake GDT/LDT stuff but only a
+ * base address for the FS segment register.
+ */
+
 #include "x86_inst.h" /* x86 instruction definitions */
 
+#ifndef _WIN64
 #define MAX_TLS_ENTRIES		0x80
+#endif
 
 struct tls_data
 {
+#ifdef _WIN64
+	DWORD fs_base_slot; /* Win32 TLS slot id for storing current emulated fs base address */
+	PVOID fs_base;
+#else
 	DWORD gs_slot; /* Win32 TLS slot id for storing current emulated gs register */
 	DWORD entries_slot[MAX_TLS_ENTRIES]; /* Win32 TLS slot id for each emulated tls entries */
 	PVOID current_gs_value;
 	PVOID current_entries_addr[MAX_TLS_ENTRIES];
 	/* current_gs_addr and current_entries_addr is sed by fork to passing tls data to the new process */
+#endif
 	uint8_t trampoline[2048]; /* TODO */
 };
 
@@ -104,34 +121,51 @@ static struct tls_data *const tls = TLS_DATA_BASE;
 void tls_init()
 {
 	mm_mmap(TLS_DATA_BASE, sizeof(struct tls_data), PROT_READ | PROT_WRITE | PROT_EXEC, MAP_FIXED | MAP_PRIVATE | MAP_ANONYMOUS, NULL, 0);
+#ifdef _WIN64
+	tls->fs_base_slot = TlsAlloc();
+	TlsSetValue(tls->fs_base_slot, 0);
+#else
 	for (int i = 0; i < MAX_TLS_ENTRIES; i++)
 		tls->entries_slot[i] = -1;
 	tls->gs_slot = TlsAlloc();
+#endif
 }
 
 void tls_reset()
 {
+#ifdef _WIN64
+	TlsSetValue(tls->fs_base_slot, 0);
+#else
 	for (int i = 0; i < MAX_TLS_ENTRIES; i++)
 		if (tls->entries_slot[i] != -1)
 		{
 			TlsFree(tls->entries_slot[i]);
 			tls->entries_slot[i] = -1;
 		}
+#endif
 }
 
 void tls_shutdown()
 {
+#ifdef _WIN64
+	TlsFree(tls->fs_base_slot);
+#else
 	TlsFree(tls->gs_slot);
 	for (int i = 0; i < MAX_TLS_ENTRIES; i++)
 		if (tls->entries_slot[i] != -1)
 			TlsFree(tls->entries_slot[i]);
 	mm_munmap(TLS_DATA_BASE, sizeof(struct tls_data));
+#endif
 }
 
 void tls_beforefork()
 {
 	log_info("Saving TLS context...\n");
 	/* Save tls data for current thread into shared memory regions */
+#ifdef _WIN64
+	tls->fs_base = TlsGetValue(tls->fs_base_slot);
+	log_info("fs base addr 0x%p\n", tls->fs_base);
+#else
 	tls->current_gs_value = TlsGetValue(tls->gs_slot);
 	log_info("gs slot %d value 0x%p\n", tls->gs_slot, tls->current_gs_value);
 	for (int i = 0; i < MAX_TLS_ENTRIES; i++)
@@ -140,11 +174,17 @@ void tls_beforefork()
 			tls->current_entries_addr[i] = TlsGetValue(tls->entries_slot[i]);
 			log_info("entry %d slot %d addr 0x%p\n", i, tls->entries_slot[i], tls->current_entries_addr[i]);
 		}
+#endif
 }
 
 void tls_afterfork()
 {
 	log_info("Restoring TLS context...\n");
+#ifdef _WIN64
+	tls->fs_base_slot = TlsAlloc();
+	TlsSetValue(tls->fs_base_slot, tls->fs_base);
+	log_info("fs base addr 0x%p\n", tls->fs_base);
+#else
 	tls->gs_slot = TlsAlloc();
 	TlsSetValue(tls->gs_slot, tls->current_gs_value);
 	log_info("gs slot %d value 0x%p\n", tls->gs_slot, tls->current_gs_value);
@@ -157,6 +197,7 @@ void tls_afterfork()
 			TlsSetValue(slot, tls->current_entries_addr[i]);
 			log_info("entry %d slot %d addr 0x%p\n", i, tls->entries_slot[i], tls->current_entries_addr[i]);
 		}
+#endif
 }
 
 static size_t tls_slot_to_offset(DWORD slot)
@@ -175,6 +216,41 @@ static DWORD tls_offset_to_slot(size_t offset)
 		return (offset - offsetof(TEB, TlsExpansionSlots)) / sizeof(PVOID) + 64;
 }
 
+#define LOW8(x) (*((uint8_t *)&(x)))
+#define LOW16(x) (*((uint16_t *)&(x)))
+#define LOW32(x) (*((uint32_t *)&(x)))
+#define LOW64(x) (*((uint64_t *)&(x)))
+
+#ifdef _WIN64
+DEFINE_SYSCALL(arch_prctl, int, code, uintptr_t, addr)
+{
+	log_info("arch_prctl(%d, 0x%p)\n", code, addr);
+	switch (code)
+	{
+	case ARCH_SET_FS:
+		log_info("SET_FS: new fs addr: 0x%p\n", addr);
+		TlsSetValue(tls->fs_base_slot, (void *)addr);
+		return 0;
+
+	case ARCH_GET_FS:
+		log_info("GET_FS: old fs addr: 0x%p\n", *(uintptr_t *)addr = (uintptr_t)TlsGetValue(tls->fs_base_slot));
+		return 0;
+
+	case ARCH_SET_GS:
+		log_error("ARCH_SET_GS not supported.\n");
+		return -EINVAL;
+
+	case ARCH_GET_GS:
+		log_error("ARCH_GET_GS not supported.\n");
+		return -EINVAL;
+
+	default:
+		log_error("Unknown code.\n");
+		return -EINVAL;
+	}
+}
+
+#else
 /* Segment register format:
  * 15    3  2   0
  * [Index|TI|RPL]
@@ -200,20 +276,10 @@ DEFINE_SYSCALL(set_thread_area, struct user_desc *, u_info)
 		if (u_info->entry_number == -1)
 			return -ESRCH;
 	}
-#if _WIN64
-	// TODO: This triggers internal compiler error for now
-	//__writefsqword(u_info->entry_number, u_info->base_addr);
-#else
 	__writefsdword(u_info->entry_number, u_info->base_addr);
-#endif
 	return 0;
 }
 
-#define LOW8(x) (*((uint8_t *)&(x)))
-#define LOW16(x) (*((uint16_t *)&(x)))
-#define LOW32(x) (*((uint32_t *)&(x)))
-#define LOW64(x) (*((uint64_t *)&(x)))
-#ifndef _WIN64
 static int handle_mov_reg_gs(PCONTEXT context, uint8_t modrm)
 {
 	/* 11 101 rrr */
@@ -266,21 +332,15 @@ static int handle_mov_gs_reg(PCONTEXT context, uint8_t modrm)
 #define MODRM_R(c)		(((c) >> 3) & 7)
 #define MODRM_M(c)		((c) & 7)
 #define MODRM_CODE(c)	MODRM_R(c)
-int tls_gs_emulation(PCONTEXT context, uint8_t *code)
+int tls_emulation(PCONTEXT context, uint8_t *code)
 {
 	log_info("TLS Emulation begin.\n");
-#ifdef _WIN64
-	if (context->Rip >= tls->trampoline && context->Rip < tls->trampoline + sizeof(tls->trampoline))
+	if (context->Xip >= tls->trampoline && context->Xip < tls->trampoline + sizeof(tls->trampoline))
 	{
-		log_warning("EIP Inside TLS trampoline!!!!! Emulation skipped.\n");
+		log_warning("IP Inside TLS trampoline!!!!! Emulation skipped.\n");
 		return 0;
 	}
-#else
-	if (context->Eip >= tls->trampoline && context->Eip < tls->trampoline + sizeof(tls->trampoline))
-	{
-		log_warning("EIP Inside TLS trampoline!!!!! Emulation skipped.\n");
-		return 0;
-	}
+#ifndef _WIN64
 	if (code[0] == 0x8C)
 	{
 		/* 8C /r: MOV r/m16, Sreg */
@@ -331,7 +391,7 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 		 * override prefix we want.
 		 */
 		int prefix_end = 0, operand_size_prefix = 0, address_size_prefix = 0;
-		int found_gs_override = 0;
+		int found_segment_override = 0;
 		for (;;)
 		{
 			if (code[prefix_end] == 0xF0) /* LOCK */
@@ -362,13 +422,23 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 			}
 			else if (code[prefix_end] == 0x64) /* FS segment override */
 			{
+#ifdef _WIN64
+				prefix_end++;
+				found_segment_override = 1;
+#else
 				log_info("Found FS segment override, skipped\n");
 				return 0;
+#endif
 			}
 			else if (code[prefix_end] == 0x65) /* GS segment override <- we're interested */
 			{
+#ifdef _WIN64
+				log_info("Found GS segment override, skipped\n");
+				return 0;
+#else
 				prefix_end++;
-				found_gs_override = 1;
+				found_segment_override = 1;
+#endif
 			}
 			else if (code[prefix_end] == 0x66) /* Operand size prefix */
 			{
@@ -384,7 +454,7 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 			else
 				break;
 		}
-		if (!found_gs_override)
+		if (!found_segment_override)
 		{
 			log_info("Instruction has no gs override.\n");
 			return 0;
@@ -403,9 +473,13 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 			desc = &one_byte_inst[code[prefix_end]];
 			inst_len = 1;
 		}
+#ifdef _WIN64
+		size_t tls_addr = TlsGetValue(tls->fs_base_slot);
+#else
 		/* TODO: Optimization to reduce one lookup? */
 		size_t gs_value = TlsGetValue(tls->gs_slot);
-		size_t gs_addr = TlsGetValue(gs_value);
+		size_t tls_addr = TlsGetValue(gs_value);
+#endif
 
 		int idx = 0;
 		#define JUMP_TO_TRAMPOLINE() \
@@ -452,7 +526,7 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 					base_addr = *(uint32_t *)&code[prefix_end + inst_len + sib]; \
 					addr_bytes = 4; \
 				} \
-				base_addr += gs_addr; \
+				base_addr += tls_addr; \
 				if (mod == 0 && MODRM_M(modrm) == 5) /* special case: immediate disp32 */ \
 				{ \
 					GEN_BYTE(modrm); \
@@ -506,7 +580,7 @@ int tls_gs_emulation(PCONTEXT context, uint8_t *code)
 			/* MOV moffs16, AX */
 			/* MOV moffs32, EAX */
 			/* TODO: Deal with address_size_prefix when we support it */
-			uint32_t addr = gs_addr + LOW32(code[prefix_end + 1]);
+			uint32_t addr = tls_addr + LOW32(code[prefix_end + 1]);
 			COPY_PREFIX();
 			GEN_BYTE(code[prefix_end]);
 			GEN_DWORD(addr);
