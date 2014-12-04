@@ -1167,10 +1167,10 @@ DEFINE_SYSCALL(poll, struct pollfd *, fds, int, nfds, int, timeout)
 DEFINE_SYSCALL(select, int, nfds, struct fdset *, readfds, struct fdset *, writefds, struct fdset *, exceptfds, struct timeval *, timeout)
 {
 	log_info("select(%d, 0x%p, 0x%p, 0x%p, 0x%p)\n", nfds, readfds, writefds, exceptfds, timeout);
-	if (!mm_check_write(readfds, sizeof(struct fdset))
-		|| !mm_check_write(writefds, sizeof(struct fdset))
-		|| !mm_check_write(exceptfds, sizeof(struct fdset))
-		|| !mm_check_read(timeout, sizeof(struct timeval)))
+	if ((readfds && !mm_check_write(readfds, sizeof(struct fdset)))
+		|| (writefds && !mm_check_write(writefds, sizeof(struct fdset)))
+		|| (exceptfds && !mm_check_write(exceptfds, sizeof(struct fdset)))
+		|| (timeout && !mm_check_read(timeout, sizeof(struct timeval))))
 		return -EFAULT;
 	int time;
 	if (timeout)
