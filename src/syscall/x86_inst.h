@@ -102,7 +102,7 @@ static const struct instruction_desc one_byte_inst[256] =
 	/* 0x23: AND r?, r/m? */ INST(MODRM(0), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
 	/* 0x24: AND AL, imm8 */ INST(IMM(1), READ(REG_AX), WRITE(REG_AX))
 	/* 0x25: AND ?AX, imm? */ INST(IMM(PREFIX_OPERAND_SIZE), READ(REG_AX), WRITE(REG_AX))
-	/* 0x26: ??? */ INST(UNKNOWN())
+	/* 0x26: ES segment prefix */ INST(INVALID())
 #ifdef _WIN64
 	/* 0x27: INVALID */ INST(INVALID())
 #else
@@ -114,7 +114,7 @@ static const struct instruction_desc one_byte_inst[256] =
 	/* 0x2B: SUB r?, r/m? */ INST(MODRM(0), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
 	/* 0x2C: SUB AL, imm8 */ INST(IMM(1), READ(REG_AX), WRITE(REG_AX))
 	/* 0x2D: SUB ?AX, imm? */ INST(IMM(PREFIX_OPERAND_SIZE), READ(REG_AX), WRITE(REG_AX))
-	/* 0x2E: ??? */ INST(UNKNOWN())
+	/* 0x2E: CS segment prefix */ INST(INVALID())
 #ifdef _WIN64
 	/* 0x2F: INVALID */ INST(INVALID())
 #else
@@ -126,7 +126,7 @@ static const struct instruction_desc one_byte_inst[256] =
 	/* 0x33: XOR r?, r/m? */ INST(MODRM(0), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
 	/* 0x34: XOR AL, imm8 */ INST(IMM(1), READ(REG_AX), WRITE(REG_AX))
 	/* 0x35: XOR ?AX, imm? */ INST(IMM(PREFIX_OPERAND_SIZE), READ(REG_AX), WRITE(REG_AX))
-	/* 0x36: ??? */ INST(UNKNOWN())
+	/* 0x36: SS segment prefix */ INST(INVALID())
 #ifdef _WIN64
 	/* 0x37: Invalid */ INST(INVALID())
 #else
@@ -138,7 +138,7 @@ static const struct instruction_desc one_byte_inst[256] =
 	/* 0x3B: CMP r?, r/m? */ INST(MODRM(0), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
 	/* 0x3C: CMP AL, imm8 */ INST(IMM(1), READ(REG_AX), WRITE(REG_AX))
 	/* 0x3D: CMP ?AX, imm? */ INST(IMM(PREFIX_OPERAND_SIZE), READ(REG_AX), WRITE(REG_AX))
-	/* 0x3E: ??? */ INST(UNKNOWN())
+	/* 0x3E: DS segment prefix */ INST(INVALID())
 #ifdef _WIN64
 	/* 0x3F; INVALID */ INST(INVALID())
 	/* 0x40: REX prefix */ INST(INVALID())
@@ -203,8 +203,8 @@ static const struct instruction_desc one_byte_inst[256] =
 	/* 0x62: BOUND r?, m?&? */ INST(MODRM(0), READ(MODRM_R | MODRM_RM_M))
 	/* 0x63: ARPL r/m16, r16 */ INST(MODRM(0), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R | MODRM_RM))
 #endif
-	/* 0x64: ??? */ INST(UNKNOWN())
-	/* 0x65: ??? */ INST(UNKNOWN())
+	/* 0x64: FS segment prefix */ INST(INVALID())
+	/* 0x65: GS segment prefix */ INST(INVALID())
 	/* 0x66: ??? */ INST(UNKNOWN())
 	/* 0x67: ??? */ INST(UNKNOWN())
 	/* 0x68: ??? */ INST(UNKNOWN())
