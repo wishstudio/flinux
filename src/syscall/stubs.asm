@@ -142,6 +142,7 @@ mm_check_write PROC check_addr, check_size
 	mov ecx, check_size
 	
 mm_check_write_begin LABEL PTR
+	mov al, byte ptr [edx]
 	mov byte ptr [edx], al
 	; test first page which may be unaligned
 	
@@ -158,6 +159,7 @@ mm_check_write_begin LABEL PTR
 	and dx, 0f000h
 L:
 	add edx, 01000h
+	mov al, byte ptr [edx]
 	mov byte ptr [edx], al
 	loop L
 mm_check_write_end LABEL PTR
