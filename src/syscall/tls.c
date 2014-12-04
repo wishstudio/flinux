@@ -228,12 +228,12 @@ DEFINE_SYSCALL(arch_prctl, int, code, uintptr_t, addr)
 	switch (code)
 	{
 	case ARCH_SET_FS:
-		log_info("SET_FS: new fs addr: 0x%p\n", addr);
+		log_info("ARCH_SET_FS: new fs addr: 0x%p\n", addr);
 		TlsSetValue(tls->fs_base_slot, (void *)addr);
 		return 0;
 
 	case ARCH_GET_FS:
-		log_info("GET_FS: old fs addr: 0x%p\n", *(uintptr_t *)addr = (uintptr_t)TlsGetValue(tls->fs_base_slot));
+		log_info("ARCH_GET_FS: old fs addr: 0x%p\n", *(uintptr_t *)addr = (uintptr_t)TlsGetValue(tls->fs_base_slot));
 		return 0;
 
 	case ARCH_SET_GS:
@@ -328,10 +328,10 @@ static int handle_mov_gs_reg(PCONTEXT context, uint8_t modrm)
 }
 #endif
 
-#define MODRM_MOD(c)	(((c) >> 6) & 7)
-#define MODRM_R(c)		(((c) >> 3) & 7)
-#define MODRM_M(c)		((c) & 7)
-#define MODRM_CODE(c)	MODRM_R(c)
+#define GET_MODRM_MOD(c)	(((c) >> 6) & 7)
+#define GET_MODRM_R(c)		(((c) >> 3) & 7)
+#define GET_MODRM_RM(c)		((c) & 7)
+#define GET_MODRM_CODE(c)	GET_MODRM_R(c)
 int tls_emulation(PCONTEXT context, uint8_t *code)
 {
 	log_info("TLS Emulation begin.\n");
@@ -391,6 +391,7 @@ int tls_emulation(PCONTEXT context, uint8_t *code)
 		 * override prefix we want.
 		 */
 		int prefix_end = 0, operand_size_prefix = 0, address_size_prefix = 0;
+		int rex = 0;
 		int found_segment_override = 0;
 		for (;;)
 		{
@@ -459,6 +460,20 @@ int tls_emulation(PCONTEXT context, uint8_t *code)
 			log_info("Instruction has no gs override.\n");
 			return 0;
 		}
+#ifdef _WIN64
+		if (code[prefix_end] >= 0x40 && code[prefix_end] <= 0x4F) /* REX Prefix */
+		{
+			log_info("Found rex prefix.\n");
+			prefix_end++;
+			rex = code[prefix_end];
+		}
+#endif
+		int operand_size = (operand_size_prefix)? 16: 32;
+#ifdef _WIN64
+		if ((rex & 0x08) > 0)
+			operand_size = 64;
+#endif
+
 		struct instruction_desc *desc;
 		int inst_len;
 		if (code[prefix_end] == 0x0F)
@@ -488,11 +503,18 @@ int tls_emulation(PCONTEXT context, uint8_t *code)
 		#define GEN_BYTE(x)		tls->trampoline[idx++] = (x)
 		#define GEN_WORD(x)		*(uint16_t *)&tls->trampoline[(idx += 2) - 2] = (x)
 		#define GEN_DWORD(x)	*(uint32_t *)&tls->trampoline[(idx += 4) - 4] = (x)
+		#define GEN_QWORD(x)	*(uint64_t *)&tls->trampoline[(idx += 8) - 8] = (x)
 		#define PATCH_DWORD(idx, x)		*(uint32_t *)&tls->trampoline[idx] = (x)
+		#define PATCH_QWORD(idx, x)		*(uint64_t *)&tls->trampoline[idx] = (x)
+		#ifdef _WIN64
+		#define TLS_OVERRIDE_CODE 0x64 /* FS */
+		#else
+		#define TLS_OVERRIDE_CODE 0x65 /* GS */
+		#endif
 		#define COPY_PREFIX() \
 			/* Copy prefixes */ \
 			for (int i = 0; i < prefix_end; i++) \
-				if (code[i] == 0x65) /* GS segment override -> skip */ \
+				if (code[i] == TLS_OVERRIDE_CODE) /* Skip TLS segment override */ \
 					continue; \
 				else \
 					GEN_BYTE(code[i])
@@ -505,14 +527,14 @@ int tls_emulation(PCONTEXT context, uint8_t *code)
 				uint8_t modrm = code[prefix_end + inst_len]; \
 				if (changed_r != -1) \
 					modrm = (modrm & 0xC7) | (changed_r << 3);; \
-				uint8_t mod = MODRM_MOD(modrm); \
+				uint8_t mod = GET_MODRM_MOD(modrm); \
 				if (mod == 3) \
 				{ \
 					log_warning("ModR/M: Pure register access."); \
 					return 0; \
 				} \
 				inst_len++; \
-				int sib = (MODRM_M(modrm) == 4); \
+				int sib = (GET_MODRM_RM(modrm) == 4); \
 				int addr_bytes = 0; \
 				uint32_t base_addr = 0; \
 				if (mod == 1) /* disp8 (sign-extended) */ \
@@ -521,13 +543,13 @@ int tls_emulation(PCONTEXT context, uint8_t *code)
 					addr_bytes = 1; \
 				} \
 				else if (mod == 2 /* disp32 */ \
-					|| (mod == 0 && MODRM_M(modrm) == 5)) /* special case: immediate disp32 */ \
+					|| (mod == 0 && GET_MODRM_RM(modrm) == 5)) /* special case: immediate disp32 */ \
 				{ \
 					base_addr = *(uint32_t *)&code[prefix_end + inst_len + sib]; \
 					addr_bytes = 4; \
 				} \
 				base_addr += tls_addr; \
-				if (mod == 0 && MODRM_M(modrm) == 5) /* special case: immediate disp32 */ \
+				if (mod == 0 && GET_MODRM_RM(modrm) == 5) /* special case: immediate disp32 */ \
 				{ \
 					GEN_BYTE(modrm); \
 					GEN_DWORD(base_addr); \
@@ -561,8 +583,8 @@ int tls_emulation(PCONTEXT context, uint8_t *code)
 
 			/* Copy immediate value */
 			int imm_bytes = desc->imm_bytes;
-			if (imm_bytes == SIZE_DEPENDS_ON_PREFIX)
-				imm_bytes = operand_size_prefix? 2: 4;
+			if (imm_bytes == PREFIX_OPERAND_SIZE)
+				imm_bytes = operand_size / 8;
 			for (int i = 0; i < imm_bytes; i++)
 				GEN_BYTE(code[prefix_end + inst_len + i]);
 
@@ -590,7 +612,7 @@ int tls_emulation(PCONTEXT context, uint8_t *code)
 		}
 
 		case INST_TYPE_EXTENSION(5):
-			if (MODRM_CODE(code[prefix_end + inst_len]) == 2)
+			if (GET_MODRM_CODE(code[prefix_end + inst_len]) == 2)
 			{
 				/* CALL r/m16; CALL r/m32; */
 				/* Push return address */
