@@ -38,17 +38,17 @@ struct instruction_desc
 	int read_regs; /* The bitmask of registers which are read from */
 	int write_regs; /* The bitmask of registers which are written to */
 };
-#define INST(x)			{ x },
-#define UNKNOWN()		.type = INST_TYPE_UNKNOWN,
-#define UNSUPPORTED()	.type = INST_TYPE_UNSUPPORTED,
-#define INVALID()		.type = INST_TYPE_INVALID,
-#define NOP()			.type = INST_TYPE_NOP,
-#define IMM(i)			.type = INST_TYPE_IMMEDIATE, .imm_bytes = (i),
-#define MODRM(i)		.type = INST_TYPE_MODRM, .imm_bytes = (i),
-#define MOV_MOFFSET()	.type = INST_TYPE_MOV_MOFFSET,
-#define EXTENSION(x)	.type = INST_TYPE_EXTENSION(x),
-#define READ(x)			.read_regs = (x),
-#define WRITE(x)		.write_regs = (x),
+#define INST(...)		{ __VA_ARGS__ },
+#define UNKNOWN()		.type = INST_TYPE_UNKNOWN
+#define UNSUPPORTED()	.type = INST_TYPE_UNSUPPORTED
+#define INVALID()		.type = INST_TYPE_INVALID
+#define NOP()			.type = INST_TYPE_NOP
+#define IMM(i)			.type = INST_TYPE_IMMEDIATE, .imm_bytes = (i)
+#define MODRM(i)		.type = INST_TYPE_MODRM, .imm_bytes = (i)
+#define MOV_MOFFSET()	.type = INST_TYPE_MOV_MOFFSET
+#define EXTENSION(x)	.type = INST_TYPE_EXTENSION(x)
+#define READ(x)			.read_regs = (x)
+#define WRITE(x)		.write_regs = (x)
 
 static const struct instruction_desc one_byte_inst[256] =
 {
@@ -341,8 +341,8 @@ static const struct instruction_desc one_byte_inst[256] =
 	/* 0xD4: INVALID */ INST(INVALID())
 	/* 0xD5: INVALID */ INST(INVALID())
 #else
-	/* 0xD4: AAM */ INST(IMM(1), READ(REG_A), WRITE(REG_A))
-	/* 0xD5: AAD */ INST(IMM(1), READ(REG_A), WRITE(REG_A))
+	/* 0xD4: AAM */ INST(IMM(1), READ(REG_AX), WRITE(REG_AX))
+	/* 0xD5: AAD */ INST(IMM(1), READ(REG_AX), WRITE(REG_AX))
 #endif
 	/* 0xD6: ??? */ INST(UNKNOWN())
 	/* 0xD7: XLAT */ INST(UNSUPPORTED())
