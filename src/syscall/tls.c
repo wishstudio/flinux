@@ -567,8 +567,11 @@ int tls_emulation(PCONTEXT context, uint8_t *code)
 
 		switch (desc->type)
 		{
-		case INST_TYPE_NOP: return 0;
+		case INST_TYPE_NOP: log_error("The opcode contains no interested memory references.\n"); return 0;
+		case INST_TYPE_IMMEDIATE: log_error("The opcode contains no interested memory references.\n"); return 0;
 		case INST_TYPE_UNKNOWN: log_error("Unknown opcode.\n"); return 0;
+		case INST_TYPE_INVALID: log_error("Invalid opcode.\n"); return 0;
+		case INST_TYPE_UNSUPPORTED: log_error("Unsupported opcode.\n"); return 0;
 		case INST_TYPE_MODRM:
 		{
 			/* Generate equivalent trampoline code by patch ModR/M */

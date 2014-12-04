@@ -319,8 +319,8 @@ static const struct instruction_desc one_byte_inst[256] =
 	/* 0xC4: LES r?, m16:? */ INST(UNSUPPORTED())
 	/* 0xC5: LDS r?, m16:? */ INST(UNSUPPORTED())
 #endif
-	/* 0xC6: 0/MOV r/m8, imm8 */ INST(IMM(1), WRITE(MODRM_RM))
-	/* 0xC7: 0/MOV r/m?, imm? */ INST(IMM(PREFIX_OPERAND_SIZE), WRITE(MODRM_RM))
+	/* 0xC6: 0/MOV r/m8, imm8 */ INST(MODRM(1), WRITE(MODRM_RM))
+	/* 0xC7: 0/MOV r/m?, imm? */ INST(MODRM(PREFIX_OPERAND_SIZE), WRITE(MODRM_RM))
 	/* 0xC8: ENTER */ INST(UNSUPPORTED())
 	/* 0xC9: LEAVE */ INST(NOP(), READ(REG_BP), WRITE(REG_BP | REG_SP))
 	/* 0xCA: RET FAR imm16 */ INST(IMM(2))
