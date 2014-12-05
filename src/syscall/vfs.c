@@ -1159,11 +1159,6 @@ DEFINE_SYSCALL(poll, struct pollfd *, fds, int, nfds, int, timeout)
 	return num_result;
 }
 
-#define FD_ZERO(nfds, set) memset((set)->fds_bits, 0, ((nfds) + FD_BITPERLONG) / FD_BITPERLONG)
-#define FD_CLR(fd, set) (set)->fds_bits[(fd) / FD_BITPERLONG] &= ~(1 << ((fd) % FD_BITPERLONG))
-#define FD_SET(fd, set) (set)->fds_bits[(fd) / FD_BITPERLONG] |= 1 << ((fd) % FD_BITPERLONG)
-#define FD_ISSET(fd, set) (((set)->fds_bits[(fd) / FD_BITPERLONG] >> ((fd) % FD_BITPERLONG)) & 1)
-
 DEFINE_SYSCALL(select, int, nfds, struct fdset *, readfds, struct fdset *, writefds, struct fdset *, exceptfds, struct timeval *, timeout)
 {
 	log_info("select(%d, 0x%p, 0x%p, 0x%p, 0x%p)\n", nfds, readfds, writefds, exceptfds, timeout);
@@ -1182,11 +1177,11 @@ DEFINE_SYSCALL(select, int, nfds, struct fdset *, readfds, struct fdset *, write
 	for (int i = 0; i < nfds; i++)
 	{
 		int events = 0;
-		if (readfds && FD_ISSET(i, readfds))
+		if (readfds && LINUX_FD_ISSET(i, readfds))
 			events |= POLLIN;
-		if (writefds && FD_ISSET(i, writefds))
+		if (writefds && LINUX_FD_ISSET(i, writefds))
 			events |= POLLOUT;
-		if (exceptfds && FD_ISSET(i, exceptfds))
+		if (exceptfds && LINUX_FD_ISSET(i, exceptfds))
 			events |= POLLERR;
 		if (events)
 		{
@@ -1199,19 +1194,19 @@ DEFINE_SYSCALL(select, int, nfds, struct fdset *, readfds, struct fdset *, write
 	if (r <= 0)
 		return r;
 	if (readfds)
-		FD_ZERO(nfds, readfds);
+		LINUX_FD_ZERO(nfds, readfds);
 	if (writefds)
-		FD_ZERO(nfds, writefds);
+		LINUX_FD_ZERO(nfds, writefds);
 	if (exceptfds)
-		FD_ZERO(nfds, exceptfds);
+		LINUX_FD_ZERO(nfds, exceptfds);
 	for (int i = 0; i < nfds; i++)
 	{
 		if (readfds && (fds[i].revents & POLLIN))
-			FD_SET(i, readfds);
+			LINUX_FD_SET(i, readfds);
 		if (writefds && (fds[i].revents & POLLOUT))
-			FD_SET(i, writefds);
+			LINUX_FD_SET(i, writefds);
 		if (exceptfds && (fds[i].revents & POLLERR))
-			FD_SET(i, exceptfds);
+			LINUX_FD_SET(i, exceptfds);
 	}
 	return r;
 }
