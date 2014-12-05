@@ -468,11 +468,6 @@ int tls_emulation(PCONTEXT context, uint8_t *code)
 			rex = code[prefix_end];
 		}
 #endif
-		int operand_size = (operand_size_prefix)? 16: 32;
-#ifdef _WIN64
-		if ((rex & 0x08) > 0)
-			operand_size = 64;
-#endif
 
 		struct instruction_desc *desc;
 		int inst_len;
@@ -574,7 +569,7 @@ int tls_emulation(PCONTEXT context, uint8_t *code)
 		case INST_TYPE_UNSUPPORTED: log_error("Unsupported opcode.\n"); return 0;
 		case INST_TYPE_MODRM:
 		{
-			/* Generate equivalent trampoline code by patch ModR/M */
+			/* Generate equivalent trampoline code by patching ModR/M */
 			COPY_PREFIX();
 
 			/* Copy opcode */
@@ -587,7 +582,21 @@ int tls_emulation(PCONTEXT context, uint8_t *code)
 			/* Copy immediate value */
 			int imm_bytes = desc->imm_bytes;
 			if (imm_bytes == PREFIX_OPERAND_SIZE)
-				imm_bytes = operand_size / 8;
+			{
+				imm_bytes = operand_size_prefix? 2: 4;
+#ifdef _WIN64
+				if ((rex & 0x08) > 0)
+					imm_bytes = 4;
+#endif
+			}
+			else if (imm_bytes == PREFIX_OPERAND_SIZE_64)
+			{
+				imm_bytes = operand_size_prefix? 2: 4;
+#ifdef _WIN64
+				if ((rex & 0x08) > 0)
+					imm_bytes = 4;
+#endif
+			}
 			for (int i = 0; i < imm_bytes; i++)
 				GEN_BYTE(code[prefix_end + inst_len + i]);
 

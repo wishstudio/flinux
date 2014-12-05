@@ -120,7 +120,7 @@ void *kmalloc(int size)
 void kfree(void *mem, int size)
 {
 	/* Find memory bucket */
-	void *bucket_addr = (uint32_t) mem & 0xFFFF0000;
+	void *bucket_addr = (void *)((size_t) mem & (-PAGE_SIZE));
 
 	/* Find pool */
 	int p = -1;
