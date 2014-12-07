@@ -332,6 +332,216 @@ static int handle_mov_gs_reg(PCONTEXT context, uint8_t modrm)
 #define GET_MODRM_R(c)		(((c) >> 3) & 7)
 #define GET_MODRM_RM(c)		((c) & 7)
 #define GET_MODRM_CODE(c)	GET_MODRM_R(c)
+
+#define GET_SIB_SCALE(s)	((s) >> 6)
+#define GET_SIB_INDEX(s)	(((s) >> 3) & 7)
+#define GET_SIB_BASE(s)		((s) & 7)
+
+#define GET_REX_W(r)		(((r) >> 3) & 1)
+#define GET_REX_R(r)		(((r) >> 2) & 1)
+#define GET_REX_X(r)		(((r) >> 1) & 1)
+#define GET_REX_B(r)		(r & 1)
+
+#ifdef _WIN64
+#define MODRM_RIP_RELATIVE	1
+#else
+#define MODRM_RIP_RELATIVE	0
+#endif
+/* Return bytes of ModR/M + SIB + disp, 0 on failure */
+int process_modrm(uint8_t *code, int rex, int *reg, int *base, int *index, int *scale, int32_t *disp, int *flags)
+{
+	*flags = 0;
+	uint8_t modrm = code[0];
+	*reg = GET_MODRM_R(modrm);
+	int mod = GET_MODRM_MOD(modrm);
+	if (mod == 3)
+	{
+		log_error("ModR/M: Pure register access.\n");
+		return 0;
+	}
+	int sib_bytes = 0;
+	int rm = GET_MODRM_RM(modrm);
+	if (rm == 4)
+	{
+		/* ModR/M with SIB byte */
+		sib_bytes = 1;
+		int sib = code[1];
+		*scale = GET_SIB_SCALE(sib);
+		if ((*index = GET_SIB_INDEX(sib)) == 4)
+			*index = -1;
+		else if (GET_REX_X(rex))
+			*index += 4;
+		if ((*base = GET_SIB_BASE(sib)) == 5 && mod == 0)
+			*base = 0;
+		else if (GET_REX_B(rex))
+			*base += 4;
+	}
+	else
+	{
+		/* ModR/M without SIB byte */
+		*index = -1;
+		*scale = 0;
+		if (mod == 0 && rm == 5) /* disp32 */
+		{
+			*base = -1;
+			*disp = *(int32_t *)&code[1];
+			*flags |= MODRM_RIP_RELATIVE;
+			return 5;
+		}
+		if (GET_REX_B(rex))
+			*base = rm + 4;
+		else
+			*base = rm;
+	}
+	/* Displacement */
+	if (mod == 1) /* disp8 */
+	{
+		*disp = *(int8_t *)&code[sib_bytes + 1];
+		return sib_bytes + 2;
+	}
+	else if (mod == 2) /* disp32 */
+	{
+		*disp = *(int32_t *)&code[sib_bytes + 1];
+		return sib_bytes + 5;
+	}
+	else /* no disp */
+	{
+		*disp = 0;
+		return sib_bytes + 1;
+	}
+}
+
+static __forceinline void gen_byte(uint8_t **trampoline, uint8_t x)
+{
+	*(*trampoline)++ = x;
+}
+
+static __forceinline void gen_word(uint8_t **trampoline, uint16_t x)
+{
+	*(uint16_t *)(*trampoline) = x;
+	*trampoline += 2;
+}
+
+static __forceinline void gen_dword(uint8_t **trampoline, uint32_t x)
+{
+	*(uint32_t *)(*trampoline) = x;
+	*trampoline += 4;
+}
+
+static __forceinline void gen_qword(uint8_t **trampoline, uint64_t x)
+{
+	*(uint64_t *)(*trampoline) = x;
+	*trampoline += 8;
+}
+
+static __forceinline void gen_copy(uint8_t **trampoline, uint8_t *code, int count)
+{
+	for (int i = 0; i < count; i++)
+		gen_byte(trampoline, *code++);
+}
+
+static __forceinline void gen_copy_prefix(uint8_t **trampoline, uint8_t *code, int count)
+{
+#ifdef _WIN64
+#define TLS_OVERRIDE_CODE 0x64 /* FS */
+#else
+#define TLS_OVERRIDE_CODE 0x65 /* GS */
+#endif
+	for (int i = 0; i < count; i++)
+		if (*code != TLS_OVERRIDE_CODE)
+			gen_byte(trampoline, *code++);
+		else
+			code++;
+}
+
+static __forceinline void gen_epilogue(uint8_t **trampoline, size_t return_addr)
+{
+#ifdef _WIN64
+	gen_byte(trampoline, 0xFF); /* FF /4: JMP r/m64 */
+	gen_modrm(trampoline, 0, 4, 5); /* RIP relative disp32 */
+	gen_dword(0);
+	gen_qword(return_addr);
+#else
+	gen_byte(trampoline, 0x68); /* PUSH imm32 */
+	gen_dword(trampoline, return_addr);
+	gen_byte(trampoline, 0xC3); /* RET */
+#endif
+}
+
+static __forceinline void gen_rex(uint8_t **trampoline, int w, int r, int x, int b)
+{
+	gen_byte(trampoline, 0x40 + (w << 3) + (r << 2) + (x << 1) + b);
+}
+
+static __forceinline void gen_modrm(uint8_t **trampoline, int mod, int r, int rm)
+{
+	gen_byte(trampoline, (mod << 6) + (r << 3) + rm);
+}
+
+static __forceinline void gen_sib(uint8_t **trampoline, int base, int index, int scale)
+{
+	gen_byte(trampoline, (scale << 6) + (index << 3) + base);
+}
+
+static __forceinline void gen_inst_modrm(uint8_t **trampoline, uint8_t *opcode, int opcode_bytes,
+	int rex_w, int reg, int base, int index, int scale, int32_t disp, int flags)
+{
+	if (index == 4)
+	{
+		log_error("gen_modrm(): rsp or r12 cannot be used as an index register.\n");
+		return;
+	}
+#ifdef _WIN64
+	int rex_r = 0, rex_x = 0, rex_b = 0;
+	if (reg >= 4)
+	{
+		rex_r = 1;
+		reg -= 4;
+	}
+	if (base >= 4)
+	{
+		rex_b = 1;
+		base -= 4;
+	}
+	if (index >= 4)
+	{
+		rex_x = 1;
+		index -= 4;
+	}
+	gen_rex(trampoline, rex_w, rex_r, rex_x, rex_b);
+#endif
+	for (int i = 0; i < opcode_bytes; i++)
+		gen_byte(trampoline, *opcode++);
+	/* TODO: Shall we support disp8? */
+	if (base == -1 && index == -1) /* disp32 */
+	{
+#ifdef _WIN64
+		if (flags & MODRM_RIP_RELATIVE)
+			gen_modrm(trampoline, 0, reg, 5);
+		else
+		{
+			gen_modrm(trampoline, 0, reg, 4);
+			gen_sib(trampoline, 5, 4, 0);
+		}
+#else
+		gen_modrm(trampoline, 0, reg, 5);
+#endif
+		gen_dword(trampoline, disp);
+	}
+	else if (base == -1 || base == 4) /* SIB required */
+	{
+		gen_modrm(trampoline, 2, reg, 4);
+		gen_sib(trampoline, base, index, scale);
+		gen_dword(trampoline, disp);
+	}
+	else
+	{
+		/* SIB not needed */
+		gen_modrm(trampoline, 2, reg, base);
+		gen_dword(trampoline, disp);
+	}
+}
+
 int tls_emulation(PCONTEXT context, uint8_t *code)
 {
 	log_info("TLS Emulation begin.\n");
@@ -491,74 +701,11 @@ int tls_emulation(PCONTEXT context, uint8_t *code)
 		size_t tls_addr = TlsGetValue(gs_value);
 #endif
 
-		int idx = 0;
-		#define JUMP_TO_TRAMPOLINE() \
-			context->Xip = tls->trampoline; \
-			log_info("Building trampoline successfully at %p\n", tls->trampoline)
-		#define GEN_BYTE(x)		tls->trampoline[idx++] = (x)
-		#define GEN_WORD(x)		*(uint16_t *)&tls->trampoline[(idx += 2) - 2] = (x)
-		#define GEN_DWORD(x)	*(uint32_t *)&tls->trampoline[(idx += 4) - 4] = (x)
-		#define GEN_QWORD(x)	*(uint64_t *)&tls->trampoline[(idx += 8) - 8] = (x)
-		#define PATCH_DWORD(idx, x)		*(uint32_t *)&tls->trampoline[idx] = (x)
-		#define PATCH_QWORD(idx, x)		*(uint64_t *)&tls->trampoline[idx] = (x)
-		#ifdef _WIN64
-		#define TLS_OVERRIDE_CODE 0x64 /* FS */
-		#else
-		#define TLS_OVERRIDE_CODE 0x65 /* GS */
-		#endif
-		#define COPY_PREFIX() \
-			/* Copy prefixes */ \
-			for (int i = 0; i < prefix_end; i++) \
-				if (code[i] == TLS_OVERRIDE_CODE) /* Skip TLS segment override */ \
-					continue; \
-				else \
-					GEN_BYTE(code[i])
-		#define GEN_EPILOGUE(inst_len) \
-			GEN_BYTE(0x68); /* PUSH imm32 */ \
-			GEN_DWORD(context->Xip + prefix_end + (inst_len)); \
-			GEN_BYTE(0xC3); /* RET */
-		#define GEN_MODRM_R(changed_r) \
-			{ \
-				uint8_t modrm = code[prefix_end + inst_len]; \
-				if (changed_r != -1) \
-					modrm = (modrm & 0xC7) | (changed_r << 3);; \
-				uint8_t mod = GET_MODRM_MOD(modrm); \
-				if (mod == 3) \
-				{ \
-					log_warning("ModR/M: Pure register access."); \
-					return 0; \
-				} \
-				inst_len++; \
-				int sib = (GET_MODRM_RM(modrm) == 4); \
-				int addr_bytes = 0; \
-				uint32_t base_addr = 0; \
-				if (mod == 1) /* disp8 (sign-extended) */ \
-				{ \
-					base_addr = (int8_t)code[prefix_end + inst_len + sib]; \
-					addr_bytes = 1; \
-				} \
-				else if (mod == 2 /* disp32 */ \
-					|| (mod == 0 && GET_MODRM_RM(modrm) == 5)) /* special case: immediate disp32 */ \
-				{ \
-					base_addr = *(uint32_t *)&code[prefix_end + inst_len + sib]; \
-					addr_bytes = 4; \
-				} \
-				base_addr += tls_addr; \
-				if (mod == 0 && GET_MODRM_RM(modrm) == 5) /* special case: immediate disp32 */ \
-				{ \
-					GEN_BYTE(modrm); \
-					GEN_DWORD(base_addr); \
-				} \
-				else \
-				{ \
-					GEN_BYTE((modrm & 0x3F) | 0x80); /* Mod == 10: [...] + disp32 */ \
-					if (sib) \
-						GEN_BYTE(code[prefix_end + inst_len]); \
-					GEN_DWORD(base_addr); \
-				} \
-				inst_len += sib + addr_bytes; \
-			}
-		#define GEN_MODRM() GEN_MODRM_R(-1)
+		#define FINISH_TRAMPOLINE() \
+			do { \
+				context->Xip = tls->trampoline; \
+				log_info("Building trampoline successfully at %p\n", tls->trampoline); \
+			} while (0)
 
 		switch (desc->type)
 		{
@@ -569,17 +716,6 @@ int tls_emulation(PCONTEXT context, uint8_t *code)
 		case INST_TYPE_UNSUPPORTED: log_error("Unsupported opcode.\n"); return 0;
 		case INST_TYPE_MODRM:
 		{
-			/* Generate equivalent trampoline code by patching ModR/M */
-			COPY_PREFIX();
-
-			/* Copy opcode */
-			for (int i = prefix_end; i < prefix_end + inst_len; i++)
-				GEN_BYTE(code[i]);
-
-			/* Patch ModR/M */
-			GEN_MODRM();
-
-			/* Copy immediate value */
 			int imm_bytes = desc->imm_bytes;
 			if (imm_bytes == PREFIX_OPERAND_SIZE)
 			{
@@ -597,16 +733,70 @@ int tls_emulation(PCONTEXT context, uint8_t *code)
 					imm_bytes = 4;
 #endif
 			}
-			for (int i = 0; i < imm_bytes; i++)
-				GEN_BYTE(code[prefix_end + inst_len + i]);
+			int reg, base, index, scale, flags, modrm_bytes;
+			int32_t disp;
+			if (!(modrm_bytes = process_modrm(&code[prefix_end + inst_len], rex, &reg, &base, &index, &scale, &disp, &flags)))
+				return 0;
 
-			GEN_EPILOGUE(inst_len + imm_bytes);
-			JUMP_TO_TRAMPOLINE();
+#ifdef _WIN64
+			/* x64 does not support 64bit offsets in ModR/M
+			 * Thus we have to store the computed address in a temporary register
+			 */
+			/* Calculate used registers in this instruction */
+			int used_regs = desc->read_regs | desc->write_regs;
+			if (reg != -1)
+				used_regs |= REG_MASK(reg);
+			if (base != -1)
+				used_regs |= REG_MASK(base);
+			if (index != -1)
+				used_regs |= REG_MASK(index);
+
+			/* Find an unused register to hold the temporary address */
+			int temp_reg = -1;
+			DWORD64 saved_value;
+			#define TEST_REG(r, name) do { \
+				if ((used_regs & REG_MASK(r)) == 0) { temp_reg = r; saved_value = context->name; } \
+			} while (0)
+			TEST_REG(0, Rax);
+			TEST_REG(1, Rcx);
+			TEST_REG(2, Rdx);
+			TEST_REG(3, Rbx);
+			TEST_REG(6, Rsi);
+			TEST_REG(7, Rdi);
+			#undef TEST_REG
+			if (temp_reg == -1)
+			{
+				log_error("No usable temporary register found, there must be a bug in our implementation.\n");
+				return 0;
+			}
+
+			/* TODO */
+			/* mov Rxx, <fs base addr> */
+
+			/* lea Rxx, [Rxx + base reg] */
+
+			/* <inst> ... [Rxx + index * scale + disp] ... */
+
+			/* mov Rxx, <saved value> */
+
+			FINISH_TRAMPOLINE();
+#else
+			/* Generate equivalent trampoline code by patching ModR/M */
+			uint8_t *t = tls->trampoline;
+			uint8_t **trampoline = &t;
+			gen_copy_prefix(trampoline, code, prefix_end);
+			gen_inst_modrm(trampoline, code + prefix_end, inst_len, 0, reg, base, index, scale, disp + tls_addr, flags);
+			gen_copy(trampoline, code + prefix_end + inst_len + modrm_bytes, imm_bytes);
+			gen_epilogue(trampoline, code + prefix_end + inst_len + modrm_bytes + imm_bytes);
+
+			FINISH_TRAMPOLINE();
+#endif
 			return 1;
 		}
 
 		case INST_TYPE_MOV_MOFFSET:
 		{
+#ifndef _WIN64
 			/* MOV AL, moffs8 */
 			/* MOV AX, moffs16 */
 			/* MOV EAX, moffs32 */
@@ -614,32 +804,44 @@ int tls_emulation(PCONTEXT context, uint8_t *code)
 			/* MOV moffs16, AX */
 			/* MOV moffs32, EAX */
 			/* TODO: Deal with address_size_prefix when we support it */
+			uint8_t *t = tls->trampoline;
+			uint8_t **trampoline = &t;
 			uint32_t addr = tls_addr + LOW32(code[prefix_end + 1]);
-			COPY_PREFIX();
-			GEN_BYTE(code[prefix_end]);
-			GEN_DWORD(addr);
-			GEN_EPILOGUE(5);
-			JUMP_TO_TRAMPOLINE();
+			gen_copy_prefix(trampoline, code, prefix_end);
+			gen_byte(trampoline, code[prefix_end]);
+			gen_dword(trampoline, addr);
+			gen_epilogue(trampoline, code + prefix_end + 5);
+
+			FINISH_TRAMPOLINE();
 			return 1;
+#endif
 		}
 
 		case INST_TYPE_EXTENSION(5):
+#ifndef _WIN64
 			if (GET_MODRM_CODE(code[prefix_end + inst_len]) == 2)
 			{
+				int reg, base, index, scale, flags, modrm_bytes;
+				int32_t disp;
+				if (!(modrm_bytes = process_modrm(&code[prefix_end + inst_len], rex, &reg, &base, &index, &scale, &disp, &flags)))
+					return 0;
+
+				uint8_t *t = tls->trampoline;
+				uint8_t **trampoline = &t;
+
 				/* CALL r/m16; CALL r/m32; */
 				/* Push return address */
-				GEN_BYTE(0x68); /* PUSH imm32 */
-				int patch_idx = idx;
-				GEN_DWORD(0); /* Patch later */
-				COPY_PREFIX();
+				gen_byte(trampoline, 0x68); /* PUSH imm32 */
+				gen_dword(trampoline, code + prefix_end + inst_len + modrm_bytes); /* Return address */
+				gen_copy_prefix(trampoline, code, prefix_end);
 				/* Change to JMP r/m16; JMP r/m32; */
-				GEN_BYTE(0xFF);
-				GEN_MODRM_R(4);
-				/* Patch return address */
-				PATCH_DWORD(patch_idx, context->Xip + prefix_end + (inst_len));
-				JUMP_TO_TRAMPOLINE();
+				char opcode = 0xFF;
+				gen_inst_modrm(trampoline, &opcode, 1, 0, 4, base, index, scale, disp + tls_addr, flags);
+
+				FINISH_TRAMPOLINE();
 				return 1;
 			}
+#endif
 			/* Fall through */
 
 		default: log_error("Unhandled instruction type: %d\n", desc->type); return 0;

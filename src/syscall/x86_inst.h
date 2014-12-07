@@ -24,6 +24,7 @@
 #define REG_R13			0x00002000 /* R13L, R13W, R13D, R13 register */
 #define REG_R14			0x00004000 /* R14L, R14W, R14D, R14 register */
 #define REG_R15			0x00008000 /* R15L, R15W, R15D, R15 register */
+#define REG_MASK(r)		(1 << (r)) /* Generate a mask from a numeric register id */
 #define MODRM_R			0x01000000 /* R field of ModR/M */
 #define MODRM_RM_R		0x02000000 /* Register type of ModR/M R/M field */
 #define MODRM_RM_M		0x04000000 /* Memory type of ModR/M R/M field */
