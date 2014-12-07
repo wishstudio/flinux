@@ -353,6 +353,8 @@ int process_modrm(uint8_t *code, int rex, int *reg, int *base, int *index, int *
 	*flags = 0;
 	uint8_t modrm = code[0];
 	*reg = GET_MODRM_R(modrm);
+	if (GET_REX_R(rex))
+		*reg += 8;
 	int mod = GET_MODRM_MOD(modrm);
 	if (mod == 3)
 	{
@@ -370,11 +372,14 @@ int process_modrm(uint8_t *code, int rex, int *reg, int *base, int *index, int *
 		if ((*index = GET_SIB_INDEX(sib)) == 4)
 			*index = -1;
 		else if (GET_REX_X(rex))
-			*index += 4;
+			*index += 8;
 		if ((*base = GET_SIB_BASE(sib)) == 5 && mod == 0)
-			*base = 0;
+		{
+			*base = -1;
+			mod = 2; /* For use later to correctly extract disp32 */
+		}
 		else if (GET_REX_B(rex))
-			*base += 4;
+			*base += 8;
 	}
 	else
 	{
@@ -389,7 +394,7 @@ int process_modrm(uint8_t *code, int rex, int *reg, int *base, int *index, int *
 			return 5;
 		}
 		if (GET_REX_B(rex))
-			*base = rm + 4;
+			*base = rm + 8;
 		else
 			*base = rm;
 	}
@@ -454,20 +459,6 @@ static __forceinline void gen_copy_prefix(uint8_t **trampoline, uint8_t *code, i
 			code++;
 }
 
-static __forceinline void gen_epilogue(uint8_t **trampoline, uint8_t *return_addr)
-{
-#ifdef _WIN64
-	gen_byte(trampoline, 0xFF); /* FF /4: JMP r/m64 */
-	gen_modrm(trampoline, 0, 4, 5); /* RIP relative disp32 */
-	gen_dword(trampoline, 0);
-	gen_qword(trampoline, (uint64_t)return_addr);
-#else
-	gen_byte(trampoline, 0x68); /* PUSH imm32 */
-	gen_dword(trampoline, (uint32_t)return_addr);
-	gen_byte(trampoline, 0xC3); /* RET */
-#endif
-}
-
 static __forceinline void gen_rex(uint8_t **trampoline, int w, int r, int x, int b)
 {
 	gen_byte(trampoline, 0x40 + (w << 3) + (r << 2) + (x << 1) + b);
@@ -483,6 +474,20 @@ static __forceinline void gen_sib(uint8_t **trampoline, int base, int index, int
 	gen_byte(trampoline, (scale << 6) + (index << 3) + base);
 }
 
+static __forceinline void gen_epilogue(uint8_t **trampoline, uint8_t *return_addr)
+{
+#ifdef _WIN64
+	gen_byte(trampoline, 0xFF); /* FF /4: JMP r/m64 */
+	gen_modrm(trampoline, 0, 4, 5); /* RIP relative disp32 */
+	gen_dword(trampoline, 0);
+	gen_qword(trampoline, (uint64_t)return_addr);
+#else
+	gen_byte(trampoline, 0x68); /* PUSH imm32 */
+	gen_dword(trampoline, (uint32_t)return_addr);
+	gen_byte(trampoline, 0xC3); /* RET */
+#endif
+}
+
 static __forceinline void gen_inst_modrm(uint8_t **trampoline, uint8_t *opcode, int opcode_bytes,
 	int rex_w, int reg, int base, int index, int scale, int32_t disp, int flags)
 {
@@ -492,23 +497,26 @@ static __forceinline void gen_inst_modrm(uint8_t **trampoline, uint8_t *opcode, 
 		return;
 	}
 #ifdef _WIN64
-	int rex_r = 0, rex_x = 0, rex_b = 0;
-	if (reg >= 4)
+	if (rex_w != -1) /* rex_w == 1 means no rex prefix */
 	{
-		rex_r = 1;
-		reg -= 4;
+		int rex_r = 0, rex_x = 0, rex_b = 0;
+		if (reg >= 8)
+		{
+			rex_r = 1;
+			reg -= 8;
+		}
+		if (base >= 8)
+		{
+			rex_b = 1;
+			base -= 8;
+		}
+		if (index >= 8)
+		{
+			rex_x = 1;
+			index -= 8;
+		}
+		gen_rex(trampoline, rex_w, rex_r, rex_x, rex_b);
 	}
-	if (base >= 4)
-	{
-		rex_b = 1;
-		base -= 4;
-	}
-	if (index >= 4)
-	{
-		rex_x = 1;
-		index -= 4;
-	}
-	gen_rex(trampoline, rex_w, rex_r, rex_x, rex_b);
 #endif
 	for (int i = 0; i < opcode_bytes; i++)
 		gen_byte(trampoline, *opcode++);
@@ -528,7 +536,13 @@ static __forceinline void gen_inst_modrm(uint8_t **trampoline, uint8_t *opcode, 
 #endif
 		gen_dword(trampoline, disp);
 	}
-	else if (base == -1 || base == 4) /* SIB required */
+	else if (base == -1) /* [scaled index] + disp32 */
+	{
+		gen_modrm(trampoline, 0, reg, 4);
+		gen_sib(trampoline, 5, index, scale);
+		gen_dword(trampoline, disp);
+	}
+	else if (base == 4) /* SIB required */
 	{
 		gen_modrm(trampoline, 2, reg, 4);
 		gen_sib(trampoline, base, index, scale);
@@ -674,11 +688,13 @@ int tls_emulation(PCONTEXT context, uint8_t *code)
 
 		uint8_t *opcode = prefix + prefix_len;
 		int rex = 0;
+		int rex_w = -1;
 #ifdef _WIN64
 		if (*opcode >= 0x40 && *opcode <= 0x4F) /* REX Prefix */
 		{
 			log_info("Found rex prefix.\n");
 			rex = *opcode++;
+			rex_w = GET_REX_W(rex);
 		}
 #endif
 
@@ -761,6 +777,11 @@ int tls_emulation(PCONTEXT context, uint8_t *code)
 				used_regs |= REG_MASK(index);
 
 			/* Find an unused register to hold the temporary address */
+			/* We need to be careful here because the accessible register file is different when switching
+			 * rex prefix on and off (AH/SPL, CH/BPL, DH/SIL, BH/DIL stuff).
+			 * So we must ensure that we won't change the status of the rex prefix. Thus we cannot use
+			 * the extended registers R8-R15
+			 */
 			int temp_reg = -1;
 			DWORD64 saved_value;
 			#define TEST_REG(r, name) do { \
@@ -779,20 +800,36 @@ int tls_emulation(PCONTEXT context, uint8_t *code)
 				return 0;
 			}
 
-			/* TODO */
 			/* mov Rxx, <fs base addr> */
+			gen_rex(trampoline, 1, 0, 0, 0);
+			gen_byte(trampoline, 0xB8 + temp_reg); /* MOV r64, imm64 */
+			gen_qword(trampoline, tls_addr);
 
 			/* lea Rxx, [Rxx + base reg] */
+			if (base != -1)
+			{
+				char inst = 0x8D; /* LEA r64, m*/
+				gen_inst_modrm(trampoline, &inst, 1, 1, temp_reg, temp_reg, base, 0, 0, 0);
+			}
 
 			/* <inst> ... [Rxx + index * scale + disp] ... */
+			gen_copy_prefix(trampoline, prefix, prefix_len);
+			gen_inst_modrm(trampoline, opcode, opcode_len, rex_w, reg, temp_reg, index, scale, disp, flags);
+			gen_copy(trampoline, operand + modrm_bytes, imm_bytes);
 
 			/* mov Rxx, <saved value> */
+			gen_rex(trampoline, 1, 0, 0, 0);
+			gen_byte(trampoline, 0xB8 + temp_reg); /* MOV r64, imm64 */
+			gen_qword(trampoline, saved_value);
+
+			/* epilogue */
+			gen_epilogue(trampoline, operand + modrm_bytes + imm_bytes);
 
 			FINISH_TRAMPOLINE();
 #else
 			/* Generate equivalent trampoline code by patching ModR/M */
 			gen_copy_prefix(trampoline, prefix, prefix_len);
-			gen_inst_modrm(trampoline, opcode, opcode_len, 0, reg, base, index, scale, disp + tls_addr, flags);
+			gen_inst_modrm(trampoline, opcode, opcode_len, -1, reg, base, index, scale, disp + tls_addr, flags);
 			gen_copy(trampoline, operand + modrm_bytes, imm_bytes);
 			gen_epilogue(trampoline, operand + modrm_bytes + imm_bytes);
 
@@ -803,7 +840,9 @@ int tls_emulation(PCONTEXT context, uint8_t *code)
 
 		case INST_TYPE_MOV_MOFFSET:
 		{
-#ifndef _WIN64
+#ifdef _WIN64
+			__debugbreak();
+#else
 			/* MOV AL, moffs8 */
 			/* MOV AX, moffs16 */
 			/* MOV EAX, moffs32 */
@@ -823,7 +862,9 @@ int tls_emulation(PCONTEXT context, uint8_t *code)
 		}
 
 		case INST_TYPE_EXTENSION(5):
-#ifndef _WIN64
+#ifdef _WIN64
+			__debugbreak();
+#else
 			if (GET_MODRM_CODE(operand[0]) == 2)
 			{
 				int reg, base, index, scale, flags, modrm_bytes;
@@ -837,8 +878,8 @@ int tls_emulation(PCONTEXT context, uint8_t *code)
 				gen_dword(trampoline, operand + modrm_bytes); /* Return address */
 				gen_copy_prefix(trampoline, prefix, prefix_len);
 				/* Change to JMP r/m16; JMP r/m32; */
-				char opcode = 0xFF;
-				gen_inst_modrm(trampoline, &opcode, 1, 0, 4, base, index, scale, disp + tls_addr, flags);
+				char inst = 0xFF;
+				gen_inst_modrm(trampoline, &inst, 1, -1, 4, base, index, scale, disp + tls_addr, flags);
 
 				FINISH_TRAMPOLINE();
 				return 1;
