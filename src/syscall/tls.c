@@ -454,16 +454,16 @@ static __forceinline void gen_copy_prefix(uint8_t **trampoline, uint8_t *code, i
 			code++;
 }
 
-static __forceinline void gen_epilogue(uint8_t **trampoline, size_t return_addr)
+static __forceinline void gen_epilogue(uint8_t **trampoline, uint8_t *return_addr)
 {
 #ifdef _WIN64
 	gen_byte(trampoline, 0xFF); /* FF /4: JMP r/m64 */
 	gen_modrm(trampoline, 0, 4, 5); /* RIP relative disp32 */
-	gen_dword(0);
-	gen_qword(return_addr);
+	gen_dword(trampoline, 0);
+	gen_qword(trampoline, (uint64_t)return_addr);
 #else
 	gen_byte(trampoline, 0x68); /* PUSH imm32 */
-	gen_dword(trampoline, return_addr);
+	gen_dword(trampoline, (uint32_t)return_addr);
 	gen_byte(trampoline, 0xC3); /* RET */
 #endif
 }
@@ -600,63 +600,64 @@ int tls_emulation(PCONTEXT context, uint8_t *code)
 		 * We just loop over the prefixes and ensure it has the GS segment
 		 * override prefix we want.
 		 */
-		int prefix_end = 0, operand_size_prefix = 0, address_size_prefix = 0;
-		int rex = 0;
+		uint8_t *prefix = code;
+		int prefix_len = 0;
+		int operand_size_prefix = 0, address_size_prefix = 0;
 		int found_segment_override = 0;
 		for (;;)
 		{
-			if (code[prefix_end] == 0xF0) /* LOCK */
-				prefix_end++;
-			else if (code[prefix_end] == 0xF2) /* REPNE/REPNZ */
-				prefix_end++;
-			else if (code[prefix_end] == 0xF3) /* REP/REPE/REPZ */
-				prefix_end++;
-			else if (code[prefix_end] == 0x2E) /* CS segment override */
+			if (prefix[prefix_len] == 0xF0) /* LOCK */
+				prefix_len++;
+			else if (prefix[prefix_len] == 0xF2) /* REPNE/REPNZ */
+				prefix_len++;
+			else if (prefix[prefix_len] == 0xF3) /* REP/REPE/REPZ */
+				prefix_len++;
+			else if (prefix[prefix_len] == 0x2E) /* CS segment override */
 			{
 				log_info("Found CS segment override, skipped\n");
 				return 0;
 			}
-			else if (code[prefix_end] == 0x36) /* SS segment override */
+			else if (prefix[prefix_len] == 0x36) /* SS segment override */
 			{
 				log_info("Found SS segment override, skipped\n");
 				return 0;
 			}
-			else if (code[prefix_end] == 0x3E) /* DS segment override */
+			else if (prefix[prefix_len] == 0x3E) /* DS segment override */
 			{
 				log_info("Found DS segment override, skipped\n");
 				return 0;
 			}
-			else if (code[prefix_end] == 0x26) /* ES segment override */
+			else if (prefix[prefix_len] == 0x26) /* ES segment override */
 			{
 				log_info("Found ES segment override, skipped\n");
 				return 0;
 			}
-			else if (code[prefix_end] == 0x64) /* FS segment override */
+			else if (prefix[prefix_len] == 0x64) /* FS segment override */
 			{
 #ifdef _WIN64
-				prefix_end++;
+				prefix_len++;
 				found_segment_override = 1;
 #else
 				log_info("Found FS segment override, skipped\n");
 				return 0;
 #endif
 			}
-			else if (code[prefix_end] == 0x65) /* GS segment override <- we're interested */
+			else if (prefix[prefix_len] == 0x65) /* GS segment override <- we're interested */
 			{
 #ifdef _WIN64
 				log_info("Found GS segment override, skipped\n");
 				return 0;
 #else
-				prefix_end++;
+				prefix_len++;
 				found_segment_override = 1;
 #endif
 			}
-			else if (code[prefix_end] == 0x66) /* Operand size prefix */
+			else if (prefix[prefix_len] == 0x66) /* Operand size prefix */
 			{
 				operand_size_prefix = 1;
-				prefix_end++;
+				prefix_len++;
 			}
-			else if (code[prefix_end] == 0x67) /* Address size prefix */
+			else if (prefix[prefix_len] == 0x67) /* Address size prefix */
 			{
 				address_size_prefix = 1;
 				log_warning("Address size prefix not supported.\n");
@@ -670,29 +671,34 @@ int tls_emulation(PCONTEXT context, uint8_t *code)
 			log_info("Instruction has no gs override.\n");
 			return 0;
 		}
+
+		uint8_t *opcode = prefix + prefix_len;
+		int rex = 0;
 #ifdef _WIN64
-		if (code[prefix_end] >= 0x40 && code[prefix_end] <= 0x4F) /* REX Prefix */
+		if (*opcode >= 0x40 && *opcode <= 0x4F) /* REX Prefix */
 		{
 			log_info("Found rex prefix.\n");
-			prefix_end++;
-			rex = code[prefix_end];
+			rex = *opcode++;
 		}
 #endif
 
 		struct instruction_desc *desc;
-		int inst_len;
-		if (code[prefix_end] == 0x0F)
+		int opcode_len;
+		if (opcode[0] == 0x0F)
 		{
-			log_info("Opcode: 0x0F%02x\n", code[prefix_end + 1]);
-			desc = &two_byte_inst[code[prefix_end + 1]];
-			inst_len = 2;
+			log_info("Opcode: 0x0F%02x\n", opcode[1]);
+			desc = &two_byte_inst[opcode[1]];
+			opcode_len = 2;
 		}
 		else
 		{
-			log_info("Opcode: 0x%02x\n", code[prefix_end]);
-			desc = &one_byte_inst[code[prefix_end]];
-			inst_len = 1;
+			log_info("Opcode: 0x%02x\n", opcode[0]);
+			desc = &one_byte_inst[opcode[0]];
+			opcode_len = 1;
 		}
+
+		uint8_t *operand = opcode + opcode_len;
+
 #ifdef _WIN64
 		size_t tls_addr = TlsGetValue(tls->fs_base_slot);
 #else
@@ -700,6 +706,9 @@ int tls_emulation(PCONTEXT context, uint8_t *code)
 		size_t gs_value = TlsGetValue(tls->gs_slot);
 		size_t tls_addr = TlsGetValue(gs_value);
 #endif
+
+		uint8_t *_temp = tls->trampoline;
+		uint8_t **trampoline = &_temp;
 
 		#define FINISH_TRAMPOLINE() \
 			do { \
@@ -735,7 +744,7 @@ int tls_emulation(PCONTEXT context, uint8_t *code)
 			}
 			int reg, base, index, scale, flags, modrm_bytes;
 			int32_t disp;
-			if (!(modrm_bytes = process_modrm(&code[prefix_end + inst_len], rex, &reg, &base, &index, &scale, &disp, &flags)))
+			if (!(modrm_bytes = process_modrm(operand, rex, &reg, &base, &index, &scale, &disp, &flags)))
 				return 0;
 
 #ifdef _WIN64
@@ -782,12 +791,10 @@ int tls_emulation(PCONTEXT context, uint8_t *code)
 			FINISH_TRAMPOLINE();
 #else
 			/* Generate equivalent trampoline code by patching ModR/M */
-			uint8_t *t = tls->trampoline;
-			uint8_t **trampoline = &t;
-			gen_copy_prefix(trampoline, code, prefix_end);
-			gen_inst_modrm(trampoline, code + prefix_end, inst_len, 0, reg, base, index, scale, disp + tls_addr, flags);
-			gen_copy(trampoline, code + prefix_end + inst_len + modrm_bytes, imm_bytes);
-			gen_epilogue(trampoline, code + prefix_end + inst_len + modrm_bytes + imm_bytes);
+			gen_copy_prefix(trampoline, prefix, prefix_len);
+			gen_inst_modrm(trampoline, opcode, opcode_len, 0, reg, base, index, scale, disp + tls_addr, flags);
+			gen_copy(trampoline, operand + modrm_bytes, imm_bytes);
+			gen_epilogue(trampoline, operand + modrm_bytes + imm_bytes);
 
 			FINISH_TRAMPOLINE();
 #endif
@@ -804,13 +811,11 @@ int tls_emulation(PCONTEXT context, uint8_t *code)
 			/* MOV moffs16, AX */
 			/* MOV moffs32, EAX */
 			/* TODO: Deal with address_size_prefix when we support it */
-			uint8_t *t = tls->trampoline;
-			uint8_t **trampoline = &t;
-			uint32_t addr = tls_addr + LOW32(code[prefix_end + 1]);
-			gen_copy_prefix(trampoline, code, prefix_end);
-			gen_byte(trampoline, code[prefix_end]);
+			uint32_t addr = tls_addr + LOW32(operand[0]);
+			gen_copy_prefix(trampoline, prefix, prefix_len);
+			gen_byte(trampoline, opcode[0]);
 			gen_dword(trampoline, addr);
-			gen_epilogue(trampoline, code + prefix_end + 5);
+			gen_epilogue(trampoline, operand + 4);
 
 			FINISH_TRAMPOLINE();
 			return 1;
@@ -819,21 +824,18 @@ int tls_emulation(PCONTEXT context, uint8_t *code)
 
 		case INST_TYPE_EXTENSION(5):
 #ifndef _WIN64
-			if (GET_MODRM_CODE(code[prefix_end + inst_len]) == 2)
+			if (GET_MODRM_CODE(operand[0]) == 2)
 			{
 				int reg, base, index, scale, flags, modrm_bytes;
 				int32_t disp;
-				if (!(modrm_bytes = process_modrm(&code[prefix_end + inst_len], rex, &reg, &base, &index, &scale, &disp, &flags)))
+				if (!(modrm_bytes = process_modrm(operand, rex, &reg, &base, &index, &scale, &disp, &flags)))
 					return 0;
-
-				uint8_t *t = tls->trampoline;
-				uint8_t **trampoline = &t;
 
 				/* CALL r/m16; CALL r/m32; */
 				/* Push return address */
 				gen_byte(trampoline, 0x68); /* PUSH imm32 */
-				gen_dword(trampoline, code + prefix_end + inst_len + modrm_bytes); /* Return address */
-				gen_copy_prefix(trampoline, code, prefix_end);
+				gen_dword(trampoline, operand + modrm_bytes); /* Return address */
+				gen_copy_prefix(trampoline, prefix, prefix_len);
 				/* Change to JMP r/m16; JMP r/m32; */
 				char opcode = 0xFF;
 				gen_inst_modrm(trampoline, &opcode, 1, 0, 4, base, index, scale, disp + tls_addr, flags);
