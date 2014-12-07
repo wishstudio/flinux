@@ -151,6 +151,7 @@ static const struct instruction_desc one_byte_inst[256] =
 	/* 0x46: REX prefix */ INST(INVALID())
 	/* 0x47: REX prefix */ INST(INVALID())
 	/* 0x48: REX prefix */ INST(INVALID())
+	/* 0x49: REX prefix */ INST(INVALID())
 	/* 0x4A: REX prefix */ INST(INVALID())
 	/* 0x4B: REX prefix */ INST(INVALID())
 	/* 0x4C: REX prefix */ INST(INVALID())
