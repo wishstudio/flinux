@@ -20,6 +20,13 @@ DEFINE_SYSCALL(kill, pid_t, pid, int, sig)
 	return 0;
 }
 
+DEFINE_SYSCALL(tgkill, pid_t, tgid, pid_t, pid, int, sig)
+{
+	log_info("tgkill(%d, %d, %d)\n", tgid, pid, sig);
+	/* TODO */
+	return 0;
+}
+
 DEFINE_SYSCALL(personality, unsigned long, persona)
 {
 	log_info("personality(%d)\n", persona);

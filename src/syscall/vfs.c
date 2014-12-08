@@ -1159,6 +1159,16 @@ DEFINE_SYSCALL(openat, int, dirfd, const char *, pathname, int, flags)
 	return -ENOENT;
 }
 
+DEFINE_SYSCALL(faccessat, int, dirfd, const char *, pathname, int, mode, int, flags)
+{
+	log_info("faccessat(%d, %s, 0x%x, 0x%x\n", dirfd, pathname, mode, flags);
+	if (!mm_check_read_string(pathname))
+		return -EFAULT;
+	/* TODO */
+	log_error("Returning -ENOENT\n");
+	return -ENOENT;
+}
+
 DEFINE_SYSCALL(socket, int, domain, int, type, int, protocol)
 {
 	log_info("socket(%d, %d, %d)\n", domain, type, protocol);
