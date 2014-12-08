@@ -32,3 +32,25 @@
 #define AT_SYMLINK_FOLLOW       0x400   /* Follow symbolic links.  */
 #define AT_NO_AUTOMOUNT         0x800   /* Suppress terminal automount traversal */
 #define AT_EMPTY_PATH           0x1000  /* Allow empty relative pathname */
+
+#define F_DUPFD			0		/* dup */
+#define F_GETFD			1		/* get close_on_exec */
+#define F_SETFD			2		/* set/clear close_on_exec */
+#define F_GETFL			3		/* get file->f_flags */
+#define F_SETFL			4		/* set file->f_flags */
+#define F_GETLK			5
+#define F_SETLK			6
+#define F_SETLKW		7
+#define F_SETOWN		8		/* for sockets. */
+#define F_GETOWN		9		/* for sockets. */
+#define F_SETSIG		10		/* for sockets. */
+#define F_GETSIG		11		/* for sockets. */
+#define F_GETLK64		12		/*  using 'struct flock64' */
+#define F_SETLK64		13
+#define F_SETLKW64		14
+#define F_SETOWN_EX		15
+#define F_GETOWN_EX		16
+#define F_GETOWNER_UIDS	17
+
+/* for F_[GET|SET]FL */
+#define FD_CLOEXEC		1		/* actually anything with low bit set goes */

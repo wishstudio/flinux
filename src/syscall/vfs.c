@@ -1101,10 +1101,31 @@ DEFINE_SYSCALL(getcwd, char *, buf, size_t, size)
 	return buf;
 }
 
-DEFINE_SYSCALL(fcntl, int, fd, int, cmd)
+DEFINE_SYSCALL(fcntl, int, fd, int, cmd, int, arg)
 {
 	log_info("fcntl(%d, %d)\n", fd, cmd);
-	log_error("Unsupported command: %d\n", cmd);
+	struct file *f = vfs->fds[fd];
+	if (!f)
+		return -EBADF;
+	switch (cmd)
+	{
+	case F_GETFD:
+	{
+		int cloexec = vfs->fds_cloexec[fd];
+		log_info("F_GETFD: CLOEXEC: %d\n", cloexec);
+		return cloexec? FD_CLOEXEC: 0;
+	}
+	case F_SETFD:
+	{
+		int cloexec = (arg & FD_CLOEXEC)? 1: 0;
+		log_info("F_SETFD: CLOEXEC: %d\n", cloexec);
+		vfs->fds_cloexec[fd] = cloexec;
+		return 0;
+	}
+
+	default:
+		log_error("Unsupported command: %d\n", cmd);
+	}
 	return 0;
 }
 
