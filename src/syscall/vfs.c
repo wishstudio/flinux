@@ -1104,9 +1104,17 @@ DEFINE_SYSCALL(getcwd, char *, buf, size_t, size)
 	return buf;
 }
 
+DEFINE_SYSCALL(fcntl, int, fd, int, cmd)
+{
+	log_info("fcntl(%d, %d)\n", fd, cmd);
+	log_error("Unsupported command: %d\n", cmd);
+	return 0;
+}
+
 DEFINE_SYSCALL(fcntl64, int, fd, int, cmd)
 {
 	log_info("fcntl64(%d, %d)\n", fd, cmd);
+	log_error("Unsupported command: %d\n", cmd);
 	return 0;
 }
 
