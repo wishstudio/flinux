@@ -542,7 +542,7 @@ static __forceinline void gen_inst_modrm(uint8_t **trampoline, uint8_t *opcode, 
 		gen_sib(trampoline, 5, index, scale);
 		gen_dword(trampoline, disp);
 	}
-	else if (base == 4) /* SIB required */
+	else if (base == 4 || index != -1) /* SIB required */
 	{
 		gen_modrm(trampoline, 2, reg, 4);
 		gen_sib(trampoline, base, index, scale);
