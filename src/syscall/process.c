@@ -257,6 +257,12 @@ DEFINE_SYSCALL(getrlimit, int, resource, struct rlimit *, rlim)
 		rlim->rlim_max = STACK_SIZE;
 		break;
 
+	case RLIMIT_NPROC:
+		log_info("RLIMIT_NPROC: return fake result.\n");
+		rlim->rlim_cur = 65536;
+		rlim->rlim_max = 65536;
+		break;
+
 	case RLIMIT_NOFILE:
 		rlim->rlim_cur = MAX_FD_COUNT;
 		rlim->rlim_max = MAX_FD_COUNT;
