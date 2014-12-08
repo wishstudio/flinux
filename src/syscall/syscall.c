@@ -25,7 +25,7 @@ static LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
 #ifdef _WIN64
 			/* Special case: x64 vsyscalls */
 			/* TODO: Implement VDSOs, implement these in a more proper way */
-			if (code == 0xFFFFFFFFFF600400ULL) /* gettimeofday */
+			if (code == 0xFFFFFFFFFF600000ULL) /* gettimeofday */
 			{
 				ep->ContextRecord->Rax = sys_gettimeofday((struct timeval *)ep->ContextRecord->Rdi, (struct timezone *)ep->ContextRecord->Rsi);
 				ep->ContextRecord->Rip = *(DWORD64 *)ep->ContextRecord->Rsp;
@@ -39,8 +39,13 @@ static LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
 				ep->ContextRecord->Rsp += 8;
 				return EXCEPTION_CONTINUE_EXECUTION;
 			}
-			else if (code == 0xFFFFFFFFFF600800ULL) /* sched_getcpu */
-				log_error("sched_getcpu() not implemented.\n");
+			else if (code == 0xFFFFFFFFFF600800ULL) /* getcpu */
+			{
+				ep->ContextRecord->Rax = sys_getcpu((unsigned int *)ep->ContextRecord->Rdi, (unsigned int *)ep->ContextRecord->Rsi, (void *)ep->ContextRecord->Rdx);
+				ep->ContextRecord->Rip = *(DWORD64 *)ep->ContextRecord->Rsp;
+				ep->ContextRecord->Rsp += 8;
+				return EXCEPTION_CONTINUE_EXECUTION;
+			}
 #endif
 			if (mm_handle_page_fault(code))
 				return EXCEPTION_CONTINUE_EXECUTION;

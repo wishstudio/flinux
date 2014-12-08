@@ -275,3 +275,13 @@ DEFINE_SYSCALL(setrlimit, int, resource, const struct rlimit *, rlim)
 		return -EINVAL;
 	}
 }
+
+DEFINE_SYSCALL(getcpu, unsigned int *, cpu, unsigned int *, node, void *, tcache)
+{
+	log_info("getcpu(%p, %p, %p)\n", cpu, node, tcache);
+	if (cpu)
+		*cpu = 0;
+	if (node)
+		*node = 0;
+	return 0;
+}
