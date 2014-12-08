@@ -9,7 +9,9 @@
 
 #include <stdint.h>
 
-#define PATH_MAX		4096
+#define PATH_MAX			4096
+#define MAX_FD_COUNT		1024
+#define MAX_SYMLINK_LEVEL	8
 
 void vfs_init();
 void vfs_reset();

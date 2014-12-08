@@ -3,6 +3,7 @@
 #include <common/wait.h>
 #include <syscall/mm.h>
 #include <syscall/process.h>
+#include <syscall/vfs.h>
 #include <syscall/syscall.h>
 #include <datetime.h>
 #include <log.h>
@@ -254,6 +255,11 @@ DEFINE_SYSCALL(getrlimit, int, resource, struct rlimit *, rlim)
 	case RLIMIT_STACK:
 		rlim->rlim_cur = STACK_SIZE;
 		rlim->rlim_max = STACK_SIZE;
+		break;
+
+	case RLIMIT_NOFILE:
+		rlim->rlim_cur = MAX_FD_COUNT;
+		rlim->rlim_max = MAX_FD_COUNT;
 		break;
 
 	default:

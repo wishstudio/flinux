@@ -25,9 +25,6 @@
    a component, the whole operation immediately fails.
 */
 
-#define MAX_FD_COUNT		1024
-#define MAX_SYMLINK_LEVEL	8
-
 struct vfs_data
 {
 	struct file *fds[MAX_FD_COUNT];
