@@ -187,6 +187,7 @@ mm_check_write PROC ; check_addr: QWORD, check_size: QWORD
 	; rdx = check_addr
 	
 mm_check_write_begin LABEL PTR
+	mov al, byte ptr [rdx]
 	mov byte ptr [rdx], al
 	; test first page which may be unaligned
 	
@@ -203,6 +204,7 @@ mm_check_write_begin LABEL PTR
 	and dx, 0f000h
 L:
 	add rdx, 01000h
+	mov al, byte ptr [rdx]
 	mov byte ptr [rdx], al
 	loop L
 mm_check_write_end LABEL PTR
