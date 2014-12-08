@@ -8,7 +8,7 @@
 #include <Windows.h>
 #include <ntdll.h>
 
-DEFINE_SYSCALL(time, int *, c)
+DEFINE_SYSCALL(time, intptr_t *, c)
 {
 	log_info("time(%p)\n", c);
 	if (c && !mm_check_write(c, sizeof(int)))
@@ -21,7 +21,7 @@ DEFINE_SYSCALL(time, int *, c)
 		- (((uint64_t)systime.wYear - 1) / 100) * 86400 + (((uint64_t)systime.wYear + 299) / 400) * 86400;
 
 	if (c)
-		*c = (int)t;
+		*c = (intptr_t)t;
 	return t;
 }
 
