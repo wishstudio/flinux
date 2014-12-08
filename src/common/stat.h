@@ -37,31 +37,6 @@
 #define S_IWOTH		00002
 #define S_IXOTH		00001
 
-#ifdef _WIN64
-#pragma pack(push, 4)
-struct stat
-{
-	uint64_t st_dev;
-	uint64_t st_ino;
-	uint64_t st_nlink;
-	uint32_t st_mode;
-	uint32_t st_uid;
-	uint32_t st_gid;
-	uint32_t __pad0;
-	uint64_t st_rdev;
-	uint64_t st_size;
-	uint64_t st_blksize;
-	uint64_t st_blocks;
-	uint64_t st_atime;
-	uint64_t st_atime_nsec;
-	uint64_t st_mtime;
-	uint64_t st_mtime_nsec;
-	uint64_t st_ctime;
-	uint64_t st_ctime_nsec;
-	uint64_t __unused[3];
-};
-#pragma pack(pop)
-#else
 struct stat
 {
 	uint16_t st_dev;
@@ -83,7 +58,6 @@ struct stat
 	uint32_t st_ctime;
 	uint32_t st_ctime_nsec;
 };
-#endif
 
 #pragma pack(push, 4)
 struct stat64
@@ -107,6 +81,30 @@ struct stat64
 	uint32_t st_ctime;
 	uint32_t st_ctime_nsec;
 	uint64_t st_ino;
+};
+#pragma pack(pop)
+
+#pragma pack(push, 4)
+struct newstat
+{
+	uint64_t st_dev;
+	uint64_t st_ino;
+	uint64_t st_nlink;
+	uint32_t st_mode;
+	uint32_t st_uid;
+	uint32_t st_gid;
+	uint32_t __pad0;
+	uint64_t st_rdev;
+	uint64_t st_size;
+	uint64_t st_blksize;
+	uint64_t st_blocks;
+	uint64_t st_atime;
+	uint64_t st_atime_nsec;
+	uint64_t st_mtime;
+	uint64_t st_mtime_nsec;
+	uint64_t st_ctime;
+	uint64_t st_ctime_nsec;
+	uint64_t __unused[3];
 };
 #pragma pack(pop)
 

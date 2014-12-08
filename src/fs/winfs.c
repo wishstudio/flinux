@@ -212,7 +212,7 @@ static int winfs_llseek(struct file *f, loff_t offset, loff_t *newoffset, int wh
 	return 0;
 }
 
-static int winfs_stat(struct file *f, struct stat64 *buf)
+static int winfs_stat(struct file *f, struct newstat *buf)
 {
 	struct winfs_file *winfile = (struct winfs_file *) f;
 	BY_HANDLE_FILE_INFORMATION info;

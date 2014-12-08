@@ -646,7 +646,7 @@ static size_t console_write(struct file *f, const char *buf, size_t count)
 	return count;
 }
 
-static int console_stat(struct file *f, struct stat64 *buf)
+static int console_stat(struct file *f, struct newstat *buf)
 {
 	buf->st_dev = mkdev(0, 1);
 	buf->st_ino = 0;
