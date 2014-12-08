@@ -1151,6 +1151,13 @@ DEFINE_SYSCALL(openat, int, dirfd, const char *, pathname, int, flags)
 	return -ENOENT;
 }
 
+DEFINE_SYSCALL(socket, int, domain, int, type, int, protocol)
+{
+	log_info("socket(%d, %d, %d)\n", domain, type, protocol);
+	/* TODO */
+	return -EINVAL;
+}
+
 DEFINE_SYSCALL(poll, struct pollfd *, fds, int, nfds, int, timeout)
 {
 	log_info("poll(0x%p, %d, %d)\n", fds, nfds, timeout);

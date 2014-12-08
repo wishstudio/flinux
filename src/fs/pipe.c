@@ -4,6 +4,8 @@
 #include <syscall/mm.h>
 #include <log.h>
 
+#include <Windows.h>
+
 struct pipe_file
 {
 	struct file base_file;

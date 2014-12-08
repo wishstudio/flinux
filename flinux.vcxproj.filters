@@ -157,6 +157,9 @@
     <ClInclude Include="src\common\prctl.h">
       <Filter>common</Filter>
     </ClInclude>
+    <ClInclude Include="src\fs\socket.h">
+      <Filter>fs</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
@@ -206,6 +209,9 @@
     <ClCompile Include="src\vsprintf.c" />
     <ClCompile Include="src\syscall\syscall_dispatch.c">
       <Filter>syscall</Filter>
+    </ClCompile>
+    <ClCompile Include="src\fs\socket.c">
+      <Filter>fs</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
