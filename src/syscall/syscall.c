@@ -12,6 +12,9 @@ extern void *mm_check_read_begin, *mm_check_read_end, *mm_check_read_fail;
 extern void *mm_check_read_string_begin, *mm_check_read_string_end, *mm_check_read_string_fail;
 extern void *mm_check_write_begin, *mm_check_write_end, *mm_check_write_fail;
 
+extern int sys_gettimeofday(struct timeval *tv, struct timezone *tz);
+extern intptr_t sys_time(intptr_t *t);
+
 static LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
 {
 	if (ep->ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION)
@@ -19,6 +22,26 @@ static LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
 		uint8_t* code = (uint8_t *)ep->ContextRecord->Xip;
 		if (ep->ExceptionRecord->ExceptionInformation[0] == 8)
 		{
+#ifdef _WIN64
+			/* Special case: x64 vsyscalls */
+			/* TODO: Implement VDSOs, implement these in a more proper way */
+			if (code == 0xFFFFFFFFFF600400ULL) /* gettimeofday */
+			{
+				ep->ContextRecord->Rax = sys_gettimeofday((struct timeval *)ep->ContextRecord->Rdi, (struct timezone *)ep->ContextRecord->Rsi);
+				ep->ContextRecord->Rip = *(DWORD64 *)ep->ContextRecord->Rsp;
+				ep->ContextRecord->Rsp += 8;
+				return EXCEPTION_CONTINUE_EXECUTION;
+			}
+			else if (code == 0xFFFFFFFFFF600400ULL) /* time */
+			{
+				ep->ContextRecord->Rax = sys_time((intptr_t *)ep->ContextRecord->Rdi);
+				ep->ContextRecord->Rip = *(DWORD64 *)ep->ContextRecord->Rsp;
+				ep->ContextRecord->Rsp += 8;
+				return EXCEPTION_CONTINUE_EXECUTION;
+			}
+			else if (code == 0xFFFFFFFFFF600800ULL) /* sched_getcpu */
+				log_error("sched_getcpu() not implemented.\n");
+#endif
 			if (mm_handle_page_fault(code))
 				return EXCEPTION_CONTINUE_EXECUTION;
 			else if (mm_handle_page_fault(code + 0x1000)) // TODO: Use PAGE_SIZE
