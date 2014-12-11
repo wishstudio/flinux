@@ -358,7 +358,8 @@ void mm_shutdown()
 
 void mm_update_brk(void *brk)
 {
-	mm->brk = max(mm->brk, brk);
+	/* Seems glibc does not like unaligned initial brk */
+	mm->brk = max(mm->brk, ALIGN_TO_PAGE(brk));
 }
 
 /* Find 'count' consecutive free pages in address range [low, high), return 0 if not found */
@@ -1071,8 +1072,12 @@ DEFINE_SYSCALL(brk, void *, addr)
 	log_info("Last brk: %p\n", mm->brk);
 	size_t brk = ALIGN_TO_PAGE(mm->brk);
 	addr = ALIGN_TO_PAGE(addr);
-	/* TODO: Handle brk shrink */
-	if (addr > mm->brk)
+	if (addr > 0 && addr < mm->brk)
+	{
+		log_error("brk shrinking not supported.\n");
+		return -ENOMEM;
+	}
+	else if (addr > mm->brk)
 	{
 		if (sys_mmap(brk, (size_t)addr - (size_t)brk, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, -1, 0) < 0)
 		{
