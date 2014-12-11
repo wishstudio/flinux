@@ -589,7 +589,7 @@ static int handle_cow_page_fault(void *addr)
 		log_warning("Address %p (page %p) not writable.\n", addr, GET_PAGE(addr));
 		return 0;
 	}
-	uint16_t block = GET_BLOCK(addr);
+	size_t block = GET_BLOCK(addr);
 	HANDLE handle = get_section_handle(block);
 	if (!handle)
 	{

@@ -6,6 +6,12 @@ struct timespec
 	long tv_nsec;
 };
 
+struct linux_timeval
+{
+	long tv_sec;		/* seconds */
+	long tv_usec;		/* and microseconds */
+};
+
 #define CLOCK_REALTIME				0
 #define CLOCK_MONOTONIC				1
 #define CLOCK_PROCESS_CPUTIME_ID	2

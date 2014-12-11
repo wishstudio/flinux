@@ -160,6 +160,9 @@
     <ClInclude Include="src\fs\socket.h">
       <Filter>fs</Filter>
     </ClInclude>
+    <ClInclude Include="src\common\futex.h">
+      <Filter>common</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />

@@ -1,4 +1,5 @@
 #include <common/errno.h>
+#include <common/futex.h>
 #include <common/resource.h>
 #include <common/wait.h>
 #include <syscall/mm.h>
@@ -54,15 +55,16 @@ void process_add_child(pid_t pid, HANDLE handle)
 	process->child_handles[i] = handle;
 }
 
-DEFINE_SYSCALL(waitpid, pid_t, pid, int *, status, int, options)
+static pid_t process_wait(pid_t pid, int *status, int options, struct rusage *rusage)
 {
-	log_info("sys_waitpid(%d, %p, %d)\n", pid, status, options);
 	if (options & WNOHANG)
 		log_error("Unhandled option WNOHANG\n");
 	if (options & WUNTRACED)
 		log_error("Unhandled option WUNTRACED\n");
 	if (options & WCONTINUED)
 		log_error("Unhandled option WCONTINUED\n");
+	if (rusage)
+		log_error("rusage not supported.\n");
 	int id = -1;
 	if (pid > 0)
 	{
@@ -112,6 +114,18 @@ DEFINE_SYSCALL(waitpid, pid_t, pid, int *, status, int, options)
 	if (status)
 		*status = W_EXITCODE(exitCode, 0);
 	return pid;
+}
+
+DEFINE_SYSCALL(waitpid, pid_t, pid, int *, status, int, options)
+{
+	log_info("sys_waitpid(%d, %p, %d)\n", pid, status, options);
+	return process_wait(pid, status, options, NULL);
+}
+
+DEFINE_SYSCALL(wait4, pid_t, pid, int *, status, int, options, struct rusage *, rusage)
+{
+	log_info("sys_wait4(%d, %p, %d, %p)\n", pid, status, options, rusage);
+	return process_wait(pid, status, options, rusage);
 }
 
 DEFINE_SYSCALL(getpid)
@@ -296,4 +310,11 @@ DEFINE_SYSCALL(getcpu, unsigned int *, cpu, unsigned int *, node, void *, tcache
 	if (node)
 		*node = 0;
 	return 0;
+}
+
+DEFINE_SYSCALL(futex, int *, uaddr, int, op, int, val, const struct timespec *, timeout, int *, uaddr2, int, val3)
+{
+	log_info("futex(%p, %d, %d, %p, %p, %d)\n", uaddr, op, val, timeout, uaddr2, val3);
+	log_error("Unsupported futex operation, returning -ENOSYS\n");
+	return -ENOSYS;
 }

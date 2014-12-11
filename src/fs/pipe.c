@@ -2,6 +2,7 @@
 #include <common/poll.h>
 #include <fs/pipe.h>
 #include <syscall/mm.h>
+#include <heap.h>
 #include <log.h>
 
 #include <Windows.h>

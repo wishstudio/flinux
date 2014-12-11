@@ -24,6 +24,7 @@
     <ClInclude Include="src\common\auxvec.h" />
     <ClInclude Include="src\common\dirent.h" />
     <ClInclude Include="src\common\fcntl.h" />
+    <ClInclude Include="src\common\futex.h" />
     <ClInclude Include="src\common\ioctls.h" />
     <ClInclude Include="src\common\ldt.h" />
     <ClInclude Include="src\common\poll.h" />

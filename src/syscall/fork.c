@@ -194,7 +194,11 @@ DEFINE_SYSCALL(vfork, int, _1, int, _2, int, _3, int, _4, int, _5, int, _6, PCON
 	return fork_process(context, 0, NULL, NULL);
 }
 
+#ifdef _WIN64
+DEFINE_SYSCALL(clone, unsigned long, flags, void *, child_stack, void *, ptid, void *, ctid, int, _5, int, _6, PCONTEXT, context)
+#else
 DEFINE_SYSCALL(clone, unsigned long, flags, void *, child_stack, void *, ptid, int, tls, void *, ctid, int, _6, PCONTEXT, context)
+#endif
 {
 	log_info("sys_clone(flags=%x, child_stack=%p, ptid=%p, ctid=%p)\n", flags, child_stack, ptid, ctid);
 	if (flags & CLONE_THREAD)
