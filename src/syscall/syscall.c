@@ -92,7 +92,8 @@ static LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
 			log_error("Page fault(DEP): %p at %p\n", ep->ExceptionRecord->ExceptionInformation[1], ep->ContextRecord->Xip);
 	}
 	log_info("Application crashed, dumping debug information...\n");
-	dump_virtual_memory(GetCurrentProcess());
+	mm_dump_memory_mappings();
+	mm_dump_windows_memory_mappings(GetCurrentProcess());
 	mm_dump_stack_trace(ep->ContextRecord);
 #ifdef _WIN64
 	log_info("RAX: 0x%p\n", ep->ContextRecord->Rax);

@@ -400,8 +400,9 @@ static DWORD prot_linux2win(int prot)
 		return PAGE_NOACCESS;
 }
 
-void dump_virtual_memory(HANDLE process)
+void mm_dump_windows_memory_mappings(HANDLE process)
 {
+	log_info("Windows memory mappings...\n");
 	char *addr = 0;
 	do
 	{
@@ -421,6 +422,14 @@ void dump_virtual_memory(HANDLE process)
 #else
 	} while ((size_t)addr < 0x7FFF0000U);
 #endif
+}
+
+void mm_dump_memory_mappings()
+{
+	struct map_entry *p, *e;
+	log_info("Current memory mappings...\n");
+	forward_list_iterate(&mm->map_list, p, e)
+		log_info("0x%p - 0x%p: PROT: %d\n", GET_PAGE_ADDRESS(e->start_page), GET_PAGE_ADDRESS(e->end_page), e->prot);
 }
 
 static void map_entry_range(struct map_entry *e, size_t start_page, size_t end_page)
@@ -457,7 +466,7 @@ static int mm_change_protection(HANDLE process, size_t start_page, size_t end_pa
 			{
 				log_error("VirtualProtect(0x%p, 0x%p) failed, error code: %d\n", GET_PAGE_ADDRESS(range_start),
 					PAGE_SIZE * (range_end - range_start + 1), GetLastError());
-				dump_virtual_memory(process);
+				mm_dump_windows_memory_mappings(process);
 				return 0;
 			}
 		}
@@ -514,7 +523,7 @@ static int allocate_block(size_t i)
 	{
 		log_error("NtMapViewOfSection() failed. Address: %p, Status: %x\n", base_addr, status);
 		NtClose(handle);
-		dump_virtual_memory(NtCurrentProcess());
+		mm_dump_windows_memory_mappings(NtCurrentProcess());
 		return 0;
 	}
 	add_section_handle(i, handle);
@@ -757,7 +766,7 @@ int mm_fork(HANDLE process)
 				if (status != STATUS_SUCCESS)
 				{
 					log_error("mm_fork(): Map failed: %p, status code: %x\n", base_addr, status);
-					dump_virtual_memory(process);
+					mm_dump_windows_memory_mappings(process);
 					return 0;
 				}
 				section_object_count++;
