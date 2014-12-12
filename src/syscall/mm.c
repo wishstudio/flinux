@@ -319,20 +319,27 @@ void mm_init()
 void mm_reset()
 {
 	/* Release all user memory */
-	for (size_t i = GET_BLOCK(ADDRESS_ALLOCATION_LOW); i < GET_BLOCK(ADDRESS_ALLOCATION_HIGH); i++)
-	{
-		HANDLE handle = get_section_handle(i);
-		if (handle)
-		{
-			NtUnmapViewOfSection(NtCurrentProcess(), GET_BLOCK_ADDRESS(i));
-			NtClose(handle);
-			remove_section_handle(i);
-		}
-	}
+	size_t last_block = 0;
 	struct map_entry *p, *e;
 	forward_list_iterate_safe(&mm->map_list, p, e)
 		if (e->start_page >= GET_PAGE(ADDRESS_ALLOCATION_LOW) && e->end_page < GET_PAGE(ADDRESS_ALLOCATION_HIGH))
 		{
+			size_t start_block = GET_BLOCK_OF_PAGE(e->start_page);
+			size_t end_block = GET_BLOCK_OF_PAGE(e->end_page);
+			if (start_block == last_block)
+				start_block++;
+			for (size_t i = start_block; i <= end_block; i++)
+			{
+				HANDLE handle = get_section_handle(i);
+				if (handle)
+				{
+					NtUnmapViewOfSection(NtCurrentProcess(), GET_BLOCK_ADDRESS(i));
+					NtClose(handle);
+					remove_section_handle(i);
+				}
+			}
+			last_block = end_block;
+
 			if (e->f)
 				vfs_release(e->f);
 			forward_list_remove(p, e);
@@ -661,6 +668,7 @@ static int handle_cow_page_fault(void *addr)
 				return 0;
 			}
 		}
+	log_info("CoW section %p successfully duplicated.\n", block);
 	return 1;
 }
 
