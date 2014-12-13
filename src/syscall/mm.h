@@ -42,6 +42,9 @@
 /* High address of kernel heap */
 #define ADDRESS_HEAP_HIGH		0x0000000100000000ULL
 
+/* x64 Special: brk() base address */
+#define MM_BRK_BASE				0x0000000300000000ULL
+
 #else
 
 /* Base address of mm_data structure */

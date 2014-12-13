@@ -82,6 +82,8 @@
  *                    we reduce the available address space to limit the size of section handles store
  * 00001000 00000000 ------------------------------
  * ...                   Application code/data
+ * 00000003 00000000 ------------------------------  <-- brk base (x64 special to avoid collisions in low address)
+ * ...                   Application code/data
  * 00000002 00000000 ------------------------------
  * ...                 Foreign Linux kernel code
  * 00000001 00000000 ------------------------------
@@ -380,7 +382,11 @@ void mm_shutdown()
 void mm_update_brk(void *brk)
 {
 	/* Seems glibc does not like unaligned initial brk */
+#ifdef _WIN64
+	mm->brk = MM_BRK_BASE;
+#else
 	mm->brk = max(mm->brk, ALIGN_TO_PAGE(brk));
+#endif
 }
 
 /* Find 'count' consecutive free pages in address range [low, high), return 0 if not found */
