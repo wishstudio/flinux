@@ -1167,9 +1167,11 @@ DEFINE_SYSCALL(chown, const char *, pathname, uid_t, owner, gid_t, group)
 	return 0;
 }
 
-DEFINE_SYSCALL(openat, int, dirfd, const char *, pathname, int, flags)
+DEFINE_SYSCALL(openat, int, dirfd, const char *, pathname, int, flags, int, mode)
 {
-	log_info("openat(%d, %s, 0x%x)\n", dirfd, pathname, flags);
+	log_info("openat(%d, %s, 0x%x, 0x%x)\n", dirfd, pathname, flags, mode);
+	if (dirfd == AT_FDCWD)
+		return sys_open(pathname, flags, mode);
 	if (!mm_check_read_string(pathname))
 		return -EFAULT;
 	/* TODO */
