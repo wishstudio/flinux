@@ -4,8 +4,8 @@
 
 struct linux_dirent
 {
-	unsigned long d_ino;
-	unsigned long d_off;
+	uintptr_t d_ino;
+	uintptr_t d_off;
 	unsigned short d_reclen;
 	char d_name[1];
 };

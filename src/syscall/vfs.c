@@ -11,6 +11,7 @@
 #include <Windows.h>
 #include <limits.h>
 #include <malloc.h>
+#include <str.h>
 
 /* Notes on symlink solving:
 
@@ -840,6 +841,48 @@ DEFINE_SYSCALL(mkdir, const char *, pathname, int, mode)
 	}
 }
 
+static intptr_t getdents_fill(void *buffer, uint64_t inode, const wchar_t *name, int namelen, char type, size_t size)
+{
+	struct linux_dirent *dirent = (struct linux_dirent *)buffer;
+	dirent->d_ino = inode;
+	if (dirent->d_ino != inode)
+		return -EOVERFLOW;
+	dirent->d_off = 0; /* TODO */
+	intptr_t len = utf16_to_utf8_filename(name, namelen, dirent->d_name, size);
+	/* Don't care much about the size, there is guaranteed to be enough room */
+	dirent->d_name[len] = 0;
+	dirent->d_name[len + 1] = type;
+	log_info("Added %s, inode = %llx, type = %d\n", dirent->d_name, inode, type);
+	dirent->d_reclen = (sizeof(struct linux_dirent64) + len + 1 + 8) & ~(uintptr_t)8;
+	return dirent->d_reclen;
+}
+
+static intptr_t getdents64_fill(void *buffer, uint64_t inode, const wchar_t *name, int namelen, char type, size_t size)
+{
+	struct linux_dirent64 *dirent = (struct linux_dirent64 *)buffer;
+	dirent->d_ino = inode;
+	dirent->d_off = 0; /* TODO */
+	dirent->d_type = type;
+	intptr_t len = utf16_to_utf8_filename(name, namelen, dirent->d_name, size);
+	/* Don't care much about the size, there is guaranteed to be enough room */
+	dirent->d_name[len] = 0;
+	log_info("Added %s, inode = %llx, type = %d\n", dirent->d_name, inode, type);
+	dirent->d_reclen = (sizeof(struct linux_dirent64) + len + 1 + 8) & ~(uintptr_t)8;
+	return dirent->d_reclen;
+}
+
+DEFINE_SYSCALL(getdents, int, fd, struct linux_dirent *, dirent, unsigned int, count)
+{
+	log_info("getdents(%d, %p, %d)\n", fd, dirent, count);
+	if (!mm_check_write(dirent, count))
+		return -EFAULT;
+	struct file *f = vfs->fds[fd];
+	if (f && f->op_vtable->getdents)
+		return f->op_vtable->getdents(f, dirent, count, getdents_fill);
+	else
+		return -EBADF;
+}
+
 DEFINE_SYSCALL(getdents64, int, fd, struct linux_dirent64 *, dirent, unsigned int, count)
 {
 	log_info("getdents64(%d, %p, %d)\n", fd, dirent, count);
@@ -847,7 +890,7 @@ DEFINE_SYSCALL(getdents64, int, fd, struct linux_dirent64 *, dirent, unsigned in
 		return -EFAULT;
 	struct file *f = vfs->fds[fd];
 	if (f && f->op_vtable->getdents)
-		return f->op_vtable->getdents(f, dirent, count);
+		return f->op_vtable->getdents(f, dirent, count, getdents64_fill);
 	else
 		return -EBADF;
 }

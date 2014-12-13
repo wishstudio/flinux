@@ -284,7 +284,7 @@ static int winfs_utimes(struct file *f, const struct timeval times[2])
 	return 0;
 }
 
-static int winfs_getdents(struct file *f, struct linux_dirent64 *dirent, int count)
+static int winfs_getdents(struct file *f, void *dirent, size_t count, getdents_callback *fill_callback)
 {
 	NTSTATUS status;
 	struct winfs_file *winfile = (struct winfs_file *) f;
@@ -307,17 +307,16 @@ static int winfs_getdents(struct file *f, struct linux_dirent64 *dirent, int cou
 		FILE_ID_FULL_DIR_INFORMATION *info;
 		do
 		{
-			 info = (FILE_ID_FULL_DIR_INFORMATION *) &buffer[offset];
-			 info->FileId.QuadPart;
-			 offset += info->NextEntryOffset;
-			 struct linux_dirent64 *p = (struct linux_dirent64 *)((char *) dirent + size);
-			 p->d_ino = info->FileId.QuadPart;
-			 p->d_off = 0; /* TODO */
-			 p->d_type = (info->FileAttributes & FILE_ATTRIBUTE_DIRECTORY) ? DT_DIR : DT_REG;
-			 int len = utf16_to_utf8_filename(info->FileName, info->FileNameLength / 2, p->d_name, count - size);
-			 p->d_name[len] = 0;
-			 p->d_reclen = (sizeof(struct linux_dirent64) + len + 1 + 3) & ~3;
-			 size += p->d_reclen;
+			info = (FILE_ID_FULL_DIR_INFORMATION *) &buffer[offset];
+			info->FileId.QuadPart;
+			offset += info->NextEntryOffset;
+			void *p = (char *)dirent + size;
+			uint64_t inode = info->FileId.QuadPart;
+			char type = (info->FileAttributes & FILE_ATTRIBUTE_DIRECTORY) ? DT_DIR : DT_REG;
+			intptr_t reclen = fill_callback(p, inode, info->FileName, info->FileNameLength / 2, type, count - size);
+			if (reclen < 0)
+				return reclen;
+			size += reclen;
 		} while (info->NextEntryOffset);
 	}
 	return size;

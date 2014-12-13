@@ -7,6 +7,8 @@
 
 #include <Windows.h>
 
+typedef intptr_t getdents_callback(void *buffer, uint64_t inode, const wchar_t *name, int namelen, char type, size_t size);
+
 struct file_ops
 {
 	HANDLE (*get_poll_handle)(struct file *f, int *poll_events);
@@ -18,7 +20,7 @@ struct file_ops
 	int (*llseek)(struct file *f, loff_t offset, loff_t *newoffset, int whence);
 	int (*stat)(struct file *f, struct newstat *buf);
 	int (*utimes)(struct file *f, const struct timeval times[2]);
-	int (*getdents)(struct file *f, struct linux_dirent64 *dirent, int count);
+	int (*getdents)(struct file *f, void *dirent, size_t count, getdents_callback *fill_callback);
 	int (*ioctl)(struct file *f, unsigned int cmd, unsigned long arg);
 };
 
