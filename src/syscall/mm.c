@@ -132,6 +132,10 @@
 #define ADDRESS_ALLOCATION_LOW	0x0000000200000000ULL
 /* The highest non fixed allocation address we can make */
 #define ADDRESS_ALLOCATION_HIGH	0x0001000000000000ULL
+/* The lowest address of reserved kernel data */
+#define ADDRESS_RESERVED_LOW	0x0000000020000000ULL
+/* The highest address of reserved kernel data */
+#define ADDRESS_RESERVED_HIGH	0x0000000100000000ULL
 
 #else
 
@@ -143,6 +147,10 @@
 #define ADDRESS_ALLOCATION_LOW	0x04000000U
 /* The highest non fixed allocation address we can make */
 #define ADDRESS_ALLOCATION_HIGH	0x70000000U
+/* The lowest address of reserved kernel data */
+#define ADDRESS_RESERVED_LOW	0x70000000U
+/* The highest address of reserved kernel data */
+#define ADDRESS_RESERVED_HIGH	0x72000000U
 
 #endif
 
@@ -320,31 +328,37 @@ void mm_reset()
 {
 	/* Release all user memory */
 	size_t last_block = 0;
+	size_t reserved_start = GET_BLOCK(ADDRESS_RESERVED_LOW);
+	size_t reserved_end = GET_BLOCK(ADDRESS_RESERVED_HIGH) - 1;
 	struct map_entry *p, *e;
 	forward_list_iterate_safe(&mm->map_list, p, e)
-		if (e->start_page >= GET_PAGE(ADDRESS_ALLOCATION_LOW) && e->end_page < GET_PAGE(ADDRESS_ALLOCATION_HIGH))
-		{
-			size_t start_block = GET_BLOCK_OF_PAGE(e->start_page);
-			size_t end_block = GET_BLOCK_OF_PAGE(e->end_page);
-			if (start_block == last_block)
-				start_block++;
-			for (size_t i = start_block; i <= end_block; i++)
-			{
-				HANDLE handle = get_section_handle(i);
-				if (handle)
-				{
-					NtUnmapViewOfSection(NtCurrentProcess(), GET_BLOCK_ADDRESS(i));
-					NtClose(handle);
-					remove_section_handle(i);
-				}
-			}
-			last_block = end_block;
+	{
+		size_t start_block = GET_BLOCK_OF_PAGE(e->start_page);
+		size_t end_block = GET_BLOCK_OF_PAGE(e->end_page);
+		if (reserved_start <= start_block && start_block <= reserved_end)
+			continue;
+		if (reserved_start <= end_block && end_block <= reserved_end)
+			continue;
 
-			if (e->f)
-				vfs_release(e->f);
-			forward_list_remove(p, e);
-			free_map_entry(e);
+		if (start_block == last_block)
+			start_block++;
+		for (size_t i = start_block; i <= end_block; i++)
+		{
+			HANDLE handle = get_section_handle(i);
+			if (handle)
+			{
+				NtUnmapViewOfSection(NtCurrentProcess(), GET_BLOCK_ADDRESS(i));
+				NtClose(handle);
+				remove_section_handle(i);
+			}
 		}
+		last_block = end_block;
+
+		if (e->f)
+			vfs_release(e->f);
+		forward_list_remove(p, e);
+		free_map_entry(e);
+	}
 	mm->brk = 0;
 }
 

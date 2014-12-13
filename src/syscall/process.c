@@ -125,6 +125,8 @@ DEFINE_SYSCALL(waitpid, pid_t, pid, int *, status, int, options)
 DEFINE_SYSCALL(wait4, pid_t, pid, int *, status, int, options, struct rusage *, rusage)
 {
 	log_info("sys_wait4(%d, %p, %d, %p)\n", pid, status, options, rusage);
+	if (rusage)
+		log_error("rusage != NULL\n");
 	return process_wait(pid, status, options, rusage);
 }
 
