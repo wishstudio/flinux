@@ -17,6 +17,7 @@ Feature highlights
 * Interprocess pipes
 * vt102 terminal emulation on Win32 console
 * Small footprint (flinux executable < 100k)
+* Support both x86 and x86_64 linux userland
 
 Comparison
 ======
