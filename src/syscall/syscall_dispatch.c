@@ -32,7 +32,7 @@ typedef int syscall_fn(int ebx, int ecx, int edx, int esi, int edi, int ebp, PCO
 #undef SYSCALL
 
 #define SYSCALL(name) sys_##name,
-static syscall_fn* syscall_table[SYSCALL_COUNT] =
+syscall_fn* syscall_table[SYSCALL_COUNT] =
 {
 	SYSCALL(unimplemented) /* syscall 0 */
 #include "syscall_table_x86.h"

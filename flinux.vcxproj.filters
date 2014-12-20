@@ -16,6 +16,9 @@
     <Filter Include="core">
       <UniqueIdentifier>{bf8b2302-bfb8-482c-bb5a-68176dce23d8}</UniqueIdentifier>
     </Filter>
+    <Filter Include="dbt">
+      <UniqueIdentifier>{02ac593e-eb9d-4e52-8b21-4974493b4fa6}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\binfmt\elf.h">
@@ -163,6 +166,12 @@
     <ClInclude Include="src\common\futex.h">
       <Filter>common</Filter>
     </ClInclude>
+    <ClInclude Include="src\dbt\x86.h">
+      <Filter>dbt</Filter>
+    </ClInclude>
+    <ClInclude Include="src\dbt\x86_inst.h">
+      <Filter>dbt</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
@@ -216,6 +225,9 @@
     <ClCompile Include="src\fs\socket.c">
       <Filter>fs</Filter>
     </ClCompile>
+    <ClCompile Include="src\dbt\x86.c">
+      <Filter>dbt</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="src\ntdll.def" />
@@ -226,6 +238,9 @@
     </MASM>
     <MASM Include="src\syscall\stubs.asm">
       <Filter>syscall</Filter>
+    </MASM>
+    <MASM Include="src\dbt\x86_trampoline.asm">
+      <Filter>dbt</Filter>
     </MASM>
   </ItemGroup>
 </Project>

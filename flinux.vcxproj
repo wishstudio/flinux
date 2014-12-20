@@ -47,6 +47,8 @@
     <ClInclude Include="src\core\core.h" />
     <ClInclude Include="src\core\forward_list.h" />
     <ClInclude Include="src\datetime.h" />
+    <ClInclude Include="src\dbt\x86.h" />
+    <ClInclude Include="src\dbt\x86_inst.h" />
     <ClInclude Include="src\fs\console.h" />
     <ClInclude Include="src\fs\devfs.h" />
     <ClInclude Include="src\fs\file.h" />
@@ -75,6 +77,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\datetime.c" />
+    <ClCompile Include="src\dbt\x86.c" />
     <ClCompile Include="src\fs\console.c" />
     <ClCompile Include="src\fs\devfs.c" />
     <ClCompile Include="src\fs\pipe.c" />
@@ -113,6 +116,7 @@
     </CustomBuild>
   </ItemGroup>
   <ItemGroup>
+    <MASM Include="src\dbt\x86_trampoline.asm" />
     <MASM Include="src\syscall\stubs.asm">
       <FileType>Document</FileType>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>

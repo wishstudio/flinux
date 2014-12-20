@@ -174,4 +174,27 @@ mm_check_write_fail LABEL PTR
 	ret
 mm_check_write ENDP
 
+OPTION PROLOGUE: NONE
+OPTION EPILOGUE: NONE
+EXTERN syscall_table: DWORD
+syscall_handler PROC
+	; save context
+	push ecx
+	push edx
+	; push arguments
+	push ebp
+	push edi
+	push esi
+	push edx
+	push ecx
+	push ebx
+	; call syscall
+	call [syscall_table + eax * 4]
+	add esp, 24
+	; restore context
+	pop edx
+	pop ecx
+	ret
+syscall_handler ENDP
+
 END

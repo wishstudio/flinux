@@ -28,6 +28,7 @@ void main()
 	heap_init();
 	vfs_init();
 	tls_init();
+	dbt_init();
 	process_init(NULL);
 
 	/* Parse command line */

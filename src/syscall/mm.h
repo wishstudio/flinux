@@ -53,10 +53,12 @@
 #define MM_SECTION_HANDLE_BASE	0x70200000U
 /* Base address of process_data structure */
 #define PROCESS_DATA_BASE		0x70700000U
-/* Base address of mm_heap structure */
-#define MM_HEAP_BASE			0x70800000U
+/* Base address of dbt_data structure */
+#define DBT_DATA_BASE			0x70800000U
 /* Base address of vfs_data structure */
 #define VFS_DATA_BASE			0x70900000U
+/* Base address of mm_heap structure */
+#define MM_HEAP_BASE			0x70FC0000U
 /* Base address of tls_data structure */
 #define TLS_DATA_BASE			0x70FD0000U
 /* Base address of executable startup data */
@@ -67,6 +69,14 @@
 #define ADDRESS_HEAP_LOW		0x71000000U
 /* High address of kernel heap */
 #define ADDRESS_HEAP_HIGH		0x72000000U
+/* Base address of dbt blocks table */
+#define DBT_BLOCKS_BASE			0x72000000U
+/* Size of dbt blocks table */
+#define DBT_BLOCKS_SIZE			0x00800000U
+/* Base address of dbt cache */
+#define DBT_CACHE_BASE			0x72800000U
+/* Size of dbt cache (8 MiB) */
+#define DBT_CACHE_SIZE			0x00800000U
 
 #endif
 

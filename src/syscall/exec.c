@@ -2,6 +2,7 @@
 #include <common/auxvec.h>
 #include <common/errno.h>
 #include <common/fcntl.h>
+#include <dbt/x86.h>
 #include <fs/winfs.h>
 #include <syscall/exec.h>
 #include <syscall/mm.h>
@@ -74,12 +75,12 @@ static void run(struct elf_header *executable, struct elf_header *interpreter, i
 	/* Call executable entrypoint */
 	size_t entrypoint = interpreter? interpreter->load_base + interpreter->eh.e_entry: executable->load_base + executable->eh.e_entry;
 	log_info("Entrypoint: %p\n", entrypoint);
+#ifdef _WIN64
 	/* If we're starting from main(), just jump to entrypoint */
 	if (!context)
 		goto_entrypoint(stack, entrypoint);
 	/* Otherwise, we're at execve() in syscall handler context */
 	/* TODO: Add a trampoline to free original stack */
-#ifdef _WIN64
 	context->Rax = 0;
 	context->Rcx = 0;
 	context->Rdx = 0;
@@ -98,6 +99,8 @@ static void run(struct elf_header *executable, struct elf_header *interpreter, i
 	context->R14 = 0;
 	context->R15 = 0;
 #else
+	if (!context)
+		dbt_run(entrypoint, stack);
 	context->Eax = 0;
 	context->Ecx = 0;
 	context->Edx = 0;
