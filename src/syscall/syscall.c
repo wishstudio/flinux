@@ -61,8 +61,10 @@ static LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
 				dispatch_syscall(ep->ContextRecord);
 				return EXCEPTION_CONTINUE_EXECUTION;
 			}
+#ifdef _WIN64
 			else if (tls_emulation(ep->ContextRecord, code))
 				return EXCEPTION_CONTINUE_EXECUTION;
+#endif
 			else if (mm_handle_page_fault(ep->ExceptionRecord->ExceptionInformation[1]))
 				return EXCEPTION_CONTINUE_EXECUTION;
 			if (ep->ContextRecord->Xip >= &mm_check_read_begin && ep->ContextRecord->Xip <= &mm_check_read_end)

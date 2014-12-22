@@ -7,8 +7,10 @@
 #include <intrin.h>
 #include <log.h>
 #include <platform.h>
-#include <stddef.h>
+
+#include <Windows.h>
 #include <winternl.h>
+#include <stddef.h>
 
 /* Linux thread local storage (TLS) support emulation
  *
@@ -97,23 +99,23 @@
 
 #include "x86_inst.h" /* x86 instruction definitions */
 
-#ifndef _WIN64
-#define MAX_TLS_ENTRIES		0x80
-#endif
+#define MAX_TLS_ENTRIES		0x10
+#define MAX_KERNEL_ENTRIES	0x10
 
 struct tls_data
 {
 #ifdef _WIN64
 	DWORD fs_base_slot; /* Win32 TLS slot id for storing current emulated fs base address */
 	PVOID fs_base;
-#else
-	DWORD gs_slot; /* Win32 TLS slot id for storing current emulated gs register */
-	DWORD entries_slot[MAX_TLS_ENTRIES]; /* Win32 TLS slot id for each emulated tls entries */
-	PVOID current_gs_value;
-	PVOID current_entries_addr[MAX_TLS_ENTRIES];
-	/* current_gs_addr and current_entries_addr is sed by fork to passing tls data to the new process */
-#endif
 	uint8_t trampoline[2048]; /* TODO */
+#else
+	DWORD entries[MAX_TLS_ENTRIES]; /* Win32 TLS slot id */
+	DWORD current_values[MAX_TLS_ENTRIES]; /* Set by fork() to passing tls data to the new process */
+	int entry_count;
+	DWORD kernel_entries[MAX_KERNEL_ENTRIES];
+	DWORD current_kernel_values[MAX_KERNEL_ENTRIES];
+	int kernel_entry_count;
+#endif
 };
 
 static struct tls_data *const tls = TLS_DATA_BASE;
@@ -124,10 +126,6 @@ void tls_init()
 #ifdef _WIN64
 	tls->fs_base_slot = TlsAlloc();
 	TlsSetValue(tls->fs_base_slot, 0);
-#else
-	for (int i = 0; i < MAX_TLS_ENTRIES; i++)
-		tls->entries_slot[i] = -1;
-	tls->gs_slot = TlsAlloc();
 #endif
 }
 
@@ -136,12 +134,9 @@ void tls_reset()
 #ifdef _WIN64
 	TlsSetValue(tls->fs_base_slot, 0);
 #else
-	for (int i = 0; i < MAX_TLS_ENTRIES; i++)
-		if (tls->entries_slot[i] != -1)
-		{
-			TlsFree(tls->entries_slot[i]);
-			tls->entries_slot[i] = -1;
-		}
+	for (int i = 0; i < tls->entry_count; i++)
+		TlsFree(tls->entries[i]);
+	tls->entry_count = 0;
 #endif
 }
 
@@ -150,10 +145,10 @@ void tls_shutdown()
 #ifdef _WIN64
 	TlsFree(tls->fs_base_slot);
 #else
-	TlsFree(tls->gs_slot);
-	for (int i = 0; i < MAX_TLS_ENTRIES; i++)
-		if (tls->entries_slot[i] != -1)
-			TlsFree(tls->entries_slot[i]);
+	for (int i = 0; i < tls->entry_count; i++)
+		TlsFree(tls->entries[i]);
+	for (int i = 0; i < tls->kernel_entry_count; i++)
+		TlsFree(tls->kernel_entries[i]);
 	mm_munmap(TLS_DATA_BASE, sizeof(struct tls_data));
 #endif
 }
@@ -166,14 +161,16 @@ void tls_beforefork()
 	tls->fs_base = TlsGetValue(tls->fs_base_slot);
 	log_info("fs base addr 0x%p\n", tls->fs_base);
 #else
-	tls->current_gs_value = TlsGetValue(tls->gs_slot);
-	log_info("gs slot %d value 0x%p\n", tls->gs_slot, tls->current_gs_value);
-	for (int i = 0; i < MAX_TLS_ENTRIES; i++)
-		if (tls->entries_slot[i] != -1)
-		{
-			tls->current_entries_addr[i] = TlsGetValue(tls->entries_slot[i]);
-			log_info("entry %d slot %d addr 0x%p\n", i, tls->entries_slot[i], tls->current_entries_addr[i]);
-		}
+	for (int i = 0; i < tls->entry_count; i++)
+	{
+		tls->current_values[i] = TlsGetValue(tls->entries[i]);
+		log_info("user entry %d value 0x%p\n", tls->entries[i], tls->current_values[i]);
+	}
+	for (int i = 0; i < tls->kernel_entry_count; i++)
+	{
+		tls->current_kernel_values[i] = TlsGetValue(tls->kernel_entries[i]);
+		log_info("kernel entry %d value 0x%p\n", tls->kernel_entries[i], tls->current_kernel_values[i]);
+	}
 #endif
 }
 
@@ -185,22 +182,22 @@ void tls_afterfork()
 	TlsSetValue(tls->fs_base_slot, tls->fs_base);
 	log_info("fs base addr 0x%p\n", tls->fs_base);
 #else
-	tls->gs_slot = TlsAlloc();
-	TlsSetValue(tls->gs_slot, tls->current_gs_value);
-	log_info("gs slot %d value 0x%p\n", tls->gs_slot, tls->current_gs_value);
-	/* Restore saved tls info from shared memory regions */
-	for (int i = 0; i < MAX_TLS_ENTRIES; i++)
-		if (tls->entries_slot[i] != -1)
-		{
-			DWORD slot = TlsAlloc();
-			tls->entries_slot[i] = slot;
-			TlsSetValue(slot, tls->current_entries_addr[i]);
-			log_info("entry %d slot %d addr 0x%p\n", i, tls->entries_slot[i], tls->current_entries_addr[i]);
-		}
+	for (int i = 0; i < tls->entry_count; i++)
+	{
+		tls->entries[i] = TlsAlloc();
+		TlsSetValue(tls->entries[i], tls->current_values[i]);
+		log_info("user entry %d value 0x%p\n", tls->entries[i], tls->current_values[i]);
+	}
+	for (int i = 0; i < tls->kernel_entry_count; i++)
+	{
+		tls->kernel_entries[i] = TlsAlloc();
+		TlsSetValue(tls->kernel_entries[i], tls->current_kernel_values[i]);
+		log_info("kernel entry %d value 0x%p\n", tls->kernel_entries[i], tls->current_kernel_values[i]);
+	}
 #endif
 }
 
-static size_t tls_slot_to_offset(DWORD slot)
+int tls_slot_to_offset(int slot)
 {
 	if (slot < 64)
 		return offsetof(TEB, TlsSlots[slot]);
@@ -208,7 +205,7 @@ static size_t tls_slot_to_offset(DWORD slot)
 		return offsetof(TEB, TlsExpansionSlots) + (slot - 64) * sizeof(PVOID);
 }
 
-static DWORD tls_offset_to_slot(size_t offset)
+int tls_offset_to_slot(int offset)
 {
 	if (offset < offsetof(TEB, TlsSlots[64]))
 		return (offset - offsetof(TEB, TlsSlots)) / sizeof(PVOID);
@@ -216,25 +213,51 @@ static DWORD tls_offset_to_slot(size_t offset)
 		return (offset - offsetof(TEB, TlsExpansionSlots)) / sizeof(PVOID) + 64;
 }
 
-#define LOW8(x) (*((uint8_t *)&(x)))
-#define LOW16(x) (*((uint16_t *)&(x)))
-#define LOW32(x) (*((uint32_t *)&(x)))
-#define LOW64(x) (*((uint64_t *)&(x)))
+int tls_alloc()
+{
+	int slot = TlsAlloc();
+	tls->kernel_entries[tls->kernel_entry_count] = slot;
+	log_info("Allocated kernel tls entry %d (slot %d)\n", tls->kernel_entry_count, slot);
+	tls->kernel_entry_count++;
+	return slot;
+}
 
-#ifdef _WIN64
+/* Segment register format:
+* 15    3  2   0
+* [Index|TI|RPL]
+* TI: GDT = 0, LDT = 1
+* RPL: Ring 3
+*/
+
+DEFINE_SYSCALL(set_thread_area, struct user_desc *, u_info)
+{
+	log_info("set_thread_area(%p): entry=%d, base=%p, limit=%p\n", u_info, u_info->entry_number, u_info->base_addr, u_info->limit);
+	if (u_info->entry_number == -1)
+	{
+		if (tls->entry_count == MAX_TLS_ENTRIES)
+			return -ESRCH;
+		int slot = TlsAlloc();
+		tls->entries[tls->entry_count] = slot;
+		u_info->entry_number = slot;
+		log_info("allocated entry %d (slot %d), fs offset 0x%x\n", tls->entry_count, slot, tls_slot_to_offset(u_info->entry_number));
+		tls->entry_count++;
+	}
+	TlsSetValue(u_info->entry_number, u_info->base_addr);
+	return 0;
+}
+
 DEFINE_SYSCALL(arch_prctl, int, code, uintptr_t, addr)
 {
 	log_info("arch_prctl(%d, 0x%p)\n", code, addr);
 	switch (code)
 	{
 	case ARCH_SET_FS:
-		log_info("ARCH_SET_FS: new fs addr: 0x%p\n", addr);
-		TlsSetValue(tls->fs_base_slot, (void *)addr);
-		return 0;
+		log_error("ARCH_SET_FS not supported.\n");
+		return -EINVAL;
 
 	case ARCH_GET_FS:
-		log_info("ARCH_GET_FS: old fs addr: 0x%p\n", *(uintptr_t *)addr = (uintptr_t)TlsGetValue(tls->fs_base_slot));
-		return 0;
+		log_error("ARCH_GET_FS not supported.\n");
+		return -EINVAL;
 
 	case ARCH_SET_GS:
 		log_error("ARCH_SET_GS not supported.\n");
@@ -250,83 +273,11 @@ DEFINE_SYSCALL(arch_prctl, int, code, uintptr_t, addr)
 	}
 }
 
-#else
-/* Segment register format:
- * 15    3  2   0
- * [Index|TI|RPL]
- * TI: GDT = 0, LDT = 1
- * RPL: Ring 3
- */
-
-DEFINE_SYSCALL(set_thread_area, struct user_desc *, u_info)
-{
-	log_info("set_thread_area(%p): entry=%d, base=%p, limit=%p\n", u_info, u_info->entry_number, u_info->base_addr, u_info->limit);
-	if (u_info->entry_number == -1)
-	{
-		/* Find an empty entry */
-		for (int i = 0; i < MAX_TLS_ENTRIES; i++)
-			if (tls->entries_slot[i] == -1)
-			{
-				DWORD slot = TlsAlloc();
-				tls->entries_slot[i] = slot;
-				u_info->entry_number = tls_slot_to_offset(slot);
-				log_info("allocated entry %d (slot %d), calculated fs offset 0x%x\n", i, slot, u_info->entry_number);
-				break;
-			}
-		if (u_info->entry_number == -1)
-			return -ESRCH;
-	}
-	__writefsdword(u_info->entry_number, u_info->base_addr);
-	return 0;
-}
-
-static int handle_mov_reg_gs(PCONTEXT context, uint8_t modrm)
-{
-	/* 11 101 rrr */
-	if ((modrm & 0xE8) != 0xE8)
-	{
-		return 0;
-	}
-	uint16_t val = TlsGetValue(tls->gs_slot);
-	switch (modrm & 7)
-	{
-	case 0: LOW16(context->Eax) = val; break;
-	case 1: LOW16(context->Ecx) = val; break;
-	case 2: LOW16(context->Edx) = val; break;
-	case 3: LOW16(context->Ebx) = val; break;
-	case 4: LOW16(context->Esp) = val; break;
-	case 5: LOW16(context->Ebp) = val; break;
-	case 6: LOW16(context->Esi) = val; break;
-	case 7: LOW16(context->Edi) = val; break;
-	}
-	return 1;
-}
-
-static int handle_mov_gs_reg(PCONTEXT context, uint8_t modrm)
-{
-	/* 11 101 rrr */
-	if ((modrm & 0xE8) != 0xE8)
-	{
-		return 0;
-	}
-	uint16_t val;
-	switch (modrm & 7)
-	{
-	case 0: val = context->Eax; break;
-	case 1: val = context->Ecx; break;
-	case 2: val = context->Edx; break;
-	case 3: val = context->Ebx; break;
-	case 4: val = context->Esp; break;
-	case 5: val = context->Ebp; break;
-	case 6: val = context->Esi; break;
-	case 7: val = context->Edi; break;
-	}
-	uint16_t gs_offset = (val >> 3);
-	log_info("mov gs, %d\n", tls_offset_to_slot(gs_offset));
-	TlsSetValue(tls->gs_slot, tls_offset_to_slot(gs_offset));
-	return 1;
-}
-#endif
+#ifdef _WIN64
+#define LOW8(x) (*((uint8_t *)&(x)))
+#define LOW16(x) (*((uint16_t *)&(x)))
+#define LOW32(x) (*((uint32_t *)&(x)))
+#define LOW64(x) (*((uint64_t *)&(x)))
 
 #define GET_MODRM_MOD(c)	(((c) >> 6) & 7)
 #define GET_MODRM_R(c)		(((c) >> 3) & 7)
@@ -342,11 +293,8 @@ static int handle_mov_gs_reg(PCONTEXT context, uint8_t modrm)
 #define GET_REX_X(r)		(((r) >> 1) & 1)
 #define GET_REX_B(r)		(r & 1)
 
-#ifdef _WIN64
 #define MODRM_RIP_RELATIVE	1
-#else
-#define MODRM_RIP_RELATIVE	0
-#endif
+
 /* Return bytes of ModR/M + SIB + disp, 0 on failure */
 int process_modrm(uint8_t *code, int rex, int *reg, int *base, int *index, int *scale, int32_t *disp, int *flags)
 {
@@ -447,11 +395,7 @@ static __forceinline void gen_copy(uint8_t **trampoline, uint8_t *code, int coun
 
 static __forceinline void gen_copy_prefix(uint8_t **trampoline, uint8_t *code, int count)
 {
-#ifdef _WIN64
 #define TLS_OVERRIDE_CODE 0x64 /* FS */
-#else
-#define TLS_OVERRIDE_CODE 0x65 /* GS */
-#endif
 	for (int i = 0; i < count; i++)
 		if (*code != TLS_OVERRIDE_CODE)
 			gen_byte(trampoline, *code++);
@@ -476,16 +420,10 @@ static __forceinline void gen_sib(uint8_t **trampoline, int base, int index, int
 
 static __forceinline void gen_epilogue(uint8_t **trampoline, uint8_t *return_addr)
 {
-#ifdef _WIN64
 	gen_byte(trampoline, 0xFF); /* FF /4: JMP r/m64 */
 	gen_modrm(trampoline, 0, 4, 5); /* RIP relative disp32 */
 	gen_dword(trampoline, 0);
 	gen_qword(trampoline, (uint64_t)return_addr);
-#else
-	gen_byte(trampoline, 0x68); /* PUSH imm32 */
-	gen_dword(trampoline, (uint32_t)return_addr);
-	gen_byte(trampoline, 0xC3); /* RET */
-#endif
 }
 
 static __forceinline void gen_inst_modrm(uint8_t **trampoline, uint8_t *opcode, int opcode_bytes,
@@ -496,7 +434,6 @@ static __forceinline void gen_inst_modrm(uint8_t **trampoline, uint8_t *opcode, 
 		log_error("gen_modrm(): rsp or r12 cannot be used as an index register.\n");
 		return;
 	}
-#ifdef _WIN64
 	if (rex_w != -1) /* rex_w == 1 means no rex prefix */
 	{
 		int rex_r = 0, rex_x = 0, rex_b = 0;
@@ -517,13 +454,11 @@ static __forceinline void gen_inst_modrm(uint8_t **trampoline, uint8_t *opcode, 
 		}
 		gen_rex(trampoline, rex_w, rex_r, rex_x, rex_b);
 	}
-#endif
 	for (int i = 0; i < opcode_bytes; i++)
 		gen_byte(trampoline, *opcode++);
 	/* TODO: Shall we support disp8? */
 	if (base == -1 && index == -1) /* disp32 */
 	{
-#ifdef _WIN64
 		if (flags & MODRM_RIP_RELATIVE)
 			gen_modrm(trampoline, 0, reg, 5);
 		else
@@ -531,9 +466,6 @@ static __forceinline void gen_inst_modrm(uint8_t **trampoline, uint8_t *opcode, 
 			gen_modrm(trampoline, 0, reg, 4);
 			gen_sib(trampoline, 5, 4, 0);
 		}
-#else
-		gen_modrm(trampoline, 0, reg, 5);
-#endif
 		gen_dword(trampoline, disp);
 	}
 	else if (base == -1) /* [scaled index] + disp32 */
@@ -545,7 +477,7 @@ static __forceinline void gen_inst_modrm(uint8_t **trampoline, uint8_t *opcode, 
 	else if (base == 4 || index != -1) /* SIB required */
 	{
 		gen_modrm(trampoline, 2, reg, 4);
-		gen_sib(trampoline, base, index, scale);
+		gen_sib(out, base, index == -1? 4: index, scale);
 		gen_dword(trampoline, disp);
 	}
 	else
@@ -564,43 +496,6 @@ int tls_emulation(PCONTEXT context, uint8_t *code)
 		log_warning("IP Inside TLS trampoline!!!!! Emulation skipped.\n");
 		return 0;
 	}
-#ifndef _WIN64
-	if (code[0] == 0x8C)
-	{
-		/* 8C /r: MOV r/m16, Sreg */
-		if (handle_mov_reg_gs(context, code[1]))
-		{
-			context->Eip += 2;
-			return 1;
-		}
-	}
-	else if (code[0] == 0x66 && code[1] == 0x8C)
-	{
-		/* ... with optional 16-bit prefix 66H */
-		if (handle_mov_reg_gs(context, code[2]))
-		{
-			context->Eip += 3;
-			return 1;
-		}
-	}
-	else if (code[0] == 0x8E)
-	{
-		/* 8E /r: MOV Sreg, r/m16 */
-		if (handle_mov_gs_reg(context, code[1]))
-		{
-			context->Eip += 2;
-			return 1;
-		}
-	}
-	else if (code[0] == 0x66 && code[1] == 0x8E)
-	{
-		if (handle_mov_gs_reg(context, code[2]))
-		{
-			context->Eip += 3;
-			return 1;
-		}
-	}
-#endif
 	else
 	{
 		/* Maybe a normal instruction involving with segment prefix.
@@ -648,23 +543,13 @@ int tls_emulation(PCONTEXT context, uint8_t *code)
 			}
 			else if (prefix[prefix_len] == 0x64) /* FS segment override */
 			{
-#ifdef _WIN64
 				prefix_len++;
 				found_segment_override = 1;
-#else
-				log_info("Found FS segment override, skipped\n");
-				return 0;
-#endif
 			}
 			else if (prefix[prefix_len] == 0x65) /* GS segment override <- we're interested */
 			{
-#ifdef _WIN64
 				log_info("Found GS segment override, skipped\n");
 				return 0;
-#else
-				prefix_len++;
-				found_segment_override = 1;
-#endif
 			}
 			else if (prefix[prefix_len] == 0x66) /* Operand size prefix */
 			{
@@ -689,14 +574,12 @@ int tls_emulation(PCONTEXT context, uint8_t *code)
 		uint8_t *opcode = prefix + prefix_len;
 		int rex = 0;
 		int rex_w = -1;
-#ifdef _WIN64
 		if (*opcode >= 0x40 && *opcode <= 0x4F) /* REX Prefix */
 		{
 			log_info("Found rex prefix.\n");
 			rex = *opcode++;
 			rex_w = GET_REX_W(rex);
 		}
-#endif
 
 		struct instruction_desc *desc;
 		int opcode_len;
@@ -715,13 +598,7 @@ int tls_emulation(PCONTEXT context, uint8_t *code)
 
 		uint8_t *operand = opcode + opcode_len;
 
-#ifdef _WIN64
 		size_t tls_addr = TlsGetValue(tls->fs_base_slot);
-#else
-		/* TODO: Optimization to reduce one lookup? */
-		size_t gs_value = TlsGetValue(tls->gs_slot);
-		size_t tls_addr = TlsGetValue(gs_value);
-#endif
 
 		uint8_t *_temp = tls->trampoline;
 		uint8_t **trampoline = &_temp;
@@ -745,25 +622,20 @@ int tls_emulation(PCONTEXT context, uint8_t *code)
 			if (imm_bytes == PREFIX_OPERAND_SIZE)
 			{
 				imm_bytes = operand_size_prefix? 2: 4;
-#ifdef _WIN64
 				if ((rex & 0x08) > 0)
 					imm_bytes = 4;
-#endif
 			}
 			else if (imm_bytes == PREFIX_OPERAND_SIZE_64)
 			{
 				imm_bytes = operand_size_prefix? 2: 4;
-#ifdef _WIN64
 				if ((rex & 0x08) > 0)
 					imm_bytes = 4;
-#endif
 			}
 			int reg, base, index, scale, flags, modrm_bytes;
 			int32_t disp;
 			if (!(modrm_bytes = process_modrm(operand, rex, &reg, &base, &index, &scale, &disp, &flags)))
 				return 0;
 
-#ifdef _WIN64
 			/* x64 does not support 64bit offsets in ModR/M
 			 * Thus we have to store the computed address in a temporary register
 			 */
@@ -826,69 +698,19 @@ int tls_emulation(PCONTEXT context, uint8_t *code)
 			gen_epilogue(trampoline, operand + modrm_bytes + imm_bytes);
 
 			FINISH_TRAMPOLINE();
-#else
-			/* Generate equivalent trampoline code by patching ModR/M */
-			gen_copy_prefix(trampoline, prefix, prefix_len);
-			gen_inst_modrm(trampoline, opcode, opcode_len, -1, reg, base, index, scale, disp + tls_addr, flags);
-			gen_copy(trampoline, operand + modrm_bytes, imm_bytes);
-			gen_epilogue(trampoline, operand + modrm_bytes + imm_bytes);
-
-			FINISH_TRAMPOLINE();
-#endif
 			return 1;
 		}
 
 		case INST_TYPE_MOV_MOFFSET:
-		{
-#ifdef _WIN64
 			__debugbreak();
-#else
-			/* MOV AL, moffs8 */
-			/* MOV AX, moffs16 */
-			/* MOV EAX, moffs32 */
-			/* MOV moffs8, AL */
-			/* MOV moffs16, AX */
-			/* MOV moffs32, EAX */
-			/* TODO: Deal with address_size_prefix when we support it */
-			uint32_t addr = tls_addr + LOW32(operand[0]);
-			gen_copy_prefix(trampoline, prefix, prefix_len);
-			gen_byte(trampoline, opcode[0]);
-			gen_dword(trampoline, addr);
-			gen_epilogue(trampoline, operand + 4);
-
-			FINISH_TRAMPOLINE();
-			return 1;
-#endif
-		}
 
 		case INST_TYPE_EXTENSION(5):
-#ifdef _WIN64
 			__debugbreak();
-#else
-			if (GET_MODRM_CODE(operand[0]) == 2)
-			{
-				int reg, base, index, scale, flags, modrm_bytes;
-				int32_t disp;
-				if (!(modrm_bytes = process_modrm(operand, rex, &reg, &base, &index, &scale, &disp, &flags)))
-					return 0;
-
-				/* CALL r/m16; CALL r/m32; */
-				/* Push return address */
-				gen_byte(trampoline, 0x68); /* PUSH imm32 */
-				gen_dword(trampoline, operand + modrm_bytes); /* Return address */
-				gen_copy_prefix(trampoline, prefix, prefix_len);
-				/* Change to JMP r/m16; JMP r/m32; */
-				char inst = 0xFF;
-				gen_inst_modrm(trampoline, &inst, 1, -1, 4, base, index, scale, disp + tls_addr, flags);
-
-				FINISH_TRAMPOLINE();
-				return 1;
-			}
-#endif
-			/* Fall through */
 
 		default: log_error("Unhandled instruction type: %d\n", desc->type); return 0;
 		}
 	}
 	return 0;
 }
+
+#endif

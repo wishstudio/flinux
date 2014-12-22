@@ -21,6 +21,8 @@
 #define GET_JCC_COND(type)		((type) - INST_JCC)
 #define INST_JCC_REL8			(INST_TYPE_SPECIAL + 22)
 #define INST_INT				(INST_TYPE_SPECIAL + 23)
+#define INST_MOV_FROM_SEG		(INST_TYPE_SPECIAL + 24)
+#define INST_MOV_TO_SEG			(INST_TYPE_SPECIAL + 25)
 
 #define REG_AX			0x00000001 /* AL, AH, AX, EAX, RAX register */
 #define REG_CX			0x00000002 /* CL, CH, CX, ECX, RCX register */
@@ -329,9 +331,9 @@ static const struct instruction_desc one_byte_inst[256] =
 	/* 0x89: MOV r/m?, r? */ INST(MODRM(), READ(MODRM_R), WRITE(MODRM_RM))
 	/* 0x8A: MOV r8, r/m8 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
 	/* 0x8B: MOV r?, r/m? */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
-	/* 0x8C: MOV r/m16, Sreg; MOV r/m64, Sreg */ UNSUPPORTED()
+	/* 0x8C: MOV r/m16, Sreg; MOV r/m64, Sreg */ SPECIAL(INST_MOV_FROM_SEG, MODRM(), WRITE(MODRM_RM))
 	/* 0x8D: LEA r?, m */ INST(MODRM(), READ(MODRM_RM_M), WRITE(MODRM_R))
-	/* 0x8E: MOV Sreg, r/m16; MOV Sreg, r/m64 */ UNSUPPORTED()
+	/* 0x8E: MOV Sreg, r/m16; MOV Sreg, r/m64 */ SPECIAL(INST_MOV_TO_SEG, MODRM(), READ(MODRM_RM))
 	/* 0x8F: POP r/m? */ INST(MODRM(), READ(REG_SP), WRITE(REG_SP | MODRM_RM))
 	/* NOTE: The read and write information of these are not very accurate */
 	/* 0x90: XCHG ?AX, ?AX/R8?; NOP */ INST()

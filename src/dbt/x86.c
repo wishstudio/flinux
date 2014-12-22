@@ -2,6 +2,7 @@
 #include <dbt/x86.h>
 #include <dbt/x86_inst.h>
 #include <syscall/mm.h>
+#include <syscall/tls.h>
 #include <log.h>
 
 #include <stdint.h>
@@ -21,8 +22,59 @@
 #define GET_REX_X(r)		(((r) >> 1) & 1)
 #define GET_REX_B(r)		(r & 1)
 
-// ModR/M flags
+/* ModR/M flags */
 #define MODRM_PURE_REGISTER	1
+
+struct modrm_rm_t
+{
+	int base, index, scale, flags;
+	int32_t disp;
+};
+
+/* Helpers for constructing modrm_rm_t structure */
+static struct modrm_rm_t __forceinline modrm_rm_reg(int r)
+{
+	struct modrm_rm_t rm;
+	rm.base = r;
+	rm.index = -1;
+	rm.scale = 0;
+	rm.disp = 0;
+	rm.flags = MODRM_PURE_REGISTER;
+	return rm;
+}
+
+static struct modrm_rm_t __forceinline modrm_rm_disp(int32_t disp)
+{
+	struct modrm_rm_t rm;
+	rm.base = -1;
+	rm.index = -1;
+	rm.scale = 0;
+	rm.disp = disp;
+	rm.flags = 0;
+	return rm;
+}
+
+static struct modrm_rm_t __forceinline modrm_rm_mreg(int base, int32_t disp)
+{
+	struct modrm_rm_t rm;
+	rm.base = base;
+	rm.index = -1;
+	rm.scale = 0;
+	rm.disp = disp;
+	rm.flags = 0;
+	return rm;
+}
+
+static struct modrm_rm_t __forceinline modrm_rm_mscale(int base, int index, int scale, int32_t disp)
+{
+	struct modrm_rm_t rm;
+	rm.base = base;
+	rm.index = index;
+	rm.scale = scale;
+	rm.disp = disp;
+	rm.flags = 0;
+	return rm;
+}
 
 static uint8_t __forceinline parse_byte(uint8_t **code)
 {
@@ -54,54 +106,55 @@ static int32_t __forceinline parse_rel(uint8_t **code, int rel_bytes)
 		return (int32_t)parse_dword(code);
 }
 
-void parse_modrm(uint8_t **code, int *reg, int *base, int *index, int *scale, int32_t *disp, int *flags)
+static void parse_modrm(uint8_t **code, int *r, struct modrm_rm_t *rm)
 {
 	uint8_t modrm = parse_byte(code);
-	*reg = GET_MODRM_R(modrm);
+	*r = GET_MODRM_R(modrm);
 	int mod = GET_MODRM_MOD(modrm);
 	if (mod == 3)
 	{
-		*flags = MODRM_PURE_REGISTER;
-		*base = GET_MODRM_RM(modrm);
+		rm->flags = MODRM_PURE_REGISTER;
+		rm->base = GET_MODRM_RM(modrm);
+		rm->index = -1;
 		return;
 	}
-	*flags = 0;
+	rm->flags = 0;
 	int sib_bytes = 0;
-	int rm = GET_MODRM_RM(modrm);
-	if (rm == 4)
+	int modrm_rm = GET_MODRM_RM(modrm);
+	if (modrm_rm == 4)
 	{
 		/* ModR/M with SIB byte */
 		sib_bytes = 1;
 		int sib = parse_byte(code);
-		*scale = GET_SIB_SCALE(sib);
-		if ((*index = GET_SIB_INDEX(sib)) == 4)
-			*index = -1;
-		if ((*base = GET_SIB_BASE(sib)) == 5 && mod == 0)
+		rm->scale = GET_SIB_SCALE(sib);
+		if ((rm->index = GET_SIB_INDEX(sib)) == 4)
+			rm->index = -1;
+		if ((rm->base = GET_SIB_BASE(sib)) == 5 && mod == 0)
 		{
-			*base = -1;
+			rm->base = -1;
 			mod = 2; /* For use later to correctly extract disp32 */
 		}
 	}
 	else
 	{
 		/* ModR/M without SIB byte */
-		*index = -1;
-		*scale = 0;
-		if (mod == 0 && rm == 5) /* disp32 */
+		rm->index = -1;
+		rm->scale = 0;
+		if (mod == 0 && modrm_rm == 5) /* disp32 */
 		{
-			*base = -1;
-			*disp = (int32_t)parse_dword(code);
+			rm->base = -1;
+			rm->disp = (int32_t)parse_dword(code);
 			return;
 		}
-		*base = rm;
+		rm->base = modrm_rm;
 	}
 	/* Displacement */
 	if (mod == 1) /* disp8 */
-		*disp = (int8_t)parse_byte(code);
+		rm->disp = (int8_t)parse_byte(code);
 	else if (mod == 2) /* disp32 */
-		*disp = (int32_t)parse_dword(code);
+		rm->disp = (int32_t)parse_dword(code);
 	else /* no disp */
-		*disp = 0;
+		rm->disp = 0;
 }
 
 static __forceinline void gen_byte(uint8_t **out, uint8_t x)
@@ -143,67 +196,108 @@ static __forceinline void gen_sib(uint8_t **out, int base, int index, int scale)
 	gen_byte(out, (scale << 6) + (index << 3) + base);
 }
 
-static __forceinline void gen_epilogue(uint8_t **out, uint8_t *return_addr)
+static __forceinline void gen_modrm_sib(uint8_t **out, int r, struct modrm_rm_t rm)
 {
-	gen_byte(out, 0x68); /* PUSH imm32 */
-	gen_dword(out, (uint32_t)return_addr);
-	gen_byte(out, 0xC3); /* RET */
-}
-
-static __forceinline void gen_modrm_sib(uint8_t **out, int reg, int base, int index, int scale, int32_t disp, int flags)
-{
-	if (index == 4)
+	if (rm.flags == MODRM_PURE_REGISTER)
+	{
+		gen_modrm(out, 3, r, rm.base);
+		return;
+	}
+	if (rm.index == 4)
 	{
 		log_error("gen_modrm(): rsp or r12 cannot be used as an index register.\n");
 		return;
 	}
-	if (flags == MODRM_PURE_REGISTER)
-	{
-		gen_modrm(out, 3, reg, base);
-		return;
-	}
 	/* TODO: Use shorter codes when the offset is small */
-	if (base == -1 && index == -1) /* disp32 */
+	if (rm.base == -1 && rm.index == -1) /* disp32 */
 	{
-		gen_modrm(out, 0, reg, 5);
-		gen_dword(out, disp);
+		gen_modrm(out, 0, r, 5);
+		gen_dword(out, rm.disp);
 	}
-	else if (base == -1) /* [scaled index] + disp32 */
+	else if (rm.base == -1) /* [scaled index] + disp32 */
 	{
-		gen_modrm(out, 0, reg, 4);
-		gen_sib(out, 5, index, scale);
-		gen_dword(out, disp);
+		gen_modrm(out, 0, r, 4);
+		gen_sib(out, 5, rm.index, rm.scale);
+		gen_dword(out, rm.disp);
 	}
-	else if (base == 4 || index != -1) /* SIB required */
+	else if (rm.base == 4 || rm.index != -1) /* SIB required */
 	{
-		gen_modrm(out, 2, reg, 4);
-		gen_sib(out, base, index == -1? 4: index, scale);
-		gen_dword(out, disp);
+		gen_modrm(out, 2, r, 4);
+		gen_sib(out, rm.base, rm.index == -1? 4: rm.index, rm.scale);
+		gen_dword(out, rm.disp);
 	}
 	else
 	{
 		/* SIB not needed */
-		gen_modrm(out, 2, reg, base);
-		gen_dword(out, disp);
+		gen_modrm(out, 2, r, rm.base);
+		gen_dword(out, rm.disp);
 	}
 }
 
-static __forceinline void gen_lea(uint8_t **out, int reg, int base, int index, int scale, int32_t disp, int flags)
+static __forceinline void gen_fs_prefix(uint8_t **out)
+{
+	gen_byte(out, 0x64);
+}
+
+static __forceinline void gen_mov_r_rm_16(uint8_t **out, int r, struct modrm_rm_t rm)
+{
+	gen_byte(out, 0x66);
+	gen_byte(out, 0x8B);
+	gen_modrm_sib(out, r, rm);
+}
+
+static __forceinline void gen_mov_rm_r_16(uint8_t **out, struct modrm_rm_t rm, int r)
+{
+	gen_byte(out, 0x66);
+	gen_byte(out, 0x89);
+	gen_modrm_sib(out, r, rm);
+}
+
+static __forceinline void gen_mov_r_rm_32(uint8_t **out, int r, struct modrm_rm_t rm)
+{
+	gen_byte(out, 0x8B);
+	gen_modrm_sib(out, r, rm);
+}
+
+static __forceinline void gen_mov_rm_r_32(uint8_t **out, struct modrm_rm_t rm, int r)
+{
+	gen_byte(out, 0x89);
+	gen_modrm_sib(out, r, rm);
+}
+
+static __forceinline void gen_shr_rm_32(uint8_t **out, struct modrm_rm_t rm, uint8_t imm8)
+{
+	gen_byte(out, 0xC1);
+	gen_modrm_sib(out, 5, rm);
+	gen_byte(out, imm8);
+}
+
+static __forceinline void gen_lea(uint8_t **out, int r, struct modrm_rm_t rm)
 {
 	gen_byte(out, 0x8D);
-	gen_modrm_sib(out, reg, base, index, scale, disp, flags);
+	gen_modrm_sib(out, r, rm);
 }
 
-static __forceinline void gen_pop_modrm(uint8_t **out, int base, int index, int scale, int32_t disp, int flags)
+static __forceinline void gen_popfd(uint8_t **out)
+{
+	gen_byte(out, 0x9D);
+}
+
+static __forceinline void gen_pop_rm(uint8_t **out, struct modrm_rm_t rm)
 {
 	gen_byte(out, 0x8F);
-	gen_modrm_sib(out, 0, base, index, scale, disp, flags);
+	gen_modrm_sib(out, 0, rm);
 }
 
-static __forceinline void gen_push_modrm(uint8_t **out, int base, int index, int scale, int32_t disp, int flags)
+static __forceinline void gen_pushfd(uint8_t **out)
+{
+	gen_byte(out, 0x9C);
+}
+
+static __forceinline void gen_push_rm(uint8_t **out, struct modrm_rm_t rm)
 {
 	gen_byte(out, 0xFF);
-	gen_modrm_sib(out, 6, base, index, scale, disp, flags);
+	gen_modrm_sib(out, 6, rm);
 }
 
 static __forceinline void gen_push_imm32(uint8_t **out, uint32_t imm)
@@ -251,6 +345,10 @@ struct dbt_data
 	struct dbt_block *blocks;
 	int blocks_count;
 	uint8_t *out, *end;
+	/* Offsets for accessing thread local storage in fs:[.] */
+	int tls_scratch_offset; /* scratch variable */
+	int tls_gs_offset; /* gs value */
+	int tls_gs_addr_offset; /* gs base address */
 };
 
 static struct dbt_data *const dbt = DBT_DATA_BASE;
@@ -269,6 +367,16 @@ void dbt_init()
 	dbt->blocks_count = 0;
 	dbt->out = dbt_cache;
 	dbt->end = dbt_cache + DBT_CACHE_SIZE;
+
+	int scratch_slot = tls_alloc();
+	dbt->tls_scratch_offset = tls_slot_to_offset(scratch_slot);
+	log_info("scratch slot: %d, offset: %p\n", scratch_slot, dbt->tls_scratch_offset);
+	int gs_slot = tls_alloc();
+	dbt->tls_gs_offset = tls_slot_to_offset(gs_slot);
+	log_info("gs slot: %d, offset: %p\n", gs_slot, dbt->tls_gs_offset);
+	int gs_addr_slot = tls_alloc();
+	dbt->tls_gs_addr_offset = tls_slot_to_offset(gs_addr_slot);
+	log_info("gs_addr slot: %d, offset: %p\n", gs_addr_slot, dbt->tls_gs_addr_offset);
 	log_info("dbt subsystem initialized.\n");
 }
 
@@ -332,6 +440,41 @@ static size_t dbt_get_direct_trampoline(size_t pc, size_t patch_addr)
 	return (size_t)dbt->end;
 }
 
+struct instruction_t
+{
+	int escape_0x0f;
+	uint8_t opcode;
+	uint8_t opsize_prefix, rep_prefix;
+	int r;
+	struct modrm_rm_t rm;
+	int imm_bytes;
+	struct instruction_desc *desc;
+};
+
+/* Find and return an unused register in an instruction, which can be used to hold temporary values */
+static int find_unused_register(struct instruction_t *ins)
+{
+	/* Calculate used registers in this instruction */
+	int used_regs = ins->desc->read_regs | ins->desc->write_regs;
+	if (ins->r != -1)
+		used_regs |= REG_MASK(ins->r);
+	if (ins->rm.base != -1)
+		used_regs |= REG_MASK(ins->rm.base);
+	if (ins->rm.index != -1)
+		used_regs |= REG_MASK(ins->rm.index);
+#define TEST_REG(r) do { if ((used_regs & REG_MASK(r)) == 0) return r; } while (0)
+	/* We really don't want to use esp or ebp as a temporary register */
+	TEST_REG(0); /* Eax */
+	TEST_REG(1); /* Ecx */
+	TEST_REG(2); /* Edx */
+	TEST_REG(3); /* Ebx */
+	TEST_REG(6); /* Esi */
+	TEST_REG(7); /* Edi */
+#undef TEST_REG
+	log_error("find_unused_register: No usable register found. There must be a bug in our implementation.\n");
+	__debugbreak();
+}
+
 static struct dbt_block *dbt_translate(size_t pc)
 {
 	extern void dbt_find_indirect_internal();
@@ -350,16 +493,15 @@ static struct dbt_block *dbt_translate(size_t pc)
 	uint8_t *out = block->start;
 	for (;;)
 	{
-		uint8_t opcode;
-		uint8_t opsize_prefix = 0;
-		uint8_t rep_prefix = 0;
-
+		struct instruction_t ins;
+		ins.rep_prefix = 0;
+		ins.opsize_prefix = 0;
 		/* Handle prefixes. According to x86 doc, they can appear in any order */
 		for (;;)
 		{
-			opcode = parse_byte(&code);
+			ins.opcode = parse_byte(&code);
 			/* TODO: Can we migrate this switch to a table driven approach? */
-			switch (opcode)
+			switch (ins.opcode)
 			{
 			case 0xF0: /* LOCK */
 				log_error("LOCK prefix not supported\n");
@@ -367,11 +509,11 @@ static struct dbt_block *dbt_translate(size_t pc)
 				continue;
 
 			case 0xF2: /* REPNE/REPNZ */
-				rep_prefix = 0xF2;
+				ins.rep_prefix = 0xF2;
 				continue;
 
 			case 0xF3: /* REP/REPE/REPZ */
-				rep_prefix = 0xF3;
+				ins.rep_prefix = 0xF3;
 				continue;
 
 			case 0x2E: /* CS segment override*/
@@ -405,7 +547,7 @@ static struct dbt_block *dbt_translate(size_t pc)
 				continue;
 
 			case 0x66: /* Operand size prefix */
-				opsize_prefix = 0x66;
+				ins.opsize_prefix = 0x66;
 				continue;
 
 			case 0x67: /* Address size prefix */
@@ -417,31 +559,27 @@ static struct dbt_block *dbt_translate(size_t pc)
 		}
 
 		/* Extract instruction descriptor */
-		int escape_0x0f = 0;
+		ins.escape_0x0f = 0;
 
-		struct instruction_desc *desc;
-		if (opcode == 0x0F)
+		if (ins.opcode == 0x0F)
 		{
-			escape_0x0f = 1;
-			opcode = parse_byte(&code);
-			desc = &two_byte_inst[opcode];
+			ins.escape_0x0f = 1;
+			ins.opcode = parse_byte(&code);
+			ins.desc = &two_byte_inst[ins.opcode];
 		}
 		else
-			desc = &one_byte_inst[opcode];
+			ins.desc = &one_byte_inst[ins.opcode];
 
-		int reg, base, index, scale, flags;
-		int32_t disp;
-		if (desc->has_modrm)
-			parse_modrm(&code, &reg, &base, &index, &scale, &disp, &flags);
-		int imm_bytes;
+		if (ins.desc->has_modrm)
+			parse_modrm(&code, &ins.r, &ins.rm);
 		
 	inst_extension_reentry:
-		imm_bytes = desc->imm_bytes;
-		if (imm_bytes == PREFIX_OPERAND_SIZE)
-			imm_bytes = opsize_prefix? 2: 4;
+		ins.imm_bytes = ins.desc->imm_bytes;
+		if (ins.imm_bytes == PREFIX_OPERAND_SIZE)
+			ins.imm_bytes = ins.opsize_prefix? 2: 4;
 
 		/* Translate instruction */
-		switch (desc->type)
+		switch (ins.desc->type)
 		{
 		case INST_TYPE_UNKNOWN: log_error("Unknown opcode.\n"); __debugbreak(); break;
 		case INST_TYPE_INVALID: log_error("Invalid opcode.\n"); __debugbreak(); break;
@@ -450,7 +588,7 @@ static struct dbt_block *dbt_translate(size_t pc)
 
 		case INST_TYPE_EXTENSION:
 		{
-			desc = &desc->extension_table[reg];
+			ins.desc = &ins.desc->extension_table[ins.r];
 			goto inst_extension_reentry;
 		}
 
@@ -458,24 +596,24 @@ static struct dbt_block *dbt_translate(size_t pc)
 		{
 			/* TODO: Handle GS prefix */
 			uint8_t *imm_start = code;
-			code += imm_bytes;
+			code += ins.imm_bytes;
 
-			if (opsize_prefix)
-				gen_byte(&out, opsize_prefix);
-			if (rep_prefix)
-				gen_byte(&out, rep_prefix);
-			if (escape_0x0f)
+			if (ins.opsize_prefix)
+				gen_byte(&out, ins.opsize_prefix);
+			if (ins.rep_prefix)
+				gen_byte(&out, ins.rep_prefix);
+			if (ins.escape_0x0f)
 				gen_byte(&out, 0x0f);
-			gen_byte(&out, opcode);
-			if (desc->has_modrm)
-				gen_modrm_sib(&out, reg, base, index, scale, disp, flags);
-			gen_copy(&out, imm_start, imm_bytes);
+			gen_byte(&out, ins.opcode);
+			if (ins.desc->has_modrm)
+				gen_modrm_sib(&out, ins.r, ins.rm);
+			gen_copy(&out, imm_start, ins.imm_bytes);
 			break;
 		}
 
 		case INST_CALL_DIRECT:
 		{
-			int32_t rel = parse_rel(&code, imm_bytes);
+			int32_t rel = parse_rel(&code, ins.imm_bytes);
 			size_t dest = (size_t)code + rel;
 			gen_push_imm32(&out, (size_t)code);
 			size_t patch_addr = (size_t)out + 1;
@@ -487,9 +625,9 @@ static struct dbt_block *dbt_translate(size_t pc)
 		{
 			/* TODO: Bad codegen for `call esp', although should not be used in practice */
 			gen_push_imm32(&out, (size_t)code);
-			if (base == 4) /* ESP-related address */
-				disp += 4;
-			gen_push_modrm(&out, base, index, scale, disp, flags);
+			if (ins.rm.base == 4) /* ESP-related address */
+				ins.rm.disp += 4;
+			gen_push_rm(&out, ins.rm);
 			gen_jmp(&out, &dbt_find_indirect_internal);
 			goto end_block;
 		}
@@ -503,18 +641,19 @@ static struct dbt_block *dbt_translate(size_t pc)
 		case INST_RETN:
 		{
 			int count = parse_word(&code);
-			/* pop [esp + count] */
+			/* pop [esp - 4 + count] */
 			/* esp increases before pop operation */
-			gen_pop_modrm(&out, 4, -1, 0, count - 4, 0);
+			struct modrm_rm_t rm = modrm_rm_mreg(4, count - 4);
+			gen_pop_rm(&out, rm);
 			/* lea esp, [esp - 4 + count] */
-			gen_lea(&out, 4, 4, -1, 0, count - 4, 0);
+			gen_lea(&out, 4, rm);
 			gen_jmp(&out, &dbt_find_indirect_internal);
 			goto end_block;
 		}
 
 		case INST_JMP_DIRECT:
 		{
-			int32_t rel = parse_rel(&code, imm_bytes);
+			int32_t rel = parse_rel(&code, ins.imm_bytes);
 			size_t dest = (size_t)code + rel;
 			size_t patch_addr = (size_t)out + 1;
 			gen_jmp(&out, dbt_get_direct_trampoline(dest, patch_addr));
@@ -523,7 +662,7 @@ static struct dbt_block *dbt_translate(size_t pc)
 
 		case INST_JMP_INDIRECT:
 		{
-			gen_push_modrm(&out, base, index, scale, disp, flags);
+			gen_push_rm(&out, ins.rm);
 			gen_jmp(&out, &dbt_find_indirect_internal);
 			goto end_block;
 		}
@@ -545,8 +684,8 @@ static struct dbt_block *dbt_translate(size_t pc)
 		case INST_JCC + 14:
 		case INST_JCC + 15:
 		{
-			int cond = GET_JCC_COND(desc->type);
-			int32_t rel = parse_rel(&code, imm_bytes);
+			int cond = GET_JCC_COND(ins.desc->type);
+			int32_t rel = parse_rel(&code, ins.imm_bytes);
 			size_t dest0 = (size_t)code + rel; /* Branch taken */
 			size_t dest1 = (size_t)code; /* Branch not taken */
 			size_t patch_addr0 = (size_t)out + 2;
@@ -558,14 +697,14 @@ static struct dbt_block *dbt_translate(size_t pc)
 
 		case INST_JCC_REL8:
 		{
-			int32_t rel = parse_rel(&code, imm_bytes);
+			int32_t rel = parse_rel(&code, ins.imm_bytes);
 			size_t dest0 = (size_t)code + rel; /* Branch taken */
 			size_t dest1 = (size_t)code; /* Branch not taken */
 			/* LOOP, LOOPE, LOOPNE, JCXZ, JECXZ, JRCXZ */
 			/* op $+2 */
-			gen_byte(&out, opcode);
+			gen_byte(&out, ins.opcode);
 			gen_byte(&out, 2); /* sizeof(jmp rel8) */
-			/* jmp $+2 */
+			/* jmp $+5 */
 			gen_byte(&out, 0xEB);
 			gen_byte(&out, 5); /* sizeof(jmp rel32) */
 			size_t patch_addr0 = (size_t)out + 1;
@@ -585,6 +724,82 @@ static struct dbt_block *dbt_translate(size_t pc)
 				__debugbreak();
 			}
 			gen_call(&out, &syscall_handler);
+			break;
+		}
+
+		case INST_MOV_FROM_SEG:
+		{
+			if (ins.r != 5) /* GS */
+			{
+				log_error("mov from segment selectors other than GS not supported.\n");
+				__debugbreak();
+			}
+			int temp_reg = find_unused_register(&ins, 0);
+			/* mov fs:[scratch], temp_reg */
+			gen_fs_prefix(&out);
+			gen_mov_rm_r_32(&out, modrm_rm_disp(dbt->tls_scratch_offset), temp_reg);
+
+			/* mov temp_reg, fs:[gs] */
+			gen_fs_prefix(&out);
+			gen_mov_r_rm_32(&out, temp_reg, modrm_rm_disp(dbt->tls_gs_offset));
+
+			/* mov |rm|, temp_reg */
+			gen_mov_rm_r_32(&out, ins.rm, temp_reg);
+
+			/* mov temp_reg, fs:[scratch] */
+			gen_fs_prefix(&out);
+			gen_mov_r_rm_32(&out, temp_reg, modrm_rm_disp(dbt->tls_scratch_offset));
+			break;
+		}
+
+		case INST_MOV_TO_SEG:
+		{
+			if (ins.r != 5) /* GS */
+			{
+				log_error("mov to segment selector other than GS not supported.\n");
+				__debugbreak();
+			}
+			int temp_reg = find_unused_register(&ins);
+			/* mov fs:[scratch], temp_reg */
+			gen_fs_prefix(&out);
+			gen_mov_rm_r_32(&out, modrm_rm_disp(dbt->tls_scratch_offset), temp_reg);
+
+			/* mov temp_reg, |rm| */
+			gen_mov_r_rm_32(&out, temp_reg, ins.rm);
+
+			/* This is very ugly and inefficient, but anyway this instruction should not be used very often */
+			gen_pushfd(&out);
+
+			/* mov fs:[gs], temp_reg */
+			gen_fs_prefix(&out);
+			gen_mov_rm_r_32(&out, modrm_rm_disp(dbt->tls_gs_offset), temp_reg);
+
+			/* call tls_slot_to_offset() to get the offset */
+			gen_shr_rm_32(&out, modrm_rm_reg(temp_reg), 3);
+			gen_push_rm(&out, modrm_rm_reg(0));
+			gen_push_rm(&out, modrm_rm_reg(1));
+			gen_push_rm(&out, modrm_rm_reg(2));
+			gen_push_rm(&out, modrm_rm_reg(temp_reg));
+			gen_call(&out, &tls_slot_to_offset);
+			
+			/* mov temp_reg, fs:eax */
+			gen_fs_prefix(&out);
+			gen_mov_r_rm_32(&out, temp_reg, modrm_rm_mreg(0, 0));
+			/* mov fs:[gs_addr], temp_reg */
+			gen_fs_prefix(&out);
+			gen_mov_rm_r_32(&out, modrm_rm_disp(dbt->tls_gs_addr_offset), temp_reg);
+
+			/* Clean up */
+			gen_lea(&out, 4, modrm_rm_mreg(4, 4));
+			gen_pop_rm(&out, modrm_rm_reg(2));
+			gen_pop_rm(&out, modrm_rm_reg(1));
+			gen_pop_rm(&out, modrm_rm_reg(0));
+
+			gen_popfd(&out);
+
+			/* mov temp_reg, fs:[scratch] */
+			gen_fs_prefix(&out);
+			gen_mov_r_rm_32(&out, temp_reg, modrm_rm_disp(dbt->tls_scratch_offset));
 			break;
 		}
 		}
