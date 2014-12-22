@@ -72,7 +72,6 @@
     <ClInclude Include="src\syscall\timer.h" />
     <ClInclude Include="src\syscall\tls.h" />
     <ClInclude Include="src\syscall\vfs.h" />
-    <ClInclude Include="src\syscall\x86_inst.h" />
     <ClInclude Include="src\vsprintf.h" />
   </ItemGroup>
   <ItemGroup>

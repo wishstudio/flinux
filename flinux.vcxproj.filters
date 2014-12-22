@@ -61,9 +61,6 @@
     <ClInclude Include="src\syscall\tls.h">
       <Filter>syscall</Filter>
     </ClInclude>
-    <ClInclude Include="src\syscall\x86_inst.h">
-      <Filter>syscall</Filter>
-    </ClInclude>
     <ClInclude Include="src\common\fcntl.h">
       <Filter>common</Filter>
     </ClInclude>
