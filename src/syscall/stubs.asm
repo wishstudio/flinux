@@ -161,7 +161,7 @@ mm_check_write ENDP
 EXTERN sys_unimplemented_show:NEAR
 sys_unimplemented PROC
 	push eax
-	jmp sys_unimplemented_show
+	call sys_unimplemented_show
 sys_unimplemented ENDP
 
 OPTION PROLOGUE: NONE
