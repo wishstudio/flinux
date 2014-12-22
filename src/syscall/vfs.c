@@ -1168,15 +1168,13 @@ DEFINE_SYSCALL(fcntl, int, fd, int, cmd, int, arg)
 
 	default:
 		log_error("Unsupported command: %d\n", cmd);
+		return -EINVAL;
 	}
-	return 0;
 }
 
 DEFINE_SYSCALL(fcntl64, int, fd, int, cmd)
 {
-	log_info("fcntl64(%d, %d)\n", fd, cmd);
-	log_error("Unsupported command: %d\n", cmd);
-	return 0;
+	return sys_fcntl(fd, cmd, 0);
 }
 
 DEFINE_SYSCALL(access, const char *, pathname, int, mode)
