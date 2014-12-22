@@ -1,4 +1,5 @@
 /* Instruction description tables */
+#include <stdint.h>
 
 /* Generic instruction types */
 #define INST_TYPE_UNKNOWN		0 /* Unknown/not implemented */
@@ -6,10 +7,17 @@
 #define INST_TYPE_PRIVILEGED	2 /* Privileged instruction */
 #define INST_TYPE_UNSUPPORTED	3 /* Unsupported instruction */
 #define INST_TYPE_EXTENSION		4 /* Opcode extension, use ModR/M R field to distinguish */
-#define INST_TYPE_NORMAL		5 /* Normal instruction which does not need special handling */
+#define INST_TYPE_MANDATORY		5 /* SIMD opcode, distinguished with a mandatory prefix (none, 0x66, 0xF3, 0xF2) */
+#define INST_TYPE_NORMAL		6 /* Normal instruction which does not need special handling */
+
+/* Extension table indices for mandatory prefixes */
+#define MANDATORY_NONE			0
+#define MANDATORY_0x66			1
+#define MANDATORY_0xF3			2
+#define MANDATORY_0xF2			3
 
 /* Special instruction types */
-#define INST_TYPE_SPECIAL		6
+#define INST_TYPE_SPECIAL		7
 #define INST_MOV_MOFFSET		(INST_TYPE_SPECIAL + 0)
 #define INST_CALL_DIRECT		(INST_TYPE_SPECIAL + 1)
 #define INST_CALL_INDIRECT		(INST_TYPE_SPECIAL + 2)
@@ -68,6 +76,7 @@ struct instruction_desc
 #define INVALID()		{ .type = INST_TYPE_INVALID },
 #define PRIVILEGED()	{ .type = INST_TYPE_PRIVILEGED },
 #define UNSUPPORTED()	{ .type = INST_TYPE_UNSUPPORTED },
+#define MANDATORY(x)	{ .type = INST_TYPE_MANDATORY, .extension_table = &mandatory_##x },
 #define EXTENSION(x)	{ .type = INST_TYPE_EXTENSION, .has_modrm = 1, .extension_table = &extension_##x },
 
 #define INST_UNTESTED(...)		UNSUPPORTED() /* FIXME: Temporary for now */
@@ -347,8 +356,8 @@ static const struct instruction_desc one_byte_inst[256] =
 	/* 0x95: XCHG ?AX, ?BP/R13? */ INST(READ(REG_AX | REG_BP | REG_R13), WRITE(REG_AX | REG_BP | REG_R13))
 	/* 0x96: XCHG ?AX, ?SI/R14? */ INST(READ(REG_AX | REG_SI | REG_R14), WRITE(REG_AX | REG_SI | REG_R14))
 	/* 0x97: XCHG ?AX, ?DI/R15? */ INST(READ(REG_AX | REG_DI | REG_R15), WRITE(REG_AX | REG_DI | REG_R15))
-	/* 0x98: CBW; CWDE; CDQE */ INST_UNTESTED(READ(REG_AX), WRITE(REG_AX))
-	/* 0x99: CWD; CDQ; CQO */ INST_UNTESTED(READ(REG_AX), WRITE(REG_AX | REG_DX))
+	/* 0x98: CBW; CWDE; CDQE */ INST(READ(REG_AX), WRITE(REG_AX))
+	/* 0x99: CWD; CDQ; CQO */ INST(READ(REG_AX), WRITE(REG_AX | REG_DX))
 #ifdef _WIN64
 	/* 0x9A: INVALID */ INVALID()
 #else
@@ -376,10 +385,10 @@ static const struct instruction_desc one_byte_inst[256] =
 	/* 0xA9: TEST ?AX, imm? */ INST(IMM(PREFIX_OPERAND_SIZE), READ(REG_AX))
 	/* 0xAA: STOSB */ INST(READ(REG_AX | REG_DI))
 	/* 0xAB: STOSW/STOSD/STOSQ */ INST(READ(REG_AX | REG_DI))
-	/* 0xAC: LODSB */ UNSUPPORTED()
-	/* 0xAD: LODSW/LODSD/LODSQ */ UNSUPPORTED()
-	/* 0xAE: SCASB */ UNSUPPORTED()
-	/* 0xAF: SCASW/SCASD/SCASQ */ UNSUPPORTED()
+	/* 0xAC: LODSB */ INST(READ(REG_SI), WRITE(REG_AX))
+	/* 0xAD: LODSW/LODSD/LODSQ */ INST(READ(REG_SI), WRITE(REG_AX))
+	/* 0xAE: SCASB */ INST(READ(REG_AX | REG_DI))
+	/* 0xAF: SCASW/SCASD/SCASQ */ INST(READ(REG_AX | REG_DI))
 	/* NOTE: The read and write information of these are not very accurate */
 	/* 0xB0: MOV AL/R8L, imm8 */ INST(IMM(1), WRITE(REG_AX | REG_R8))
 	/* 0xB1: MOV CL/R9L, imm8 */ INST(IMM(1), WRITE(REG_CX | REG_R9))
@@ -415,12 +424,12 @@ static const struct instruction_desc one_byte_inst[256] =
 	/* 0xC9: LEAVE */ INST(READ(REG_BP), WRITE(REG_BP | REG_SP))
 	/* 0xCA: RET FAR imm16 */ INST_UNTESTED(IMM(2))
 	/* 0xCB: RET FAR */ INST_UNTESTED()
-	/* 0xCC: INT 3 */ INST_UNTESTED()
+	/* 0xCC: INT 3 */ INST()
 	/* 0xCD: INT */ SPECIAL(INST_INT, IMM(1))
 #ifdef _WIN64
 	/* 0xCE: INVALID */ INVALID()
 #else
-	/* 0xCE: INTO */ INST_UNTESTED()
+	/* 0xCE: INTO */ INST()
 #endif
 	/* 0xCF: IRET/IRETD/IRETQ */ INST_UNTESTED()
 	/* 0xD0: [GRP2] r/m8, 1 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_RM))
@@ -468,7 +477,7 @@ static const struct instruction_desc one_byte_inst[256] =
 	/* 0xF1: ??? */ UNKNOWN()
 	/* 0xF2: ??? */ UNKNOWN()
 	/* 0xF3: ??? */ UNKNOWN()
-	/* 0xF4: HLT */ INST_UNTESTED()
+	/* 0xF4: HLT */ PRIVILEGED()
 	/* 0xF5: CMC */ INST_UNTESTED()
 	/* 0xF6 */ EXTENSION(F6)
 	/* 0xF7 */ EXTENSION(F7)
@@ -482,6 +491,392 @@ static const struct instruction_desc one_byte_inst[256] =
 	/* 0xFE: [GRP4] r/m8 */ INST_UNTESTED(MODRM(), READ(MODRM_RM), WRITE(MODRM_RM))
 	/* 0xFF */ EXTENSION(FF)
 };
+
+static const struct instruction_desc mandatory_0x0F10[4] =
+{
+	/* 00: (SSE) MOVUPS xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 66: (SSE2) MOVUPD xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F3: (SSE) MOVSS xmm1, xmm2/m32 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F2: (SSE2) MOVSD xmm1, xmm2/m64 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+};
+
+static const struct instruction_desc mandatory_0x0F11[4] =
+{
+	/* 00: (SSE) MOVUPS xmm2/m128, xmm1 */ INST(MODRM(), READ(MODRM_R), WRITE(MODRM_RM))
+	/* 66: (SSE2) MOVUPD xmm2/m128, xmm1 */ INST(MODRM(), READ(MODRM_R), WRITE(MODRM_RM))
+	/* F3: (SSE) MOVSS xmm2/m32, xmm1 */ INST(MODRM(), READ(MODRM_R), WRITE(MODRM_RM))
+	/* F2: (SSE2) MOVSD xmm2/m64, xmm1 */ INST(MODRM(), READ(MODRM_R), WRITE(MODRM_RM))
+};
+
+static const struct instruction_desc mandatory_0x0F12[4] =
+{
+	/* 00: (SSE) MOVLPS xmm, m64; MOVHLPS xmm1, xmm2 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 66: (SSE2) MOVLPD xmm, m64 */ INST(MODRM(), READ(MODRM_RM_M), WRITE(MODRM_R))
+	/* F3: (SSE3) MOVSLDUP xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F2: (SSE3) MOVDDUP xmm1, xmm2/m64 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+};
+
+static const struct instruction_desc mandatory_0x0F13[4] =
+{
+	/* 00: (SSE) MOVLPS m64, xmm */ INST(MODRM(), READ(MODRM_R), WRITE(MODRM_RM_M))
+	/* 66: (SSE2) MOVLPD m64, xmm */ INST(MODRM(), READ(MODRM_R), WRITE(MODRM_RM_M))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F14[4] =
+{
+	/* 00: (SSE) UNPCKLPS xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 66: (SSE2) UNPCKLPD xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F15[4] =
+{
+	/* 00: (SSE) UNPCKHPS xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 66: (SSE2) UNPCKHPD xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F16[4] =
+{
+	/* 00: (SSE) MOVHPS xmm, m64; MOVLHPS xmm1, xmm2 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 66: (SSE2) MOVHPD xmm, m64 */ INST(MODRM(), READ(MODRM_RM_M), WRITE(MODRM_R))
+	/* F3: (SSE3) MOVSHDUP xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F17[4] =
+{
+	/* 00: (SSE) MOVHPS/MOVLHPS m64, xmm */ INST(MODRM(), READ(MODRM_R), WRITE(MODRM_RM_R))
+	/* 66: (SSE2) MOVHPD m64, xmm */ INST(MODRM(), READ(MODRM_R), WRITE(MODRM_RM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F28[4] =
+{
+	/* 00: (SSE) MOVAPS xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 66: (SSE2) MOVAPD xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F29[4] =
+{
+	/* 00: (SSE) MOVAPS xmm2/m128, xmm1 */ INST(MODRM(), READ(MODRM_R), WRITE(MODRM_RM))
+	/* 66: (SSE2) MOVAPD xmm2/m128, xmm1 */ INST(MODRM(), READ(MODRM_R), WRITE(MODRM_RM))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F2A[4] =
+{
+	/* 00: (MMX) CVTPI2PS xmm, mm/m64 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 66: (MMX) CVTPI2PD xmm, mm/m64 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F3: (SSE2) CVTSI2SS xmm, r/m32 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F2: (SSE2) CVTSI2SD xmm, r/m32 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+};
+
+static const struct instruction_desc mandatory_0x0F2B[4] =
+{
+	/* 00: (SSE) MOVNTPS m128, xmm */ INST(MODRM(), READ(MODRM_R), WRITE(MODRM_RM_M))
+	/* 66: (SSE2) MOVNTPD m128, xmm */ INST(MODRM(), READ(MODRM_R), WRITE(MODRM_RM_M))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F2C[4] =
+{
+	/* 00: (MMX) CVTTPS2PI mm, xmm/m64 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 66: (MMX) CVTTPD2PI mm, xmm/m128 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F3: (SSE) CVTTSS2SI r32, xmm/m32 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F2: (SSE2) CVTTSD2SI r32, xmm/m64 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+};
+
+static const struct instruction_desc mandatory_0x0F2D[4] =
+{
+	/* 00: (MMX) CVTPS2PI mm, xmm/m64 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 66: (MMX) CVTPD2PI mm, xmm/m128 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F3: (SSE) CVTSS2SI r32, xmm/m32 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F2: (SSE2) CVTSD2SI r32, xmm/m64 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+};
+
+static const struct instruction_desc mandatory_0x0F2E[4] =
+{
+	/* 00: (SSE) UCOMISS xmm1, xmm2/m32 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 66: (SSE2) UCOMISD xmm1, xmm2/m64 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F2F[4] =
+{
+	/* 00: (SSE) COMISS xmm1, xmm2/m32 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 66: (SSE2) COMISD xmm1, xmm2/m64 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F50[4] =
+{
+	/* 00: (SSE) MOVMSKPS reg, xmm */ INST(MODRM(), READ(MODRM_RM_R), WRITE(MODRM_R))
+	/* 66: (SSE2) MOVMSKPD reg, xmm */ INST(MODRM(), READ(MODRM_RM_R), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F51[4] =
+{
+	/* 00: (SSE) SQRTPS xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 66: (SSE2) SQRTPD xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F3: (SSE) SQRTSS xmm1, xmm2/m32 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F2: (SSE2) SQRTSD xmm1, xmm2/m64 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+};
+
+static const struct instruction_desc mandatory_0x0F52[4] =
+{
+	/* 00: (SSE) RSQRTPS xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 66: ??? */ UNKNOWN()
+	/* F3: (SSE) RSQRTSS xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F53[4] =
+{
+	/* 00: (SSE) RCPPS xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 66: ??? */ UNKNOWN()
+	/* F3: (SSE) RCPSS xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F54[4] =
+{
+	/* 00: (SSE) ANDPS xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 66: (SSE2) ANDPD xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F55[4] =
+{
+	/* 00: (SSE) ANDNPS xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 66: (SSE2) ANDNPD xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F56[4] =
+{
+	/* 00: (SSE) ORPS xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 66: (SSE2) ORPD xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F57[4] =
+{
+	/* 00: (SSE) XORPS xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 66: (SSE2) XORPD xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F58[4] =
+{
+	/* 00: (SSE) ADDPS xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 66: (SSE2) ADDPD xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: (SSE) ADDSS xmm1, xmm2/m32 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F2: (SSE2) ADDSD xmm1, xmm2/m64 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+};
+
+static const struct instruction_desc mandatory_0x0F59[4] =
+{
+	/* 00: (SSE) MULPS xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 66: (SSE2) MULPD xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: (SSE) MULSS xmm1, xmm2/m32 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F2: (SSE2) MULSD xmm1, xmm2/m64 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+};
+
+static const struct instruction_desc mandatory_0x0F5A[4] =
+{
+	/* 00: (SSE2) CVTPS2PD xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 66: (SSE2) CVTPD2PS xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F3: (SSE2) CVTSS2SD xmm1, xmm2/m32 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F2: (SSE2) CVTSD2SS xmm1, xmm2/m64 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+};
+
+static const struct instruction_desc mandatory_0x0F5B[4] =
+{
+	/* 00: (SSE2) CVTDQ2PS xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 66: (SSE2) CVTPS2DQ xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F3: (SSE2) CVTTPS2DQ xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F5C[4] =
+{
+	/* 00: (SSE) SUBPS xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 66: (SSE2) SUBPD xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: (SSE) SUBSS xmm1, xmm2/m32 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F2: (SSE2) SUBSD xmm1, xmm2/m64 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+};
+
+static const struct instruction_desc mandatory_0x0F5D[4] =
+{
+	/* 00: (SSE) MINPS xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 66: (SSE2) MINPD xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: (SSE) MINSS xmm1, xmm2/m32 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F2: (SSE2) MINSD xmm1, xmm2/m64 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+};
+
+static const struct instruction_desc mandatory_0x0F5E[4] =
+{
+	/* 00: (SSE) DIVPS xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 66: (SSE2) DIVPD xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: (SSE) DIVSS xmm1, xmm2/m32 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F2: (SSE2) DIVSD xmm1, xmm2/m64 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+};
+
+static const struct instruction_desc mandatory_0x0F5F[4] =
+{
+	/* 00: (SSE) MAXPS xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 66: (SSE2) MAXPD xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: (SSE) MAXSS xmm1, xmm2/m32 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F2: (SSE2) MAXSD xmm1, xmm2/m64 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+};
+
+static const struct instruction_desc mandatory_0x0F6C[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: PUNPCKLQDQ xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F6F[4] =
+{
+	/* 00: (MMX) MOVQ mm, mm/m64 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 66: (SSE2) MOVDQA xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F3: (SSE2) MOVDQU xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F70[4] =
+{
+	/* 00: (SSE2) PSHUFW mm1, mm2/m64, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 66: (SSE2) PSHUFD xmm1, xmm2/m128, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F3: (SSE2) PSHUFHW xmm1, xmm2/m128, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F2: (SSE2) PSHUFLW xmm1, xmm2/m128, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_RM), WRITE(MODRM_R))
+};
+
+static const struct instruction_desc mandatory_0x0F7C[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE3) HADDPD xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: (SSE3) HADDPS xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+};
+
+static const struct instruction_desc mandatory_0x0F7D[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE3) HSUBPD xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: (SSE3) HSUBPS xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+};
+
+static const struct instruction_desc mandatory_0x0F7E[4] =
+{
+	/* 00: (MMX) MOVD r/m32, mm; MOVQ r/m64, mm */ INST(MODRM(), READ(MODRM_R), WRITE(MODRM_RM))
+	/* 66: (SSE2) MOVD r/m32, xmm; MOVQ r/m64, xmm */ INST(MODRM(), READ(MODRM_R), WRITE(MODRM_RM))
+	/* F3: (SSE2) MOVQ xmm1, xmm2/m64 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F7F[4] =
+{
+	/* 00: (MMX) MOVQ mm/m64, mm */ INST(MODRM(), READ(MODRM_R), WRITE(MODRM_RM))
+	/* 66: (SSE2) MOVDQA xmm2/m128, xmm1 */ INST(MODRM(), READ(MODRM_R), WRITE(MODRM_RM))
+	/* F3: (SSE2) MOVDQU xmm2/m128, xmm1 */ INST(MODRM(), READ(MODRM_R), WRITE(MODRM_RM))
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0FB8[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: ??? */ UNKNOWN()
+	/* F3: POPCNT r?, r/m? */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0FC2[4] =
+{
+	/* 00: (SSE) CMPPS xmm1, xmm2/m128, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 66: (SSE2) CMPPD xmm1, xmm2/m128, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: (SSE) CMPSS xmm1, xmm2/m32, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F2: (SSE2) CMPSD xmm1, xmm2/m64, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+};
+
+static const struct instruction_desc mandatory_0x0FC6[4] =
+{
+	/* 00: SHUFPS xmm1, xmm2/m128, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 66: SHUFPD xmm1, xmm2/m128, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0FD0[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE3) ADDSUBPD xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: (SSE3) ADDSUBPS xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+};
+
+static const struct instruction_desc mandatory_0x0FD6[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE2) MOVQ xmm2/m64, xmm1 */ INST(MODRM(), READ(MODRM_R), WRITE(MODRM_RM))
+	/* F3: (MMX/SSE) MOVQ2DQ xmm, mm */ INST(MODRM(), READ(MODRM_RM_R), WRITE(MODRM_R))
+	/* F2: (MMX/SSE) MOVDQ2Q mm, xmm */ INST(MODRM(), READ(MODRM_R), WRITE(MODRM_RM_R))
+};
+
+static const struct instruction_desc mandatory_0x0FE6[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE2) CVTTPD2DQ xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F3: (SSE2) CVTDQ2PD xmm1, xmm2/m64 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F2: (SSE2) CVTPD2DQ xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+};
+
+static const struct instruction_desc mandatory_0x0FE7[4] =
+{
+	/* 00: (MMX) MOVNTQ m64, mm */ INST(MODRM(), READ(MODRM_R), WRITE(MODRM_RM_M))
+	/* 66: (SSE2) MOVNTDQ m128, xmm */ INST(MODRM(), READ(MODRM_R), WRITE(MODRM_RM_M))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0FF0[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: ??? */ UNKNOWN()
+	/* F3: ??? */ UNKNOWN()
+	/* F2: (SSE3) LDDQU xmm1, mem */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+};
+
+#if 0
+static const struct instruction_desc mandatory_0x0Fxx[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: ??? */ UNKNOWN()
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+#endif
 
 /* Instructions with 0F prefix */
 static const struct instruction_desc two_byte_inst[256] =
@@ -507,7 +902,7 @@ static const struct instruction_desc two_byte_inst[256] =
 	/* 0x05: SYSCALL */ UNSUPPORTED()
 	/* 0x06: CLTS */ UNSUPPORTED()
 	/* 0x07: SYSRET */ UNSUPPORTED()
-	/* 0x08: INVD */ UNSUPPORTED()
+	/* 0x08: INVD */ INST()
 	/* 0x09: WBINVD */ UNSUPPORTED()
 	/* 0x0A: ??? */ UNKNOWN()
 	/* 0x0B: UD2 */ INVALID()
@@ -515,14 +910,14 @@ static const struct instruction_desc two_byte_inst[256] =
 	/* 0x0D: ??? */ UNKNOWN()
 	/* 0x0E: ??? */ UNKNOWN()
 	/* 0x0F: ??? */ UNKNOWN()
-	/* 0x10: ??? */ UNKNOWN()
-	/* 0x11: ??? */ UNKNOWN()
-	/* 0x12: ??? */ UNKNOWN()
-	/* 0x13: ??? */ UNKNOWN()
+	/* 0x10: MANDATORY */ MANDATORY(0x0F10)
+	/* 0x11: MANDATORY */ MANDATORY(0x0F11)
+	/* 0x12: MANDATORY */ MANDATORY(0x0F12)
+	/* 0x13: MANDATORY */ MANDATORY(0x0F13)
 	/* 0x14: ??? */ UNKNOWN()
 	/* 0x15: ??? */ UNKNOWN()
-	/* 0x16: ??? */ UNKNOWN()
-	/* 0x17: ??? */ UNKNOWN()
+	/* 0x16: MANDATORY */ MANDATORY(0x0F16)
+	/* 0x17: MANDATORY */ MANDATORY(0x0F17)
 	/* 0x18: ??? */ UNKNOWN()
 	/* 0x19: ??? */ UNKNOWN()
 	/* 0x1A: ??? */ UNKNOWN()
@@ -539,14 +934,14 @@ static const struct instruction_desc two_byte_inst[256] =
 	/* 0x25: ??? */ UNKNOWN()
 	/* 0x26: ??? */ UNKNOWN()
 	/* 0x27: ??? */ UNKNOWN()
-	/* 0x28: ??? */ UNKNOWN()
-	/* 0x29: ??? */ UNKNOWN()
-	/* 0x2A: ??? */ UNKNOWN()
-	/* 0x2B: ??? */ UNKNOWN()
-	/* 0x2C: ??? */ UNKNOWN()
-	/* 0x2D: ??? */ UNKNOWN()
-	/* 0x2E: ??? */ UNKNOWN()
-	/* 0x2F: ??? */ UNKNOWN()
+	/* 0x28: MANDATORY */ MANDATORY(0x0F28)
+	/* 0x29: MANDATORY */ MANDATORY(0x0F29)
+	/* 0x2A: MANDATORY */ MANDATORY(0x0F2A)
+	/* 0x2B: MANDATORY */ MANDATORY(0x0F2B)
+	/* 0x2C: MANDATORY */ MANDATORY(0x0F2C)
+	/* 0x2D: MANDATORY */ MANDATORY(0x0F2D)
+	/* 0x2E: MANDATORY */ MANDATORY(0x0F2E)
+	/* 0x2F: MANDATORY */ MANDATORY(0x0F2F)
 	/* 0x30: WRMSR */ PRIVILEGED()
 	/* 0x31: RDTSC */ INST(WRITE(REG_AX | REG_DX))
 	/* 0x32: RDMSR */ PRIVILEGED()
@@ -579,6 +974,534 @@ static const struct instruction_desc two_byte_inst[256] =
 	/* 0x4D: CMOVGE/CMOVNL r?, r/m? */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
 	/* 0x4E: CMOVLE/CMOVNG r?, r/m? */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
 	/* 0x4F: CMOVG/CMOVNLE r?, r/m? */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 0x50: MANDATORY */ MANDATORY(0x0F50)
+	/* 0x51: MANDATORY */ MANDATORY(0x0F51)
+	/* 0x52: MANDATORY */ MANDATORY(0x0F52)
+	/* 0x53: MANDATORY */ MANDATORY(0x0F53)
+	/* 0x54: MANDATORY */ MANDATORY(0x0F54)
+	/* 0x55: MANDATORY */ MANDATORY(0x0F55)
+	/* 0x56: MANDATORY */ MANDATORY(0x0F56)
+	/* 0x57: MANDATORY */ MANDATORY(0x0F57)
+	/* 0x58: MANDATORY */ MANDATORY(0x0F58)
+	/* 0x59: MANDATORY */ MANDATORY(0x0F59)
+	/* 0x5A: MANDATORY */ MANDATORY(0x0F5A)
+	/* 0x5B: MANDATORY */ MANDATORY(0x0F5B)
+	/* 0x5C: MANDATORY */ MANDATORY(0x0F5C)
+	/* 0x5D: MANDATORY */ MANDATORY(0x0F5D)
+	/* 0x5E: MANDATORY */ MANDATORY(0x0F5E)
+	/* 0x5F: MANDATORY */ MANDATORY(0x0F5F)
+	/* 0x60: PUNPCKLBW ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x61: PUNPCKLWD ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x62: PUNPCKLDQ ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x63: PACKSSWB ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x64: PCMPGTB ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x65: PCMPGTW ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x66: PCMPGTD ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x67: PACKUSWB ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x68: PUNPCKHBW ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x69: PUNPCKHWD ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x6A: PUNPCKHDQ ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x6B: PACKSSDW ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x6C: MANDATORY */ MANDATORY(0x0F6C)
+	/* 0x6D: ??? */ UNKNOWN()
+	/* 0x6E: MOVD ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 0x6F: MANDATORY */ MANDATORY(0x0F6F)
+	/* 0x70: MANDATORY */ MANDATORY(0x0F70)
+	/* [...]: 2/SRL 4/SRA 6/SLL */
+	/* 0x71: P???W ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x72: P???D ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* [GRP]: 2/PSRLQ 3/PSRLDQ 6/PSLLQ 7/PSLLDQ */
+	/* 0x73: [GRP] ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x74: PCMPEQB ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x75: PCMPEQW ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x76: PCMPEQD ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x77: EMMS */ UNSUPPORTED()
+	/* 0x78: ??? */ UNKNOWN()
+	/* 0x79: ??? */ UNKNOWN()
+	/* 0x7A: ??? */ UNKNOWN()
+	/* 0x7B: ??? */ UNKNOWN()
+	/* 0x7C: MANDATORY */ MANDATORY(0x0F7C)
+	/* 0x7D: MANDATORY */ MANDATORY(0x0F7D)
+	/* 0x7E: MANDATORY */ MANDATORY(0x0F7E)
+	/* 0x7F: MANDATORY */ MANDATORY(0x0F7F)
+	/* 0x80: JO rel? */ SPECIAL(INST_JCC + 0, IMM(PREFIX_OPERAND_SIZE))
+	/* 0x81: JNO rel? */ SPECIAL(INST_JCC + 1, IMM(PREFIX_OPERAND_SIZE))
+	/* 0x82: JB/JC/JNAE rel? */ SPECIAL(INST_JCC + 2, IMM(PREFIX_OPERAND_SIZE))
+	/* 0x83: JAE/JNB/JNC rel? */ SPECIAL(INST_JCC + 3, IMM(PREFIX_OPERAND_SIZE))
+	/* 0x84: JE/JZ rel? */ SPECIAL(INST_JCC + 4, IMM(PREFIX_OPERAND_SIZE))
+	/* 0x85: JNE/JNZ rel? */ SPECIAL(INST_JCC + 5, IMM(PREFIX_OPERAND_SIZE))
+	/* 0x86: JBE/JNA rel? */ SPECIAL(INST_JCC + 6, IMM(PREFIX_OPERAND_SIZE))
+	/* 0x87: JA/JNBE rel? */ SPECIAL(INST_JCC + 7, IMM(PREFIX_OPERAND_SIZE))
+	/* 0x88: JS rel? */ SPECIAL(INST_JCC + 8, IMM(PREFIX_OPERAND_SIZE))
+	/* 0x89: JNS rel? */ SPECIAL(INST_JCC + 9, IMM(PREFIX_OPERAND_SIZE))
+	/* 0x8A: JP/JPE rel? */ SPECIAL(INST_JCC + 10, IMM(PREFIX_OPERAND_SIZE))
+	/* 0x8B: JNP/JPO rel? */ SPECIAL(INST_JCC + 11, IMM(PREFIX_OPERAND_SIZE))
+	/* 0x8C: JL/JNGE rel? */ SPECIAL(INST_JCC + 12, IMM(PREFIX_OPERAND_SIZE))
+	/* 0x8D: JGE/JNL rel? */ SPECIAL(INST_JCC + 13, IMM(PREFIX_OPERAND_SIZE))
+	/* 0x8E: JLE/JNG rel? */ SPECIAL(INST_JCC + 14, IMM(PREFIX_OPERAND_SIZE))
+	/* 0x8F: JG/JNLE rel? */ SPECIAL(INST_JCC + 15, IMM(PREFIX_OPERAND_SIZE))
+	/* 0x90: SETO r/m8 */ INST(MODRM(), WRITE(MODRM_RM))
+	/* 0x91: SETNO r/m8 */ INST(MODRM(), WRITE(MODRM_RM))
+	/* 0x92: SETB/SETC/SETNAE r/m8 */ INST(MODRM(), WRITE(MODRM_RM))
+	/* 0x93: SETAE/SETNB/SETNC r/m8 */ INST(MODRM(), WRITE(MODRM_RM))
+	/* 0x94: SETE/SETZ r/m8 */ INST(MODRM(), WRITE(MODRM_RM))
+	/* 0x95: SETNE/SETNZ r/m8 */ INST(MODRM(), WRITE(MODRM_RM))
+	/* 0x96: SETBE/SETNA r/m8 */ INST(MODRM(), WRITE(MODRM_RM))
+	/* 0x97: SETA/SETNBE r/m8 */ INST(MODRM(), WRITE(MODRM_RM))
+	/* 0x98: SETS r/m8 */ INST(MODRM(), WRITE(MODRM_RM))
+	/* 0x99: SETNS r/m8 */ INST(MODRM(), WRITE(MODRM_RM))
+	/* 0x9A: SETP/SETPE r/m8 */ INST(MODRM(), WRITE(MODRM_RM))
+	/* 0x9B: SETNP/SETPO r/m8 */ INST(MODRM(), WRITE(MODRM_RM))
+	/* 0x9C: SETL/SETNGE r/m8 */ INST(MODRM(), WRITE(MODRM_RM))
+	/* 0x9D: SETGE/SETNL r/m8 */ INST(MODRM(), WRITE(MODRM_RM))
+	/* 0x9E: SETLE/SETNG r/m8 */ INST(MODRM(), WRITE(MODRM_RM))
+	/* 0x9F: SETG/SETNLE r/m8 */ INST(MODRM(), WRITE(MODRM_RM))
+	/* 0xA0: ??? */ UNKNOWN()
+	/* 0xA1: POP FS */ UNSUPPORTED()
+	/* 0xA2: CPUID */ INST(READ(REG_AX | REG_BX | REG_CX | REG_DX), WRITE(REG_AX | REG_BX | REG_CX | REG_DX))
+	/* 0xA3: BT r/m?, r? */ INST(MODRM(), READ(MODRM_R | MODRM_RM))
+	/* 0xA4: SHLD r/m?, r?, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_RM | MODRM_R), WRITE(MODRM_RM))
+	/* 0xA5: SHLD r/m?, r?, CL */ INST(MODRM(), READ(MODRM_RM | MODRM_R | REG_CX), WRITE(MODRM_RM))
+	/* 0xA6: ??? */ UNKNOWN()
+	/* 0xA7: ??? */ UNKNOWN()
+	/* 0xA8: ??? */ UNKNOWN()
+	/* 0xA9: POP GS */ UNSUPPORTED()
+#ifdef _WIN64
+	/* 0xAA: INVALID */ INVALID()
+#else
+	/* 0xAA: RSM */ INST_UNTESTED()
+#endif
+	/* 0xAB: BTS r/m?, r? */ INST(MODRM(), READ(MODRM_R | MODRM_RM))
+	/* 0xAC: SHRD r/m?, r?, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_RM | MODRM_R), WRITE(MODRM_RM))
+	/* 0xAD: SHRD r/m?, r?, CL */ INST(MODRM(), READ(MODRM_RM | MODRM_R | REG_CX), WRITE(MODRM_RM))
+	/* 0xAE:
+	2: LDMXCSR m32
+	3: STMXCSR m32
+	3/5: LFENCE
+	3/6: MFENCE
+	3/7: SFENCE
+	mem/4: XSAVE mem
+	mem/5: XRSTOR mem
+	mem/6: XSAVEOPT mem
+	mem/7: CLFLUSH m8 */ UNSUPPORTED()
+	/* 0xAF: IMUL r?, r/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xB0: CMPXCHG r/m8, r8 */ INST(MODRM(), READ(MODRM_R | MODRM_RM | REG_AX), WRITE(MODRM_RM | REG_AX))
+	/* 0xB1: CMPXCHG r/m?, r? */ INST(MODRM(), READ(MODRM_R | MODRM_RM | REG_AX), WRITE(MODRM_RM | REG_AX))
+	/* 0xB2: LSS r?, m16:? */ UNSUPPORTED()
+	/* 0xB3: BTR r/m?, r? */ INST(MODRM(), IMM(1), READ(MODRM_RM))
+	/* 0xB4: LFS r?, m16:? */ UNSUPPORTED()
+	/* 0xB5: LGS r?, m16:? */ UNSUPPORTED()
+	/* 0xB6: MOVZX r?, r/m8 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 0xB7: MOVZX r?, r/m16 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 0xB8: MANDATORY */ MANDATORY(0x0FB8)
+	/* 0xB9: ??? */ UNKNOWN()
+	/* GRP8: 4/BT, 5/BTS, 6/BTR, 7/BTC */
+	/* 0xBA: [GRP8] r/m?, imm8 */ INST_UNTESTED(MODRM(), IMM(1), READ(MODRM_RM))
+	/* 0xBB: BTC r/m?, r? */ INST(MODRM(), READ(MODRM_R | MODRM_RM))
+	/* 0xBC: BSF r?, r/m? */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 0xBD: BSR r?, r/m? */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 0xBE: MOVSX r?, r/m8 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 0xBF: MOVSX r?, r/m16 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 0xC0: XADD r/m8, r8 */ INST_UNTESTED(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R | MODRM_RM))
+	/* 0xC1: XADD r/m?, r? */ INST_UNTESTED(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R | MODRM_RM))
+	/* 0xC2: MANDATORY */ MANDATORY(0x0FC2)
+	/* 0xC3: MOVNTI m?, r? */ INST(MODRM(), READ(MODRM_R), WRITE(MODRM_RM_M))
+	/* 0xC4: PINSRW ?mm1, r32/m16, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xC5: PEXTRW reg, ?mm, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_RM_R), WRITE(MODRM_R))
+	/* 0xC6: MANDATORY */ MANDATORY(0x0FC6)
+	/* 0xC7:
+	1: CMPXCHG8B m64/m128
+	5: XSAVES mem; XSAVES64 mem */ UNSUPPORTED()
+	/* NOTE: The read and write information of these are not very accurate */
+	/* 0xC8: BSWAP ?AX/R8? */ INST(READ(REG_AX | REG_R8), WRITE(REG_AX | REG_R8))
+	/* 0xC9: BSWAP ?CX/R9? */ INST(READ(REG_CX | REG_R9), WRITE(REG_CX | REG_R9))
+	/* 0xCA: BSWAP ?DX/R10? */ INST(READ(REG_DX | REG_R10), WRITE(REG_DX | REG_R10))
+	/* 0xCB: BSWAP ?BX/R11? */ INST(READ(REG_BX | REG_R11), WRITE(REG_BX | REG_R11))
+	/* 0xCC: BSWAP ?SP/R12? */ INST(READ(REG_SP | REG_R12), WRITE(REG_SP | REG_R12))
+	/* 0xCD: BSWAP ?BP/R13? */ INST(READ(REG_BP | REG_R13), WRITE(REG_BP | REG_R13))
+	/* 0xCE: BSWAP ?SI/R14? */ INST(READ(REG_SI | REG_R14), WRITE(REG_SI | REG_R14))
+	/* 0xCF: BSWAP ?DI/R15? */ INST(READ(REG_DI | REG_R15), WRITE(REG_DI | REG_R15))
+	/* 0xD0: MANDATORY */ MANDATORY(0x0FD0)
+	/* 0xD1: PSRLW ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xD2: PSRLD ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xD3: PSRLQ ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xD4: PADDQ ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xD5: PMULLW ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xD6: MANDATORY */ MANDATORY(0x0FD6)
+	/* 0xD7: PMOVMSKB reg, ?mm */ INST(MODRM(), READ(MODRM_RM_R), WRITE(MODRM_R))
+	/* 0xD8: PSUBUSB ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xD9: PSUBUSW ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xDA: PMINUB ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xDB: PAND ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xDC: PADDUSB ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xDD: PADDUSW ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xDE: PMAXUB ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xDF: PANDN ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xE0: PAVGB ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xE1: PSRAW ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xE2: PSRAD ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xE3: PAVGW ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xE4: PMULHUW ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xE5: PMULHW ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xE6: MANDATORY */ MANDATORY(0x0FE6)
+	/* 0xE7: MANDATORY */ MANDATORY(0x0FE7)
+	/* 0xE8: PSUBSB ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xE9: PSUBSW ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xEA: PMINSW ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xEB: POR ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xEC: PADDSB ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xED: PADDSW ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xEE: PMAXSW ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xEF: PXOR ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xF0: MANDATORY */ MANDATORY(0x0FF0)
+	/* 0xF1: PSLLW ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xF2: PSLLD ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xF3: PSLLQ ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xF4: PMULUDQ ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xF5: PMADDWD ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xF6: PSADBW ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xF7: MASKMOVQ ?mm1, ?mm2 */ INST(MODRM(), READ(MODRM_R | MODRM_RM_R | REG_DI))
+	/* 0xF8: PSUBB ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xF9: PSUBW ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xFA: PSUBD ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xFB: PSUBQ ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xFC: PADDB ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xFD: PADDW ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xFE: PADDD ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0xFF: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3810[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) PBLENDVB xmm1, xmm2/m128, <xmm0> */ INST(MODRM(), READ(MODRM_R | MODRM_RM | REG_AX), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3814[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) BLENDVPS xmm1, xmm2/m128, <xmm0> */ INST(MODRM(), READ(MODRM_R | MODRM_RM | REG_AX), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3815[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) BLENDVPD xmm1, xmm2/m128, <xmm0> */ INST(MODRM(), READ(MODRM_R | MODRM_RM | REG_AX), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3817[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) PTEST xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3820[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) PMOVSXBW xmm1, xmm2/m64 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3821[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) PMOVSXBD xmm1, xmm2/m32 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3822[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) PMOVSXBQ xmm1, xmm2/m16 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3823[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) PMOVSXWD xmm1, xmm2/m64 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3824[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) PMOVSXWQ xmm1, xmm2/m32 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3825[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) PMOVSXDQ xmm1, xmm2/m64 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3828[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) PMULDQ xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3829[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) PCMPEQQ xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F382A[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1)	MOVNTDQA xmm1, m128 */ INST(MODRM(), READ(MODRM_RM_M), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F382B[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1)	PACKUSDW xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3830[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) PMOVZXBW xmm1, xmm2/m64 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3831[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) PMOVZXBD xmm1, xmm2/m32 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3832[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) PMOVZXBQ xmm1, xmm2/m16 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3833[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) PMOVZXWD xmm1, xmm2/m64 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3834[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) PMOVZXWQ xmm1, xmm2/m32 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3835[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) PMOVZXDQ xmm1, xmm2/m64 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3837[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.2) PCMPGTQ xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3838[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) PMINSB xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3839[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) PMINSD xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F383A[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) PMINUW xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F383B[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) PMINUD xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F383C[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) PMAXSB xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F383D[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) PMAXSD xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F383E[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) PMAXUW xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F383F[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) PMAXUD xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3840[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) PMULLD xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3841[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) PHMINPOSUW xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+/* Instructions with 0F 38 prefix */
+static const struct instruction_desc three_byte_inst_0x38[256] =
+{
+	/* 0x00: PSHUFB ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x01: PHADDW ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x02: PHADDD ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x03: PHADDSW ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x04: PMADDUBSW ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x05: PHSUBW ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x06: PHSUBD ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x07: PHSUBSW ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x08: PSIGNB ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x09: PSIGNW ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x0A: PSIGND ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x0B: PMULHRSW ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x0C: ??? */ UNKNOWN()
+	/* 0x0D: ??? */ UNKNOWN()
+	/* 0x0E: ??? */ UNKNOWN()
+	/* 0x0F: ??? */ UNKNOWN()
+	/* 0x10: MANDATORY */ MANDATORY(0x0F3810)
+	/* 0x11: ??? */ UNKNOWN()
+	/* 0x12: ??? */ UNKNOWN()
+	/* 0x13: ??? */ UNKNOWN()
+	/* 0x14: MANDATORY */ MANDATORY(0x0F3814)
+	/* 0x15: MANDATORY */ MANDATORY(0x0F3815)
+	/* 0x16: ??? */ UNKNOWN()
+	/* 0x17: MANDATORY */ MANDATORY(0x0F3817)
+	/* 0x18: ??? */ UNKNOWN()
+	/* 0x19: ??? */ UNKNOWN()
+	/* 0x1A: ??? */ UNKNOWN()
+	/* 0x1B: ??? */ UNKNOWN()
+	/* 0x1C: PABSB ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 0x1D: PABSW ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 0x1E: PABSD ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 0x1F: ??? */ UNKNOWN()
+	/* 0x20: MANDATORY */ MANDATORY(0x0F3820)
+	/* 0x21: MANDATORY */ MANDATORY(0x0F3821)
+	/* 0x22: MANDATORY */ MANDATORY(0x0F3822)
+	/* 0x23: MANDATORY */ MANDATORY(0x0F3823)
+	/* 0x24: MANDATORY */ MANDATORY(0x0F3824)
+	/* 0x25: MANDATORY */ MANDATORY(0x0F3825)
+	/* 0x26: ??? */ UNKNOWN()
+	/* 0x27: ??? */ UNKNOWN()
+	/* 0x28: MANDATORY */ MANDATORY(0x0F3828)
+	/* 0x29: MANDATORY */ MANDATORY(0x0F3829)
+	/* 0x2A: MANDATORY */ MANDATORY(0x0F382A)
+	/* 0x2B: MANDATORY */ MANDATORY(0x0F382B)
+	/* 0x2C: ??? */ UNKNOWN()
+	/* 0x2D: ??? */ UNKNOWN()
+	/* 0x2E: ??? */ UNKNOWN()
+	/* 0x2F: ??? */ UNKNOWN()
+	/* 0x30: MANDATORY */ MANDATORY(0x0F3830)
+	/* 0x31: MANDATORY */ MANDATORY(0x0F3831)
+	/* 0x32: MANDATORY */ MANDATORY(0x0F3832)
+	/* 0x33: MANDATORY */ MANDATORY(0x0F3833)
+	/* 0x34: MANDATORY */ MANDATORY(0x0F3834)
+	/* 0x35: MANDATORY */ MANDATORY(0x0F3835)
+	/* 0x36: ??? */ UNKNOWN()
+	/* 0x37: MANDATORY */ MANDATORY(0x0F3837)
+	/* 0x38: MANDATORY */ MANDATORY(0x0F3838)
+	/* 0x39: MANDATORY */ MANDATORY(0x0F3839)
+	/* 0x3A: MANDATORY */ MANDATORY(0x0F383A)
+	/* 0x3B: MANDATORY */ MANDATORY(0x0F383B)
+	/* 0x3C: MANDATORY */ MANDATORY(0x0F383C)
+	/* 0x3D: MANDATORY */ MANDATORY(0x0F383D)
+	/* 0x3E: MANDATORY */ MANDATORY(0x0F383E)
+	/* 0x3F: MANDATORY */ MANDATORY(0x0F383F)
+	/* 0x40: MANDATORY */ MANDATORY(0x0F3840)
+	/* 0x41: MANDATORY */ MANDATORY(0x0F3841)
+	/* 0x42: ??? */ UNKNOWN()
+	/* 0x43: ??? */ UNKNOWN()
+	/* 0x44: ??? */ UNKNOWN()
+	/* 0x45: ??? */ UNKNOWN()
+	/* 0x46: ??? */ UNKNOWN()
+	/* 0x47: ??? */ UNKNOWN()
+	/* 0x48: ??? */ UNKNOWN()
+	/* 0x49: ??? */ UNKNOWN()
+	/* 0x4A: ??? */ UNKNOWN()
+	/* 0x4B: ??? */ UNKNOWN()
+	/* 0x4C: ??? */ UNKNOWN()
+	/* 0x4D: ??? */ UNKNOWN()
+	/* 0x4E: ??? */ UNKNOWN()
+	/* 0x4F: ??? */ UNKNOWN()
 	/* 0x50: ??? */ UNKNOWN()
 	/* 0x51: ??? */ UNKNOWN()
 	/* 0x52: ??? */ UNKNOWN()
@@ -618,7 +1541,7 @@ static const struct instruction_desc two_byte_inst[256] =
 	/* 0x74: ??? */ UNKNOWN()
 	/* 0x75: ??? */ UNKNOWN()
 	/* 0x76: ??? */ UNKNOWN()
-	/* 0x77: EMMS */ UNSUPPORTED()
+	/* 0x77: ??? */ UNKNOWN()
 	/* 0x78: ??? */ UNKNOWN()
 	/* 0x79: ??? */ UNKNOWN()
 	/* 0x7A: ??? */ UNKNOWN()
@@ -627,101 +1550,524 @@ static const struct instruction_desc two_byte_inst[256] =
 	/* 0x7D: ??? */ UNKNOWN()
 	/* 0x7E: ??? */ UNKNOWN()
 	/* 0x7F: ??? */ UNKNOWN()
-	/* 0x80: JO rel? */ SPECIAL(INST_JCC + 0, IMM(PREFIX_OPERAND_SIZE))
-	/* 0x81: JNO rel? */ SPECIAL(INST_JCC + 1, IMM(PREFIX_OPERAND_SIZE))
-	/* 0x82: JB/JC/JNAE rel? */ SPECIAL(INST_JCC + 2, IMM(PREFIX_OPERAND_SIZE))
-	/* 0x83: JAE/JNB/JNC rel? */ SPECIAL(INST_JCC + 3, IMM(PREFIX_OPERAND_SIZE))
-	/* 0x84: JE/JZ rel? */ SPECIAL(INST_JCC + 4, IMM(PREFIX_OPERAND_SIZE))
-	/* 0x85: JNE/JNZ rel? */ SPECIAL(INST_JCC + 5, IMM(PREFIX_OPERAND_SIZE))
-	/* 0x86: JBE/JNA rel? */ SPECIAL(INST_JCC + 6, IMM(PREFIX_OPERAND_SIZE))
-	/* 0x87: JA/JNBE rel? */ SPECIAL(INST_JCC + 7, IMM(PREFIX_OPERAND_SIZE))
-	/* 0x88: JS rel? */ SPECIAL(INST_JCC + 8, IMM(PREFIX_OPERAND_SIZE))
-	/* 0x89: JNS rel? */ SPECIAL(INST_JCC + 9, IMM(PREFIX_OPERAND_SIZE))
-	/* 0x8A: JP/JPE rel? */ SPECIAL(INST_JCC + 10, IMM(PREFIX_OPERAND_SIZE))
-	/* 0x8B: JNP/JPO rel? */ SPECIAL(INST_JCC + 11, IMM(PREFIX_OPERAND_SIZE))
-	/* 0x8C: JL/JNGE rel? */ SPECIAL(INST_JCC + 12, IMM(PREFIX_OPERAND_SIZE))
-	/* 0x8D: JGE/JNL rel? */ SPECIAL(INST_JCC + 13, IMM(PREFIX_OPERAND_SIZE))
-	/* 0x8E: JLE/JNG rel? */ SPECIAL(INST_JCC + 14, IMM(PREFIX_OPERAND_SIZE))
-	/* 0x8F: JG/JNLE rel? */ SPECIAL(INST_JCC + 15, IMM(PREFIX_OPERAND_SIZE))
-	/* 0x90: SETO r/m8 */ INST(MODRM(), WRITE(MODRM_RM))
-	/* 0x91: SETNO r/m8 */ INST(MODRM(), WRITE(MODRM_RM))
-	/* 0x92: SETB/SETC/SETNAE r/m8 */ INST(MODRM(), WRITE(MODRM_RM))
-	/* 0x93: SETAE/SETNB/SETNC r/m8 */ INST(MODRM(), WRITE(MODRM_RM))
-	/* 0x94: SETE/SETZ r/m8 */ INST(MODRM(), WRITE(MODRM_RM))
-	/* 0x95: SETNE/SETNZ r/m8 */ INST(MODRM(), WRITE(MODRM_RM))
-	/* 0x96: SETBE/SETNA r/m8 */ INST(MODRM(), WRITE(MODRM_RM))
-	/* 0x97: SETA/SETNBE r/m8 */ INST(MODRM(), WRITE(MODRM_RM))
-	/* 0x98: SETS r/m8 */ INST(MODRM(), WRITE(MODRM_RM))
-	/* 0x99: SETNS r/m8 */ INST(MODRM(), WRITE(MODRM_RM))
-	/* 0x9A: SETP/SETPE r/m8 */ INST(MODRM(), WRITE(MODRM_RM))
-	/* 0x9B: SETNP/SETPO r/m8 */ INST(MODRM(), WRITE(MODRM_RM))
-	/* 0x9C: SETL/SETNGE r/m8 */ INST(MODRM(), WRITE(MODRM_RM))
-	/* 0x9D: SETGE/SETNL r/m8 */ INST(MODRM(), WRITE(MODRM_RM))
-	/* 0x9E: SETLE/SETNG r/m8 */ INST(MODRM(), WRITE(MODRM_RM))
-	/* 0x9F: SETG/SETNLE r/m8 */ INST(MODRM(), WRITE(MODRM_RM))
+	/* 0x80: ??? */ UNKNOWN()
+	/* 0x81: ??? */ UNKNOWN()
+	/* 0x82: ??? */ UNKNOWN()
+	/* 0x83: ??? */ UNKNOWN()
+	/* 0x84: ??? */ UNKNOWN()
+	/* 0x85: ??? */ UNKNOWN()
+	/* 0x86: ??? */ UNKNOWN()
+	/* 0x87: ??? */ UNKNOWN()
+	/* 0x88: ??? */ UNKNOWN()
+	/* 0x89: ??? */ UNKNOWN()
+	/* 0x8A: ??? */ UNKNOWN()
+	/* 0x8B: ??? */ UNKNOWN()
+	/* 0x8C: ??? */ UNKNOWN()
+	/* 0x8D: ??? */ UNKNOWN()
+	/* 0x8E: ??? */ UNKNOWN()
+	/* 0x8F: ??? */ UNKNOWN()
+	/* 0x90: ??? */ UNKNOWN()
+	/* 0x91: ??? */ UNKNOWN()
+	/* 0x92: ??? */ UNKNOWN()
+	/* 0x93: ??? */ UNKNOWN()
+	/* 0x94: ??? */ UNKNOWN()
+	/* 0x95: ??? */ UNKNOWN()
+	/* 0x96: ??? */ UNKNOWN()
+	/* 0x97: ??? */ UNKNOWN()
+	/* 0x98: ??? */ UNKNOWN()
+	/* 0x99: ??? */ UNKNOWN()
+	/* 0x9A: ??? */ UNKNOWN()
+	/* 0x9B: ??? */ UNKNOWN()
+	/* 0x9C: ??? */ UNKNOWN()
+	/* 0x9D: ??? */ UNKNOWN()
+	/* 0x9E: ??? */ UNKNOWN()
+	/* 0x9F: ??? */ UNKNOWN()
 	/* 0xA0: ??? */ UNKNOWN()
-	/* 0xA1: POP FS */ UNSUPPORTED()
-	/* 0xA2: CPUID */ INST(READ(REG_AX | REG_BX | REG_CX | REG_DX), WRITE(REG_AX | REG_BX | REG_CX | REG_DX))
-	/* 0xA3: BT r/m?, r? */ INST(MODRM(), READ(MODRM_R | MODRM_RM))
-	/* 0xA4: SHLD r/m?, r?, imm8 */ INST_UNTESTED(MODRM(), IMM(1), READ(MODRM_RM | MODRM_R), WRITE(MODRM_RM))
-	/* 0xA5: SHLD r/m?, r?, CL */ INST_UNTESTED(MODRM(), READ(MODRM_RM | MODRM_R | REG_CX), WRITE(MODRM_RM))
+	/* 0xA1: ??? */ UNKNOWN()
+	/* 0xA2: ??? */ UNKNOWN()
+	/* 0xA3: ??? */ UNKNOWN()
+	/* 0xA4: ??? */ UNKNOWN()
+	/* 0xA5: ??? */ UNKNOWN()
 	/* 0xA6: ??? */ UNKNOWN()
 	/* 0xA7: ??? */ UNKNOWN()
 	/* 0xA8: ??? */ UNKNOWN()
-	/* 0xA9: POP GS */ UNSUPPORTED()
-#ifdef _WIN64
-	/* 0xAA: INVALID */ INVALID()
-#else
-	/* 0xAA: RSM */ INST_UNTESTED()
-#endif
-	/* 0xAB: BTS r/m?, r? */ INST(MODRM(), READ(MODRM_R | MODRM_RM))
-	/* 0xAC: SHRD r/m?, r?, imm8 */ INST_UNTESTED(MODRM(), IMM(1), READ(MODRM_RM | MODRM_R), WRITE(MODRM_RM))
-	/* 0xAD: SHRD r/m?, r?, CL */ INST_UNTESTED(MODRM(), READ(MODRM_RM | MODRM_R | REG_CX), WRITE(MODRM_RM))
-	/* 0xAE:
-	3/5: LFENCE
-	3/6: MFENCE
-	3/7: SFENCE
-	mem/4: XSAVE mem
-	mem/5: XRSTOR mem
-	mem/6: XSAVEOPT mem
-	mem/7: CLFLUSH m8 */ UNSUPPORTED()
-	/* 0xAF: IMUL r?, r/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
-	/* 0xB0: CMPXCHG r/m8, r8 */ INST(MODRM(), READ(MODRM_R | MODRM_RM | REG_AX), WRITE(MODRM_RM | REG_AX))
-	/* 0xB1: CMPXCHG r/m?, r? */ INST(MODRM(), READ(MODRM_R | MODRM_RM | REG_AX), WRITE(MODRM_RM | REG_AX))
-	/* 0xB2: LSS r?, m16:? */ UNSUPPORTED()
-	/* 0xB3: BTR r/m?, r? */ INST(MODRM(), IMM(1), READ(MODRM_RM))
-	/* 0xB4: LFS r?, m16:? */ UNSUPPORTED()
-	/* 0xB5: LGS r?, m16:? */ UNSUPPORTED()
-	/* 0xB6: MOVZX r?, r/m8 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
-	/* 0xB7: MOVZX r?, r/m16 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 0xA9: ??? */ UNKNOWN()
+	/* 0xAA: ??? */ UNKNOWN()
+	/* 0xAB: ??? */ UNKNOWN()
+	/* 0xAC: ??? */ UNKNOWN()
+	/* 0xAD: ??? */ UNKNOWN()
+	/* 0xAE: ??? */ UNKNOWN()
+	/* 0xAF: ??? */ UNKNOWN()
+	/* 0xB0: ??? */ UNKNOWN()
+	/* 0xB1: ??? */ UNKNOWN()
+	/* 0xB2: ??? */ UNKNOWN()
+	/* 0xB3: ??? */ UNKNOWN()
+	/* 0xB4: ??? */ UNKNOWN()
+	/* 0xB5: ??? */ UNKNOWN()
+	/* 0xB6: ??? */ UNKNOWN()
+	/* 0xB7: ??? */ UNKNOWN()
 	/* 0xB8: ??? */ UNKNOWN()
 	/* 0xB9: ??? */ UNKNOWN()
-	/* GRP8: 4/BT, 5/BTS, 6/BTR, 7/BTC */
-	/* 0xBA: [GRP8] r/m?, imm8 */ INST_UNTESTED(MODRM(), IMM(1), READ(MODRM_RM))
-	/* 0xBB: BTC r/m?, r? */ INST(MODRM(), READ(MODRM_R | MODRM_RM))
-	/* 0xBC: BSF r?, r/m? */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
-	/* 0xBD: BSR r?, r/m? */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
-	/* 0xBE: MOVSX r?, r/m8 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
-	/* 0xBF: MOVSX r?, r/m16 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
-	/* 0xC0: XADD r/m8, r8 */ INST_UNTESTED(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R | MODRM_RM))
-	/* 0xC1: XADD r/m?, r? */ INST_UNTESTED(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R | MODRM_RM))
+	/* 0xBA: ??? */ UNKNOWN()
+	/* 0xBB: ??? */ UNKNOWN()
+	/* 0xBC: ??? */ UNKNOWN()
+	/* 0xBD: ??? */ UNKNOWN()
+	/* 0xBE: ??? */ UNKNOWN()
+	/* 0xBF: ??? */ UNKNOWN()
+	/* 0xC0: ??? */ UNKNOWN()
+	/* 0xC1: ??? */ UNKNOWN()
 	/* 0xC2: ??? */ UNKNOWN()
 	/* 0xC3: ??? */ UNKNOWN()
 	/* 0xC4: ??? */ UNKNOWN()
 	/* 0xC5: ??? */ UNKNOWN()
 	/* 0xC6: ??? */ UNKNOWN()
-	/* 0xC7:
-	1: CMPXCHG8B m64/m128
-	5: XSAVES mem; XSAVES64 mem */ UNSUPPORTED()
-	/* NOTE: The read and write information of these are not very accurate */
-	/* 0xC8: BSWAP ?AX/R8? */ INST(READ(REG_AX | REG_R8), WRITE(REG_AX | REG_R8))
-	/* 0xC9: BSWAP ?CX/R9? */ INST(READ(REG_CX | REG_R9), WRITE(REG_CX | REG_R9))
-	/* 0xCA: BSWAP ?DX/R10? */ INST(READ(REG_DX | REG_R10), WRITE(REG_DX | REG_R10))
-	/* 0xCB: BSWAP ?BX/R11? */ INST(READ(REG_BX | REG_R11), WRITE(REG_BX | REG_R11))
-	/* 0xCC: BSWAP ?SP/R12? */ INST(READ(REG_SP | REG_R12), WRITE(REG_SP | REG_R12))
-	/* 0xCD: BSWAP ?BP/R13? */ INST(READ(REG_BP | REG_R13), WRITE(REG_BP | REG_R13))
-	/* 0xCE: BSWAP ?SI/R14? */ INST(READ(REG_SI | REG_R14), WRITE(REG_SI | REG_R14))
-	/* 0xCF: BSWAP ?DI/R15? */ INST(READ(REG_DI | REG_R15), WRITE(REG_DI | REG_R15))
+	/* 0xC7: ??? */ UNKNOWN()
+	/* 0xC8: ??? */ UNKNOWN()
+	/* 0xC9: ??? */ UNKNOWN()
+	/* 0xCA: ??? */ UNKNOWN()
+	/* 0xCB: ??? */ UNKNOWN()
+	/* 0xCC: ??? */ UNKNOWN()
+	/* 0xCD: ??? */ UNKNOWN()
+	/* 0xCE: ??? */ UNKNOWN()
+	/* 0xCF: ??? */ UNKNOWN()
+	/* 0xD0: ??? */ UNKNOWN()
+	/* 0xD1: ??? */ UNKNOWN()
+	/* 0xD2: ??? */ UNKNOWN()
+	/* 0xD3: ??? */ UNKNOWN()
+	/* 0xD4: ??? */ UNKNOWN()
+	/* 0xD5: ??? */ UNKNOWN()
+	/* 0xD6: ??? */ UNKNOWN()
+	/* 0xD7: ??? */ UNKNOWN()
+	/* 0xD8: ??? */ UNKNOWN()
+	/* 0xD9: ??? */ UNKNOWN()
+	/* 0xDA: ??? */ UNKNOWN()
+	/* 0xDB: ??? */ UNKNOWN()
+	/* 0xDC: ??? */ UNKNOWN()
+	/* 0xDD: ??? */ UNKNOWN()
+	/* 0xDE: ??? */ UNKNOWN()
+	/* 0xDF: ??? */ UNKNOWN()
+	/* 0xE0: ??? */ UNKNOWN()
+	/* 0xE1: ??? */ UNKNOWN()
+	/* 0xE2: ??? */ UNKNOWN()
+	/* 0xE3: ??? */ UNKNOWN()
+	/* 0xE4: ??? */ UNKNOWN()
+	/* 0xE5: ??? */ UNKNOWN()
+	/* 0xE6: ??? */ UNKNOWN()
+	/* 0xE7: ??? */ UNKNOWN()
+	/* 0xE8: ??? */ UNKNOWN()
+	/* 0xE9: ??? */ UNKNOWN()
+	/* 0xEA: ??? */ UNKNOWN()
+	/* 0xEB: ??? */ UNKNOWN()
+	/* 0xEC: ??? */ UNKNOWN()
+	/* 0xED: ??? */ UNKNOWN()
+	/* 0xEE: ??? */ UNKNOWN()
+	/* 0xEF: ??? */ UNKNOWN()
+	/* 0xF0: MOVBE r?, m? */ INST(MODRM(), READ(MODRM_RM_M), WRITE(MODRM_R))
+	/* 0xF1: MOVBE m?, r? */ INST(MODRM(), READ(MODRM_R), WRITE(MODRM_RM_M))
+	/* 0xF2: ??? */ UNKNOWN()
+	/* 0xF3: ??? */ UNKNOWN()
+	/* 0xF4: ??? */ UNKNOWN()
+	/* 0xF5: ??? */ UNKNOWN()
+	/* 0xF6: ??? */ UNKNOWN()
+	/* 0xF7: ??? */ UNKNOWN()
+	/* 0xF8: ??? */ UNKNOWN()
+	/* 0xF9: ??? */ UNKNOWN()
+	/* 0xFA: ??? */ UNKNOWN()
+	/* 0xFB: ??? */ UNKNOWN()
+	/* 0xFC: ??? */ UNKNOWN()
+	/* 0xFD: ??? */ UNKNOWN()
+	/* 0xFE: ??? */ UNKNOWN()
+	/* 0xFF: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3A08[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) ROUNDPS xmm1, xmm2/m128, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3A09[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) ROUNDPD xmm1, xmm2/m128, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3A0A[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) ROUNDSS xmm1, xmm2/m32, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3A0B[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) ROUNDSD xmm1, xmm2/m64, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3A0C[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) BLENDPS xmm1, xmm2/m128, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3A0D[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) BLENDPD xmm1, xmm2/m128, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3A0E[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) PBLENDW xmm1, xmm2/m128, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3A0F[4] =
+{
+	/* 00: (SSSE3) PALIGNR mm1, mm2/m64, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 66: (SSSE3) PALIGNR xmm1, xmm2/m128, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3A14[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) PEXTRB reg/m8, xmm2, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_RM_R), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3A15[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) PEXTRW reg/m16, xmm2, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_RM_R), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3A16[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) PEXTRD/PEXTRQ reg/m?, xmm2, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_RM_R), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3A17[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) EXTRACTPS reg/m32, xmm2, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3A20[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) PINSRB xmm1, r32/m8, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3A21[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) INSERTPS xmm1, xmm2/m32, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3A22[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) PINSRD/Q xmm1, r/m?, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3A40[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) DPPS xmm1, xmm2/m128, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3A41[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) DPPD xmm1, xmm2/m128, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3A42[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.1) MPSADBW xmm1, xmm2/m128, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+/* TODO: I'm not sure whether read/write flags of these 4 instructions are correct */
+static const struct instruction_desc mandatory_0x0F3A60[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.2) PCMPESTRM xmm1, xmm2/m128, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM | REG_AX | REG_DX), WRITE(REG_AX))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3A61[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.2) PCMPESTRI xmm1, xmm2/m128, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM | REG_AX | REG_CX | REG_DX), WRITE(REG_CX))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3A62[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.2) PCMPISTRM xmm1, xmm2/m128, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(REG_AX))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+static const struct instruction_desc mandatory_0x0F3A63[4] =
+{
+	/* 00: ??? */ UNKNOWN()
+	/* 66: (SSE4.2) PCMPISTRI xmm1, xmm2/m128, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(REG_CX))
+	/* F3: ??? */ UNKNOWN()
+	/* F2: ??? */ UNKNOWN()
+};
+
+/* Instructions with 0F 3A prefix */
+static const struct instruction_desc three_byte_inst_0x3A[256] =
+{
+	/* 0x00: ??? */ UNKNOWN()
+	/* 0x01: ??? */ UNKNOWN()
+	/* 0x02: ??? */ UNKNOWN()
+	/* 0x03: ??? */ UNKNOWN()
+	/* 0x04: ??? */ UNKNOWN()
+	/* 0x05: ??? */ UNKNOWN()
+	/* 0x06: ??? */ UNKNOWN()
+	/* 0x07: ??? */ UNKNOWN()
+	/* 0x08: MANDATORY */ MANDATORY(0x0F3A08)
+	/* 0x09: MANDATORY */ MANDATORY(0x0F3A09)
+	/* 0x0A: MANDATORY */ MANDATORY(0x0F3A0A)
+	/* 0x0B: MANDATORY */ MANDATORY(0x0F3A0B)
+	/* 0x0C: MANDATORY */ MANDATORY(0x0F3A0C)
+	/* 0x0D: MANDATORY */ MANDATORY(0x0F3A0D)
+	/* 0x0E: MANDATORY */ MANDATORY(0x0F3A0E)
+	/* 0x0F: MANDATORY */ MANDATORY(0x0F3A0F)
+	/* 0x10: ??? */ UNKNOWN()
+	/* 0x11: ??? */ UNKNOWN()
+	/* 0x12: ??? */ UNKNOWN()
+	/* 0x13: ??? */ UNKNOWN()
+	/* 0x14: MANDATORY */ MANDATORY(0x0F3A14)
+	/* 0x15: MANDATORY */ MANDATORY(0x0F3A15)
+	/* 0x16: MANDATORY */ MANDATORY(0x0F3A16)
+	/* 0x17: MANDATORY */ MANDATORY(0x0F3A17)
+	/* 0x18: ??? */ UNKNOWN()
+	/* 0x19: ??? */ UNKNOWN()
+	/* 0x1A: ??? */ UNKNOWN()
+	/* 0x1B: ??? */ UNKNOWN()
+	/* 0x1C: ??? */ UNKNOWN()
+	/* 0x1D: ??? */ UNKNOWN()
+	/* 0x1E: ??? */ UNKNOWN()
+	/* 0x1F: ??? */ UNKNOWN()
+	/* 0x20: MANDATORY */ MANDATORY(0x0F3A20)
+	/* 0x21: MANDATORY */ MANDATORY(0x0F3A21)
+	/* 0x22: MANDATORY */ MANDATORY(0x0F3A22)
+	/* 0x23: ??? */ UNKNOWN()
+	/* 0x24: ??? */ UNKNOWN()
+	/* 0x25: ??? */ UNKNOWN()
+	/* 0x26: ??? */ UNKNOWN()
+	/* 0x27: ??? */ UNKNOWN()
+	/* 0x28: ??? */ UNKNOWN()
+	/* 0x29: ??? */ UNKNOWN()
+	/* 0x2A: ??? */ UNKNOWN()
+	/* 0x2B: ??? */ UNKNOWN()
+	/* 0x2C: ??? */ UNKNOWN()
+	/* 0x2D: ??? */ UNKNOWN()
+	/* 0x2E: ??? */ UNKNOWN()
+	/* 0x2F: ??? */ UNKNOWN()
+	/* 0x30: ??? */ UNKNOWN()
+	/* 0x31: ??? */ UNKNOWN()
+	/* 0x32: ??? */ UNKNOWN()
+	/* 0x33: ??? */ UNKNOWN()
+	/* 0x34: ??? */ UNKNOWN()
+	/* 0x35: ??? */ UNKNOWN()
+	/* 0x36: ??? */ UNKNOWN()
+	/* 0x37: ??? */ UNKNOWN()
+	/* 0x38: ??? */ UNKNOWN()
+	/* 0x39: ??? */ UNKNOWN()
+	/* 0x3A: ??? */ UNKNOWN()
+	/* 0x3B: ??? */ UNKNOWN()
+	/* 0x3C: ??? */ UNKNOWN()
+	/* 0x3D: ??? */ UNKNOWN()
+	/* 0x3E: ??? */ UNKNOWN()
+	/* 0x3F: ??? */ UNKNOWN()
+	/* 0x40: MANDATORY */ MANDATORY(0x0F3A40)
+	/* 0x41: MANDATORY */ MANDATORY(0x0F3A41)
+	/* 0x42: MANDATORY */ MANDATORY(0x0F3A42)
+	/* 0x43: ??? */ UNKNOWN()
+	/* 0x44: ??? */ UNKNOWN()
+	/* 0x45: ??? */ UNKNOWN()
+	/* 0x46: ??? */ UNKNOWN()
+	/* 0x47: ??? */ UNKNOWN()
+	/* 0x48: ??? */ UNKNOWN()
+	/* 0x49: ??? */ UNKNOWN()
+	/* 0x4A: ??? */ UNKNOWN()
+	/* 0x4B: ??? */ UNKNOWN()
+	/* 0x4C: ??? */ UNKNOWN()
+	/* 0x4D: ??? */ UNKNOWN()
+	/* 0x4E: ??? */ UNKNOWN()
+	/* 0x4F: ??? */ UNKNOWN()
+	/* 0x50: ??? */ UNKNOWN()
+	/* 0x51: ??? */ UNKNOWN()
+	/* 0x52: ??? */ UNKNOWN()
+	/* 0x53: ??? */ UNKNOWN()
+	/* 0x54: ??? */ UNKNOWN()
+	/* 0x55: ??? */ UNKNOWN()
+	/* 0x56: ??? */ UNKNOWN()
+	/* 0x57: ??? */ UNKNOWN()
+	/* 0x58: ??? */ UNKNOWN()
+	/* 0x59: ??? */ UNKNOWN()
+	/* 0x5A: ??? */ UNKNOWN()
+	/* 0x5B: ??? */ UNKNOWN()
+	/* 0x5C: ??? */ UNKNOWN()
+	/* 0x5D: ??? */ UNKNOWN()
+	/* 0x5E: ??? */ UNKNOWN()
+	/* 0x5F: ??? */ UNKNOWN()
+	/* 0x60: MANDATORY */ MANDATORY(0x0F3A60)
+	/* 0x61: MANDATORY */ MANDATORY(0x0F3A61)
+	/* 0x62: MANDATORY */ MANDATORY(0x0F3A62)
+	/* 0x63: MANDATORY */ MANDATORY(0x0F3A63)
+	/* 0x64: ??? */ UNKNOWN()
+	/* 0x65: ??? */ UNKNOWN()
+	/* 0x66: ??? */ UNKNOWN()
+	/* 0x67: ??? */ UNKNOWN()
+	/* 0x68: ??? */ UNKNOWN()
+	/* 0x69: ??? */ UNKNOWN()
+	/* 0x6A: ??? */ UNKNOWN()
+	/* 0x6B: ??? */ UNKNOWN()
+	/* 0x6C: ??? */ UNKNOWN()
+	/* 0x6D: ??? */ UNKNOWN()
+	/* 0x6E: ??? */ UNKNOWN()
+	/* 0x6F: ??? */ UNKNOWN()
+	/* 0x70: ??? */ UNKNOWN()
+	/* 0x71: ??? */ UNKNOWN()
+	/* 0x72: ??? */ UNKNOWN()
+	/* 0x73: ??? */ UNKNOWN()
+	/* 0x74: ??? */ UNKNOWN()
+	/* 0x75: ??? */ UNKNOWN()
+	/* 0x76: ??? */ UNKNOWN()
+	/* 0x77: ??? */ UNKNOWN()
+	/* 0x78: ??? */ UNKNOWN()
+	/* 0x79: ??? */ UNKNOWN()
+	/* 0x7A: ??? */ UNKNOWN()
+	/* 0x7B: ??? */ UNKNOWN()
+	/* 0x7C: ??? */ UNKNOWN()
+	/* 0x7D: ??? */ UNKNOWN()
+	/* 0x7E: ??? */ UNKNOWN()
+	/* 0x7F: ??? */ UNKNOWN()
+	/* 0x80: ??? */ UNKNOWN()
+	/* 0x81: ??? */ UNKNOWN()
+	/* 0x82: ??? */ UNKNOWN()
+	/* 0x83: ??? */ UNKNOWN()
+	/* 0x84: ??? */ UNKNOWN()
+	/* 0x85: ??? */ UNKNOWN()
+	/* 0x86: ??? */ UNKNOWN()
+	/* 0x87: ??? */ UNKNOWN()
+	/* 0x88: ??? */ UNKNOWN()
+	/* 0x89: ??? */ UNKNOWN()
+	/* 0x8A: ??? */ UNKNOWN()
+	/* 0x8B: ??? */ UNKNOWN()
+	/* 0x8C: ??? */ UNKNOWN()
+	/* 0x8D: ??? */ UNKNOWN()
+	/* 0x8E: ??? */ UNKNOWN()
+	/* 0x8F: ??? */ UNKNOWN()
+	/* 0x90: ??? */ UNKNOWN()
+	/* 0x91: ??? */ UNKNOWN()
+	/* 0x92: ??? */ UNKNOWN()
+	/* 0x93: ??? */ UNKNOWN()
+	/* 0x94: ??? */ UNKNOWN()
+	/* 0x95: ??? */ UNKNOWN()
+	/* 0x96: ??? */ UNKNOWN()
+	/* 0x97: ??? */ UNKNOWN()
+	/* 0x98: ??? */ UNKNOWN()
+	/* 0x99: ??? */ UNKNOWN()
+	/* 0x9A: ??? */ UNKNOWN()
+	/* 0x9B: ??? */ UNKNOWN()
+	/* 0x9C: ??? */ UNKNOWN()
+	/* 0x9D: ??? */ UNKNOWN()
+	/* 0x9E: ??? */ UNKNOWN()
+	/* 0x9F: ??? */ UNKNOWN()
+	/* 0xA0: ??? */ UNKNOWN()
+	/* 0xA1: ??? */ UNKNOWN()
+	/* 0xA2: ??? */ UNKNOWN()
+	/* 0xA3: ??? */ UNKNOWN()
+	/* 0xA4: ??? */ UNKNOWN()
+	/* 0xA5: ??? */ UNKNOWN()
+	/* 0xA6: ??? */ UNKNOWN()
+	/* 0xA7: ??? */ UNKNOWN()
+	/* 0xA8: ??? */ UNKNOWN()
+	/* 0xA9: ??? */ UNKNOWN()
+	/* 0xAA: ??? */ UNKNOWN()
+	/* 0xAB: ??? */ UNKNOWN()
+	/* 0xAC: ??? */ UNKNOWN()
+	/* 0xAD: ??? */ UNKNOWN()
+	/* 0xAE: ??? */ UNKNOWN()
+	/* 0xAF: ??? */ UNKNOWN()
+	/* 0xB0: ??? */ UNKNOWN()
+	/* 0xB1: ??? */ UNKNOWN()
+	/* 0xB2: ??? */ UNKNOWN()
+	/* 0xB3: ??? */ UNKNOWN()
+	/* 0xB4: ??? */ UNKNOWN()
+	/* 0xB5: ??? */ UNKNOWN()
+	/* 0xB6: ??? */ UNKNOWN()
+	/* 0xB7: ??? */ UNKNOWN()
+	/* 0xB8: ??? */ UNKNOWN()
+	/* 0xB9: ??? */ UNKNOWN()
+	/* 0xBA: ??? */ UNKNOWN()
+	/* 0xBB: ??? */ UNKNOWN()
+	/* 0xBC: ??? */ UNKNOWN()
+	/* 0xBD: ??? */ UNKNOWN()
+	/* 0xBE: ??? */ UNKNOWN()
+	/* 0xBF: ??? */ UNKNOWN()
+	/* 0xC0: ??? */ UNKNOWN()
+	/* 0xC1: ??? */ UNKNOWN()
+	/* 0xC2: ??? */ UNKNOWN()
+	/* 0xC3: ??? */ UNKNOWN()
+	/* 0xC4: ??? */ UNKNOWN()
+	/* 0xC5: ??? */ UNKNOWN()
+	/* 0xC6: ??? */ UNKNOWN()
+	/* 0xC7: ??? */ UNKNOWN()
+	/* 0xC8: ??? */ UNKNOWN()
+	/* 0xC9: ??? */ UNKNOWN()
+	/* 0xCA: ??? */ UNKNOWN()
+	/* 0xCB: ??? */ UNKNOWN()
+	/* 0xCC: ??? */ UNKNOWN()
+	/* 0xCD: ??? */ UNKNOWN()
+	/* 0xCE: ??? */ UNKNOWN()
+	/* 0xCF: ??? */ UNKNOWN()
 	/* 0xD0: ??? */ UNKNOWN()
 	/* 0xD1: ??? */ UNKNOWN()
 	/* 0xD2: ??? */ UNKNOWN()

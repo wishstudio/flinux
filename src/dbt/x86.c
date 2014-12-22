@@ -467,6 +467,7 @@ struct instruction_t
 	int gs_prefix;
 	int lock_prefix;
 	int escape_0x0f;
+	uint8_t escape_byte2; /* 0x38 or 0x3A */
 	int r;
 	struct modrm_rm_t rm;
 	int imm_bytes;
@@ -510,7 +511,11 @@ static void dbt_copy_instruction(uint8_t **out, uint8_t **code, struct instructi
 	if (ins->rep_prefix)
 		gen_byte(out, ins->rep_prefix);
 	if (ins->escape_0x0f)
+	{
 		gen_byte(out, 0x0f);
+		if (ins->escape_byte2)
+			gen_byte(out, ins->escape_byte2);
+	}
 	gen_byte(out, ins->opcode);
 	if (ins->desc->has_modrm)
 		gen_modrm_sib(out, ins->r, ins->rm);
@@ -556,7 +561,7 @@ static struct dbt_block *dbt_translate(size_t pc)
 	block->pc = pc;
 	block->start = ((size_t)dbt->out + DBT_OUT_ALIGN - 1) & -(size_t)DBT_OUT_ALIGN;
 
-	log_debug("pc: %p, block start: %p\n", block->pc, block->start);
+	//log_debug("pc: %p, block start: %p\n", block->pc, block->start);
 
 	uint8_t *code = (uint8_t *)pc;
 	uint8_t *out = block->start;
@@ -576,69 +581,88 @@ static struct dbt_block *dbt_translate(size_t pc)
 			{
 			case 0xF0: /* LOCK */
 				ins.lock_prefix = 1;
-				continue;
+				break;
 
 			case 0xF2: /* REPNE/REPNZ */
 				ins.rep_prefix = 0xF2;
-				continue;
+				break;
 
 			case 0xF3: /* REP/REPE/REPZ */
 				ins.rep_prefix = 0xF3;
-				continue;
+				break;
 
 			case 0x2E: /* CS segment override*/
 				log_error("CS segment override not supported\n");
 				__debugbreak();
-				continue;
+				break;
 
 			case 0x36: /* SS segment override */
 				log_error("SS segment override not supported\n");
 				__debugbreak();
-				continue;
+				break;
 
 			case 0x3E: /* DS segment override */
 				log_error("DS segment override not supported\n");
 				__debugbreak();
-				continue;
+				break;
 
 			case 0x26: /* ES segment override */
 				log_error("ES segment override not supported\n");
 				__debugbreak();
-				continue;
+				break;
 
 			case 0x64: /* FS segment override */
 				log_error("FS segment override not supported\n");
 				__debugbreak();
-				continue;
+				break;
 
 			case 0x65: /* GS segment override */
 				ins.gs_prefix = 1;
-				continue;
+				break;
 
 			case 0x66: /* Operand size prefix */
 				ins.opsize_prefix = 0x66;
-				continue;
+				break;
 
 			case 0x67: /* Address size prefix */
 				log_error("Address size prefix not supported\n");
 				__debugbreak();
-				continue;
+				break;
+
+			default:
+				goto done_prefix;
 			}
-			break;
 		}
+
+done_prefix:
 
 		/* Extract instruction descriptor */
 		ins.escape_0x0f = 0;
+		ins.escape_byte2 = 0;
 
 		if (ins.opcode == 0x0F)
 		{
 			ins.escape_0x0f = 1;
 			ins.opcode = parse_byte(&code);
-			ins.desc = &two_byte_inst[ins.opcode];
+			if (ins.opcode == 0x38)
+			{
+				ins.escape_byte2 = 0x38;
+				ins.opcode = parse_byte(&code);
+				ins.desc = &three_byte_inst_0x38[ins.opcode];
+			}
+			else if (ins.opcode == 0x3A)
+			{
+				ins.escape_byte2 = 0x3A;
+				ins.opcode = parse_byte(&code);
+				ins.desc = &three_byte_inst_0x3A[ins.opcode];
+			}
+			else
+				ins.desc = &two_byte_inst[ins.opcode];
 		}
 		else
 			ins.desc = &one_byte_inst[ins.opcode];
 
+	inst_mandatory_reentry:
 		if (ins.desc->has_modrm)
 			parse_modrm(&code, &ins.r, &ins.rm);
 		
@@ -661,6 +685,24 @@ static struct dbt_block *dbt_translate(size_t pc)
 		{
 			ins.desc = &ins.desc->extension_table[ins.r];
 			goto inst_extension_reentry;
+		}
+
+		case INST_TYPE_MANDATORY:
+		{
+			if (!ins.escape_0x0f)
+			{
+				log_error("Invalid opcode.\n");
+				__debugbreak();
+			}
+			if (ins.opsize_prefix)
+				ins.desc = &ins.desc->extension_table[MANDATORY_0x66];
+			else if (ins.rep_prefix == 0xF3)
+				ins.desc = &ins.desc->extension_table[MANDATORY_0xF3];
+			else if (ins.rep_prefix == 0xF2)
+				ins.desc = &ins.desc->extension_table[MANDATORY_0xF2];
+			else
+				ins.desc = &ins.desc->extension_table[MANDATORY_NONE];
+			goto inst_mandatory_reentry;
 		}
 
 		case INST_TYPE_NORMAL:
