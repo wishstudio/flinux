@@ -76,6 +76,16 @@ static struct modrm_rm_t __forceinline modrm_rm_mscale(int base, int index, int 
 	return rm;
 }
 
+static int __forceinline modrm_rm_is_r(struct modrm_rm_t rm)
+{
+	return rm.flags & MODRM_PURE_REGISTER;
+}
+
+static int __forceinline modrm_rm_is_m(struct modrm_rm_t rm)
+{
+	return (rm.flags & MODRM_PURE_REGISTER) == 0;
+}
+
 static uint8_t __forceinline parse_byte(uint8_t **code)
 {
 	return *(*code)++;
@@ -104,6 +114,16 @@ static int32_t __forceinline parse_rel(uint8_t **code, int rel_bytes)
 		return (int16_t)parse_word(code);
 	else
 		return (int32_t)parse_dword(code);
+}
+
+static uint32_t __forceinline parse_moffset(uint8_t **code, int imm_bytes)
+{
+	if (imm_bytes == 1)
+		return parse_byte(code);
+	else if (imm_bytes == 2)
+		return parse_word(code);
+	else
+		return parse_dword(code);
 }
 
 static void parse_modrm(uint8_t **code, int *r, struct modrm_rm_t *rm)
@@ -442,9 +462,11 @@ static size_t dbt_get_direct_trampoline(size_t pc, size_t patch_addr)
 
 struct instruction_t
 {
-	int escape_0x0f;
 	uint8_t opcode;
 	uint8_t opsize_prefix, rep_prefix;
+	int gs_prefix;
+	int lock_prefix;
+	int escape_0x0f;
 	int r;
 	struct modrm_rm_t rm;
 	int imm_bytes;
@@ -456,6 +478,8 @@ static int find_unused_register(struct instruction_t *ins)
 {
 	/* Calculate used registers in this instruction */
 	int used_regs = ins->desc->read_regs | ins->desc->write_regs;
+	if (ins->rep_prefix)
+		used_regs |= REG_CX;
 	if (ins->r != -1)
 		used_regs |= REG_MASK(ins->r);
 	if (ins->rm.base != -1)
@@ -475,6 +499,49 @@ static int find_unused_register(struct instruction_t *ins)
 	__debugbreak();
 }
 
+static void dbt_copy_instruction(uint8_t **out, uint8_t **code, struct instruction_t *ins)
+{
+	uint8_t *imm_start = *code;
+	*code += ins->imm_bytes;
+	if (ins->lock_prefix)
+		gen_byte(out, 0xF0);
+	if (ins->opsize_prefix)
+		gen_byte(out, ins->opsize_prefix);
+	if (ins->rep_prefix)
+		gen_byte(out, ins->rep_prefix);
+	if (ins->escape_0x0f)
+		gen_byte(out, 0x0f);
+	gen_byte(out, ins->opcode);
+	if (ins->desc->has_modrm)
+		gen_modrm_sib(out, ins->r, ins->rm);
+	gen_copy(out, imm_start, ins->imm_bytes);
+}
+
+static void dbt_gen_push_gs_rm(uint8_t **out, int temp_reg, struct modrm_rm_t rm)
+{
+	/* mov fs:[scratch], temp_reg */
+	gen_fs_prefix(out);
+	gen_mov_rm_r_32(out, modrm_rm_disp(dbt->tls_scratch_offset), temp_reg);
+
+	/* mov temp_reg, fs:[gs_addr] */
+	gen_fs_prefix(out);
+	gen_mov_r_rm_32(out, temp_reg, modrm_rm_disp(dbt->tls_gs_addr_offset));
+
+	if (rm.base != -1)
+	{
+		/* lea temp_reg, [temp_reg + rm.base] */
+		gen_lea(out, temp_reg, modrm_rm_mscale(temp_reg, rm.base, 0, 0));
+	}
+	/* Replace rm.base with temp_reg */
+	rm.base = temp_reg;
+
+	gen_push_rm(out, rm);
+
+	/* mov temp_reg, fs:[scratch] */
+	gen_fs_prefix(out);
+	gen_mov_r_rm_32(out, temp_reg, modrm_rm_disp(dbt->tls_scratch_offset));
+}
+
 static struct dbt_block *dbt_translate(size_t pc)
 {
 	extern void dbt_find_indirect_internal();
@@ -489,6 +556,8 @@ static struct dbt_block *dbt_translate(size_t pc)
 	block->pc = pc;
 	block->start = ((size_t)dbt->out + DBT_OUT_ALIGN - 1) & -(size_t)DBT_OUT_ALIGN;
 
+	log_debug("pc: %p, block start: %p\n", block->pc, block->start);
+
 	uint8_t *code = (uint8_t *)pc;
 	uint8_t *out = block->start;
 	for (;;)
@@ -496,6 +565,8 @@ static struct dbt_block *dbt_translate(size_t pc)
 		struct instruction_t ins;
 		ins.rep_prefix = 0;
 		ins.opsize_prefix = 0;
+		ins.gs_prefix = 0;
+		ins.lock_prefix = 0;
 		/* Handle prefixes. According to x86 doc, they can appear in any order */
 		for (;;)
 		{
@@ -504,8 +575,7 @@ static struct dbt_block *dbt_translate(size_t pc)
 			switch (ins.opcode)
 			{
 			case 0xF0: /* LOCK */
-				log_error("LOCK prefix not supported\n");
-				__debugbreak();
+				ins.lock_prefix = 1;
 				continue;
 
 			case 0xF2: /* REPNE/REPNZ */
@@ -542,8 +612,7 @@ static struct dbt_block *dbt_translate(size_t pc)
 				continue;
 
 			case 0x65: /* GS segment override */
-				log_error("GS segment override not supported\n");
-				__debugbreak();
+				ins.gs_prefix = 1;
 				continue;
 
 			case 0x66: /* Operand size prefix */
@@ -577,6 +646,8 @@ static struct dbt_block *dbt_translate(size_t pc)
 		ins.imm_bytes = ins.desc->imm_bytes;
 		if (ins.imm_bytes == PREFIX_OPERAND_SIZE)
 			ins.imm_bytes = ins.opsize_prefix? 2: 4;
+		else if (ins.imm_bytes == PREFIX_ADDRESS_SIZE)
+			ins.imm_bytes = 4;
 
 		/* Translate instruction */
 		switch (ins.desc->type)
@@ -594,20 +665,77 @@ static struct dbt_block *dbt_translate(size_t pc)
 
 		case INST_TYPE_NORMAL:
 		{
-			/* TODO: Handle GS prefix */
-			uint8_t *imm_start = code;
-			code += ins.imm_bytes;
+			if (ins.gs_prefix && ins.desc->has_modrm && modrm_rm_is_m(ins.rm))
+			{
+				/* Instruction with effective gs segment override */
+				int temp_reg = find_unused_register(&ins);
+				/* mov fs:[scratch], temp_reg */
+				gen_fs_prefix(&out);
+				gen_mov_rm_r_32(&out, modrm_rm_disp(dbt->tls_scratch_offset), temp_reg);
 
-			if (ins.opsize_prefix)
-				gen_byte(&out, ins.opsize_prefix);
-			if (ins.rep_prefix)
-				gen_byte(&out, ins.rep_prefix);
-			if (ins.escape_0x0f)
-				gen_byte(&out, 0x0f);
-			gen_byte(&out, ins.opcode);
-			if (ins.desc->has_modrm)
-				gen_modrm_sib(&out, ins.r, ins.rm);
-			gen_copy(&out, imm_start, ins.imm_bytes);
+				/* mov temp_reg, fs:[gs_addr] */
+				gen_fs_prefix(&out);
+				gen_mov_r_rm_32(&out, temp_reg, modrm_rm_disp(dbt->tls_gs_addr_offset));
+				if (ins.rm.base != -1)
+				{
+					/* lea temp_reg, [temp_reg + rm.base] */
+					gen_lea(&out, temp_reg, modrm_rm_mscale(temp_reg, ins.rm.base, 0, 0));
+				}
+				/* Replace rm.base with temp_reg */
+				ins.rm.base = temp_reg;
+
+				/* Copy instruction */
+				dbt_copy_instruction(&out, &code, &ins);
+
+				/* mov temp_reg, fs:[scratch] */
+				gen_fs_prefix(&out);
+				gen_mov_r_rm_32(&out, temp_reg, modrm_rm_disp(dbt->tls_scratch_offset));
+				break;
+			}
+
+			/* Directly copy instruction */
+			dbt_copy_instruction(&out, &code, &ins);
+			break;
+		}
+
+		case INST_MOV_MOFFSET:
+		{
+			if (ins.gs_prefix)
+			{
+				/* mov moffs with effective gs segment override */
+				int temp_reg = find_unused_register(&ins);
+				/* mov fs:[scratch], temp_reg */
+				gen_fs_prefix(&out);
+				gen_mov_rm_r_32(&out, modrm_rm_disp(dbt->tls_scratch_offset), temp_reg);
+
+				/* mov temp_reg, fs:[gs_addr] */
+				gen_fs_prefix(&out);
+				gen_mov_r_rm_32(&out, temp_reg, modrm_rm_disp(dbt->tls_gs_addr_offset));
+
+				/* Generate patched instruction */
+				if (ins.lock_prefix)
+					gen_byte(&out, 0xF0);
+				if (ins.opsize_prefix)
+					gen_byte(&out, ins.opsize_prefix);
+				if (ins.opcode == 0xA0) /* mov al, fs:moffs8 */
+					gen_byte(&out, 0x8A);
+				else if (ins.opcode == 0xA1) /* mov ?ax, moffs? */
+					gen_byte(&out, 0x8B);
+				else if (ins.opcode == 0xA2) /* mov moffs8, al */
+					gen_byte(&out, 0x88);
+				else /* if (ins.opcode ==0xA3) mov moffs?, ?ax */
+					gen_byte(&out, 0x89);
+				uint32_t disp = parse_moffset(&code, ins.imm_bytes);
+				gen_modrm_sib(&out, 0, modrm_rm_mreg(temp_reg, disp));
+
+				/* mov temp_reg, fs:[scratch] */
+				gen_fs_prefix(&out);
+				gen_mov_r_rm_32(&out, temp_reg, modrm_rm_disp(dbt->tls_scratch_offset));
+				break;
+			}
+
+			/* Directly copy instruction */
+			dbt_copy_instruction(&out, &code, &ins);
 			break;
 		}
 
@@ -623,11 +751,19 @@ static struct dbt_block *dbt_translate(size_t pc)
 
 		case INST_CALL_INDIRECT:
 		{
-			/* TODO: Bad codegen for `call esp', although should not be used in practice */
+			/* TODO: Bad codegen for `call esp', although should never be used in practice */
 			gen_push_imm32(&out, (size_t)code);
 			if (ins.rm.base == 4) /* ESP-related address */
 				ins.rm.disp += 4;
-			gen_push_rm(&out, ins.rm);
+
+			if (ins.gs_prefix && ins.desc->has_modrm && modrm_rm_is_m(ins.rm))
+			{
+				/* call with effective gs segment override */
+				int temp_reg = find_unused_register(&ins);
+				dbt_gen_push_gs_rm(&out, temp_reg, ins.rm);
+			}
+			else
+				gen_push_rm(&out, ins.rm);
 			gen_jmp(&out, &dbt_find_indirect_internal);
 			goto end_block;
 		}
@@ -662,7 +798,14 @@ static struct dbt_block *dbt_translate(size_t pc)
 
 		case INST_JMP_INDIRECT:
 		{
-			gen_push_rm(&out, ins.rm);
+			if (ins.gs_prefix && ins.desc->has_modrm && modrm_rm_is_m(ins.rm))
+			{
+				/* jmp with effective gs segment override */
+				int temp_reg = find_unused_register(&ins);
+				dbt_gen_push_gs_rm(&out, temp_reg, ins.rm);
+			}
+			else
+				gen_push_rm(&out, ins.rm);
 			gen_jmp(&out, &dbt_find_indirect_internal);
 			goto end_block;
 		}
