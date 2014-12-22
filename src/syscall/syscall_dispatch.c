@@ -40,13 +40,9 @@ syscall_fn* syscall_table[SYSCALL_COUNT] =
 #undef SYSCALL
 #endif
 
-DEFINE_SYSCALL(unimplemented, intptr_t, _1, intptr_t, _2, intptr_t, _3, intptr_t, _4, intptr_t, _5, intptr_t, _6, PCONTEXT, context)
+void sys_unimplemented_show(intptr_t id)
 {
-#ifdef _WIN64
-	log_error("FATAL: Unimplemented syscall: %d\n", (int)context->Rax);
-#else
-	log_error("FATAL: Unimplemented syscall: %d\n", context->Eax);
-#endif
+	log_error("FATAL: Unimplemented syscall: %d\n", id);
 	ExitProcess(1);
 }
 
@@ -54,7 +50,5 @@ void dispatch_syscall(PCONTEXT context)
 {
 #ifdef _WIN64
 	context->Rax = (*syscall_table[context->Rax])(context->Rdi, context->Rsi, context->Rdx, context->R10, context->R8, context->R9, context);
-#else
-	context->Eax = (*syscall_table[context->Eax])(context->Ebx, context->Ecx, context->Edx, context->Esi, context->Edi, context->Ebp, context);
 #endif
 }

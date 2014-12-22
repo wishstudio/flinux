@@ -55,13 +55,16 @@ static LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
 		else
 		{
 			log_info("IP: 0x%p\n", ep->ContextRecord->Xip);
+#ifdef _WIN64
 			if (code[0] == 0xCD && code[1] == 0x80) /* INT 80h */
 			{
 				ep->ContextRecord->Xip += 2;
 				dispatch_syscall(ep->ContextRecord);
 				return EXCEPTION_CONTINUE_EXECUTION;
 			}
-			else if (mm_handle_page_fault(ep->ExceptionRecord->ExceptionInformation[1]))
+			else
+#endif
+			if (mm_handle_page_fault(ep->ExceptionRecord->ExceptionInformation[1]))
 				return EXCEPTION_CONTINUE_EXECUTION;
 			if (ep->ContextRecord->Xip >= &mm_check_read_begin && ep->ContextRecord->Xip <= &mm_check_read_end)
 			{

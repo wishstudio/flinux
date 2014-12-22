@@ -44,22 +44,6 @@ SegSs				DWORD		?
 ExtendedRegisters	BYTE MAXIMUM_SUPPORTED_EXTENSION DUP(?)
 CONTEXT				ENDS
 
-goto_entrypoint PROC stack, entrypoint
-
-	mov eax, entrypoint
-	mov esp, stack
-	push eax
-	xor eax, eax
-	xor ebx, ebx
-	xor ecx, ecx
-	xor edx, edx
-	xor esi, esi
-	xor edi, edi
-	xor ebp, ebp
-	retn
-
-goto_entrypoint ENDP
-
 restore_context PROC ctx
 
 	mov eax, ctx
@@ -173,6 +157,12 @@ mm_check_write_fail LABEL PTR
 	xor eax, eax
 	ret
 mm_check_write ENDP
+
+EXTERN sys_unimplemented_show:NEAR
+sys_unimplemented PROC
+	push eax
+	jmp sys_unimplemented_show
+sys_unimplemented ENDP
 
 OPTION PROLOGUE: NONE
 OPTION EPILOGUE: NONE
