@@ -731,7 +731,8 @@ done_prefix:
 
 		case INST_TYPE_NORMAL:
 		{
-			if (ins.gs_prefix && ins.desc->has_modrm && modrm_rm_is_m(ins.rm))
+			if (ins.gs_prefix && ins.desc->has_modrm && modrm_rm_is_m(ins.rm)
+				&& !(!ins.escape_0x0f && ins.opcode == 0x8D)) /* LEA */
 			{
 				/* Instruction with effective gs segment override */
 				int temp_reg = find_unused_register(&ins);
