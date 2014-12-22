@@ -373,9 +373,9 @@ static const struct instruction_desc one_byte_inst[256] =
 	/* 0x9E: SAHF */ INST_UNTESTED(READ(REG_AX))
 	/* 0x9F: LAHF */ INST_UNTESTED(WRITE(REG_AX))
 #endif
-	/* 0xA0: MOV AL, moffs8 */ SPECIAL(INST_MOV_MOFFSET, IMM(1))
+	/* 0xA0: MOV AL, moffs8 */ SPECIAL(INST_MOV_MOFFSET, IMM(PREFIX_ADDRESS_SIZE_64))
 	/* 0xA1: MOV ?AX, moffs? */ SPECIAL(INST_MOV_MOFFSET, IMM(PREFIX_ADDRESS_SIZE_64))
-	/* 0xA2: MOV moffs8, AL */ SPECIAL(INST_MOV_MOFFSET, IMM(1))
+	/* 0xA2: MOV moffs8, AL */ SPECIAL(INST_MOV_MOFFSET, IMM(PREFIX_ADDRESS_SIZE_64))
 	/* 0xA3: MOV moffs?, ?AX */ SPECIAL(INST_MOV_MOFFSET, IMM(PREFIX_ADDRESS_SIZE_64))
 	/* 0xA4: MOVSB */ INST(READ(REG_SI | REG_DI))
 	/* 0xA5: MOVSW/MOVSD/MOVSQ */ INST(READ(REG_SI | REG_DI))
@@ -488,7 +488,7 @@ static const struct instruction_desc one_byte_inst[256] =
 	/* 0xFC: CLD */ INST()
 	/* 0xFD: STD */ INST()
 	/* [GRP4]: 0/INC, /DEC */
-	/* 0xFE: [GRP4] r/m8 */ INST_UNTESTED(MODRM(), READ(MODRM_RM), WRITE(MODRM_RM))
+	/* 0xFE: [GRP4] r/m8 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_RM))
 	/* 0xFF */ EXTENSION(FF)
 };
 
