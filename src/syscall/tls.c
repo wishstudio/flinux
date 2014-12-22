@@ -97,8 +97,6 @@
  * base address for the FS segment register.
  */
 
-#include "x86_inst.h" /* x86 instruction definitions */
-
 #define MAX_TLS_ENTRIES		0x10
 #define MAX_KERNEL_ENTRIES	0x10
 

@@ -705,6 +705,24 @@ done_prefix:
 			goto inst_mandatory_reentry;
 		}
 
+		case INST_TYPE_X87:
+		{
+			/* A very simplistic way to handle x87 escape opcode */
+			uint8_t modrm = *code; /* Peek potential ModR/M byte */
+			if (GET_MODRM_MOD(modrm) == 3) /* A non-operand opcode */
+			{
+				/* TODO: Do we need to handle prefixes here? */
+				code++;
+				gen_byte(&out, ins.opcode);
+				gen_byte(&out, modrm);
+				break;
+			}
+			/* An escape opcode with ModR/M, properly parse ModR/M */
+			ins.desc = &x87_desc;
+			parse_modrm(&code, &ins.r, &ins.rm);
+			/* Fall through */
+		}
+
 		case INST_TYPE_NORMAL:
 		{
 			if (ins.gs_prefix && ins.desc->has_modrm && modrm_rm_is_m(ins.rm))

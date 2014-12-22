@@ -8,7 +8,8 @@
 #define INST_TYPE_UNSUPPORTED	3 /* Unsupported instruction */
 #define INST_TYPE_EXTENSION		4 /* Opcode extension, use ModR/M R field to distinguish */
 #define INST_TYPE_MANDATORY		5 /* SIMD opcode, distinguished with a mandatory prefix (none, 0x66, 0xF3, 0xF2) */
-#define INST_TYPE_NORMAL		6 /* Normal instruction which does not need special handling */
+#define INST_TYPE_X87			6 /* An x87 escape code */
+#define INST_TYPE_NORMAL		7 /* Normal instruction which does not need special handling */
 
 /* Extension table indices for mandatory prefixes */
 #define MANDATORY_NONE			0
@@ -17,7 +18,7 @@
 #define MANDATORY_0xF2			3
 
 /* Special instruction types */
-#define INST_TYPE_SPECIAL		7
+#define INST_TYPE_SPECIAL		8
 #define INST_MOV_MOFFSET		(INST_TYPE_SPECIAL + 0)
 #define INST_CALL_DIRECT		(INST_TYPE_SPECIAL + 1)
 #define INST_CALL_INDIRECT		(INST_TYPE_SPECIAL + 2)
@@ -77,6 +78,7 @@ struct instruction_desc
 #define PRIVILEGED()	{ .type = INST_TYPE_PRIVILEGED },
 #define UNSUPPORTED()	{ .type = INST_TYPE_UNSUPPORTED },
 #define MANDATORY(x)	{ .type = INST_TYPE_MANDATORY, .extension_table = &mandatory_##x },
+#define X87()			{ .type = INST_TYPE_X87 },
 #define EXTENSION(x)	{ .type = INST_TYPE_EXTENSION, .has_modrm = 1, .extension_table = &extension_##x },
 
 #define INST_UNTESTED(...)		UNSUPPORTED() /* FIXME: Temporary for now */
@@ -86,6 +88,8 @@ struct instruction_desc
 #define IMM(i)			.imm_bytes = (i)
 #define READ(x)			.read_regs = (x)
 #define WRITE(x)		.write_regs = (x)
+
+struct instruction_desc x87_desc = { .type = INST_TYPE_NORMAL, MODRM() };
 
 static const struct instruction_desc extension_C6[8] =
 { 
@@ -445,14 +449,14 @@ static const struct instruction_desc one_byte_inst[256] =
 #endif
 	/* 0xD6: ??? */ UNKNOWN()
 	/* 0xD7: XLAT */ UNSUPPORTED()
-	/* 0xD8: (x87 escape) */ UNKNOWN()
-	/* 0xD9: (x87 escape) */ UNKNOWN()
-	/* 0xDA: (x87 escape) */ UNKNOWN()
-	/* 0xDB: (x87 escape) */ UNKNOWN()
-	/* 0xDC: (x87 escape) */ UNKNOWN()
-	/* 0xDD: (x87 escape) */ UNKNOWN()
-	/* 0xDE: (x87 escape) */ UNKNOWN()
-	/* 0xDF: (x87 escape) */ UNKNOWN()
+	/* 0xD8: (x87 escape) */ X87()
+	/* 0xD9: (x87 escape) */ X87()
+	/* 0xDA: (x87 escape) */ X87()
+	/* 0xDB: (x87 escape) */ X87()
+	/* 0xDC: (x87 escape) */ X87()
+	/* 0xDD: (x87 escape) */ X87()
+	/* 0xDE: (x87 escape) */ X87()
+	/* 0xDF: (x87 escape) */ X87()
 	/* 0xE0: LOOPNE rel8 */ SPECIAL(INST_JCC_REL8, IMM(1), READ(REG_CX), WRITE(REG_CX))
 	/* 0xE1: LOOPE rel8 */ SPECIAL(INST_JCC_REL8, IMM(1), READ(REG_CX), WRITE(REG_CX))
 	/* 0xE2: LOOP rel8 */ SPECIAL(INST_JCC_REL8, IMM(1), READ(REG_CX), WRITE(REG_CX))
