@@ -673,6 +673,12 @@ done_prefix:
 		else if (ins.imm_bytes == PREFIX_ADDRESS_SIZE)
 			ins.imm_bytes = 4;
 
+		if (ins.desc->require_0x66 && !ins.opsize_prefix)
+		{
+			log_error("Unknown opcode.\n");
+			__debugbreak();
+		}
+
 		/* Translate instruction */
 		switch (ins.desc->type)
 		{

@@ -68,6 +68,7 @@ struct instruction_desc
 {
 	int type; /* Instruction type */
 	int has_modrm; /* Whether the instruction has ModR/M opcode */
+	int require_0x66; /* Whether the instruction requires a mandatory 0x66 prefix */
 	int imm_bytes; /* Bytes of immediate, or PREFIX_OPERAND_SIZE(_64) */
 	int read_regs; /* The bitmask of registers which are read from */
 	int write_regs; /* The bitmask of registers which are written to */
@@ -85,6 +86,7 @@ struct instruction_desc
 #define INST(...)		{ .type = INST_TYPE_NORMAL, __VA_ARGS__ },
 #define SPECIAL(s, ...)	{ .type = s, __VA_ARGS__ },
 #define MODRM()			.has_modrm = 1
+#define REQUIRE_0x66()	.require_0x66 = 1
 #define IMM(i)			.imm_bytes = (i)
 #define READ(x)			.read_regs = (x)
 #define WRITE(x)		.write_regs = (x)
@@ -1175,254 +1177,6 @@ static const struct instruction_desc two_byte_inst[256] =
 	/* 0xFF: ??? */ UNKNOWN()
 };
 
-static const struct instruction_desc mandatory_0x0F3810[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) PBLENDVB xmm1, xmm2/m128, <xmm0> */ INST(MODRM(), READ(MODRM_R | MODRM_RM | REG_AX), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3814[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) BLENDVPS xmm1, xmm2/m128, <xmm0> */ INST(MODRM(), READ(MODRM_R | MODRM_RM | REG_AX), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3815[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) BLENDVPD xmm1, xmm2/m128, <xmm0> */ INST(MODRM(), READ(MODRM_R | MODRM_RM | REG_AX), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3817[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) PTEST xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3820[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) PMOVSXBW xmm1, xmm2/m64 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3821[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) PMOVSXBD xmm1, xmm2/m32 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3822[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) PMOVSXBQ xmm1, xmm2/m16 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3823[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) PMOVSXWD xmm1, xmm2/m64 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3824[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) PMOVSXWQ xmm1, xmm2/m32 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3825[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) PMOVSXDQ xmm1, xmm2/m64 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3828[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) PMULDQ xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3829[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) PCMPEQQ xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F382A[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1)	MOVNTDQA xmm1, m128 */ INST(MODRM(), READ(MODRM_RM_M), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F382B[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1)	PACKUSDW xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3830[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) PMOVZXBW xmm1, xmm2/m64 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3831[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) PMOVZXBD xmm1, xmm2/m32 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3832[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) PMOVZXBQ xmm1, xmm2/m16 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3833[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) PMOVZXWD xmm1, xmm2/m64 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3834[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) PMOVZXWQ xmm1, xmm2/m32 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3835[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) PMOVZXDQ xmm1, xmm2/m64 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3837[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.2) PCMPGTQ xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3838[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) PMINSB xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3839[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) PMINSD xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F383A[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) PMINUW xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F383B[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) PMINUD xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F383C[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) PMAXSB xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F383D[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) PMAXSD xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F383E[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) PMAXUW xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F383F[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) PMAXUD xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3840[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) PMULLD xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3841[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) PHMINPOSUW xmm1, xmm2/m128 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
 /* Instructions with 0F 38 prefix */
 static const struct instruction_desc three_byte_inst_0x38[256] =
 {
@@ -1442,14 +1196,14 @@ static const struct instruction_desc three_byte_inst_0x38[256] =
 	/* 0x0D: ??? */ UNKNOWN()
 	/* 0x0E: ??? */ UNKNOWN()
 	/* 0x0F: ??? */ UNKNOWN()
-	/* 0x10: MANDATORY */ MANDATORY(0x0F3810)
+	/* 0x10: PBLENDVB xmm1, xmm2/m128, <xmm0> */ INST(REQUIRE_0x66(), MODRM(), READ(MODRM_R | MODRM_RM | REG_AX), WRITE(MODRM_R))
 	/* 0x11: ??? */ UNKNOWN()
 	/* 0x12: ??? */ UNKNOWN()
 	/* 0x13: ??? */ UNKNOWN()
-	/* 0x14: MANDATORY */ MANDATORY(0x0F3814)
-	/* 0x15: MANDATORY */ MANDATORY(0x0F3815)
+	/* 0x14: BLENDVPS xmm1, xmm2/m128, <xmm0> */ INST(REQUIRE_0x66(), MODRM(), READ(MODRM_R | MODRM_RM | REG_AX), WRITE(MODRM_R))
+	/* 0x15: BLENDVPD xmm1, xmm2/m128, <xmm0> */ INST(REQUIRE_0x66(), MODRM(), READ(MODRM_R | MODRM_RM | REG_AX), WRITE(MODRM_R))
 	/* 0x16: ??? */ UNKNOWN()
-	/* 0x17: MANDATORY */ MANDATORY(0x0F3817)
+	/* 0x17: PTEST xmm1, xmm2/m128 */ INST(REQUIRE_0x66(), MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
 	/* 0x18: ??? */ UNKNOWN()
 	/* 0x19: ??? */ UNKNOWN()
 	/* 0x1A: ??? */ UNKNOWN()
@@ -1458,40 +1212,40 @@ static const struct instruction_desc three_byte_inst_0x38[256] =
 	/* 0x1D: PABSW ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
 	/* 0x1E: PABSD ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
 	/* 0x1F: ??? */ UNKNOWN()
-	/* 0x20: MANDATORY */ MANDATORY(0x0F3820)
-	/* 0x21: MANDATORY */ MANDATORY(0x0F3821)
-	/* 0x22: MANDATORY */ MANDATORY(0x0F3822)
-	/* 0x23: MANDATORY */ MANDATORY(0x0F3823)
-	/* 0x24: MANDATORY */ MANDATORY(0x0F3824)
-	/* 0x25: MANDATORY */ MANDATORY(0x0F3825)
+	/* 0x20: PMOVSXBW xmm1, xmm2/m64 */ INST(REQUIRE_0x66(), MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 0x21: PMOVSXBD xmm1, xmm2/m32 */ INST(REQUIRE_0x66(), MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 0x22: PMOVSXBQ xmm1, xmm2/m16 */ INST(REQUIRE_0x66(), MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 0x23: PMOVSXWD xmm1, xmm2/m64 */ INST(REQUIRE_0x66(), MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 0x24: PMOVSXWQ xmm1, xmm2/m32 */ INST(REQUIRE_0x66(), MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 0x25: PMOVSXDQ xmm1, xmm2/m64 */ INST(REQUIRE_0x66(), MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
 	/* 0x26: ??? */ UNKNOWN()
 	/* 0x27: ??? */ UNKNOWN()
-	/* 0x28: MANDATORY */ MANDATORY(0x0F3828)
-	/* 0x29: MANDATORY */ MANDATORY(0x0F3829)
-	/* 0x2A: MANDATORY */ MANDATORY(0x0F382A)
-	/* 0x2B: MANDATORY */ MANDATORY(0x0F382B)
+	/* 0x28: PMULDQ xmm1, xmm2/m128 */ INST(REQUIRE_0x66(), MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x29: PCMPEQQ xmm1, xmm2/m128 */ INST(REQUIRE_0x66(), MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x2A: MOVNTDQA xmm1, m128 */ INST(REQUIRE_0x66(), MODRM(), READ(MODRM_RM_M), WRITE(MODRM_R))
+	/* 0x2B: PACKUSDW xmm1, xmm2/m128 */ INST(REQUIRE_0x66(), MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
 	/* 0x2C: ??? */ UNKNOWN()
 	/* 0x2D: ??? */ UNKNOWN()
 	/* 0x2E: ??? */ UNKNOWN()
 	/* 0x2F: ??? */ UNKNOWN()
-	/* 0x30: MANDATORY */ MANDATORY(0x0F3830)
-	/* 0x31: MANDATORY */ MANDATORY(0x0F3831)
-	/* 0x32: MANDATORY */ MANDATORY(0x0F3832)
-	/* 0x33: MANDATORY */ MANDATORY(0x0F3833)
-	/* 0x34: MANDATORY */ MANDATORY(0x0F3834)
-	/* 0x35: MANDATORY */ MANDATORY(0x0F3835)
+	/* 0x30: PMOVZXBW xmm1, xmm2/m64 */ INST(REQUIRE_0x66(), MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 0x31: PMOVZXBD xmm1, xmm2/m32 */ INST(REQUIRE_0x66(), MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 0x32: PMOVZXBQ xmm1, xmm2/m16 */ INST(REQUIRE_0x66(), MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 0x33: PMOVZXWD xmm1, xmm2/m64 */ INST(REQUIRE_0x66(), MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 0x34: PMOVZXWQ xmm1, xmm2/m32 */ INST(REQUIRE_0x66(), MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 0x35: PMOVZXDQ xmm1, xmm2/m64 */ INST(REQUIRE_0x66(), MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
 	/* 0x36: ??? */ UNKNOWN()
-	/* 0x37: MANDATORY */ MANDATORY(0x0F3837)
-	/* 0x38: MANDATORY */ MANDATORY(0x0F3838)
-	/* 0x39: MANDATORY */ MANDATORY(0x0F3839)
-	/* 0x3A: MANDATORY */ MANDATORY(0x0F383A)
-	/* 0x3B: MANDATORY */ MANDATORY(0x0F383B)
-	/* 0x3C: MANDATORY */ MANDATORY(0x0F383C)
-	/* 0x3D: MANDATORY */ MANDATORY(0x0F383D)
-	/* 0x3E: MANDATORY */ MANDATORY(0x0F383E)
-	/* 0x3F: MANDATORY */ MANDATORY(0x0F383F)
-	/* 0x40: MANDATORY */ MANDATORY(0x0F3840)
-	/* 0x41: MANDATORY */ MANDATORY(0x0F3841)
+	/* 0x37: PCMPGTQ xmm1, xmm2/m128 */ INST(REQUIRE_0x66(), MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x38: PMINSB xmm1, xmm2/m128 */ INST(REQUIRE_0x66(), MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x39: PMINSD xmm1, xmm2/m128 */ INST(REQUIRE_0x66(), MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x3A: PMINUW xmm1, xmm2/m128 */ INST(REQUIRE_0x66(), MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x3B: PMINUD xmm1, xmm2/m128 */ INST(REQUIRE_0x66(), MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x3C: PMAXSB xmm1, xmm2/m128 */ INST(REQUIRE_0x66(), MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x3D: PMAXSD xmm1, xmm2/m128 */ INST(REQUIRE_0x66(), MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x3E: PMAXUW xmm1, xmm2/m128 */ INST(REQUIRE_0x66(), MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x3F: PMAXUD xmm1, xmm2/m128 */ INST(REQUIRE_0x66(), MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x40: PMULLD xmm1, xmm2/m128 */ INST(REQUIRE_0x66(), MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x41: PHMINPOSUW xmm1, xmm2/m128 */ INST(REQUIRE_0x66(), MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
 	/* 0x42: ??? */ UNKNOWN()
 	/* 0x43: ??? */ UNKNOWN()
 	/* 0x44: ??? */ UNKNOWN()
@@ -1684,183 +1438,6 @@ static const struct instruction_desc three_byte_inst_0x38[256] =
 	/* 0xFF: ??? */ UNKNOWN()
 };
 
-static const struct instruction_desc mandatory_0x0F3A08[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) ROUNDPS xmm1, xmm2/m128, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3A09[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) ROUNDPD xmm1, xmm2/m128, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3A0A[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) ROUNDSS xmm1, xmm2/m32, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3A0B[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) ROUNDSD xmm1, xmm2/m64, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3A0C[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) BLENDPS xmm1, xmm2/m128, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3A0D[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) BLENDPD xmm1, xmm2/m128, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3A0E[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) PBLENDW xmm1, xmm2/m128, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3A0F[4] =
-{
-	/* 00: (SSSE3) PALIGNR mm1, mm2/m64, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
-	/* 66: (SSSE3) PALIGNR xmm1, xmm2/m128, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3A14[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) PEXTRB reg/m8, xmm2, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_RM_R), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3A15[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) PEXTRW reg/m16, xmm2, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_RM_R), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3A16[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) PEXTRD/PEXTRQ reg/m?, xmm2, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_RM_R), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3A17[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) EXTRACTPS reg/m32, xmm2, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3A20[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) PINSRB xmm1, r32/m8, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3A21[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) INSERTPS xmm1, xmm2/m32, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3A22[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) PINSRD/Q xmm1, r/m?, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3A40[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) DPPS xmm1, xmm2/m128, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3A41[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) DPPD xmm1, xmm2/m128, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3A42[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.1) MPSADBW xmm1, xmm2/m128, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-/* TODO: I'm not sure whether read/write flags of these 4 instructions are correct */
-static const struct instruction_desc mandatory_0x0F3A60[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.2) PCMPESTRM xmm1, xmm2/m128, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM | REG_AX | REG_DX), WRITE(REG_AX))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3A61[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.2) PCMPESTRI xmm1, xmm2/m128, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM | REG_AX | REG_CX | REG_DX), WRITE(REG_CX))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3A62[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.2) PCMPISTRM xmm1, xmm2/m128, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(REG_AX))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
-static const struct instruction_desc mandatory_0x0F3A63[4] =
-{
-	/* 00: ??? */ UNKNOWN()
-	/* 66: (SSE4.2) PCMPISTRI xmm1, xmm2/m128, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(REG_CX))
-	/* F3: ??? */ UNKNOWN()
-	/* F2: ??? */ UNKNOWN()
-};
-
 /* Instructions with 0F 3A prefix */
 static const struct instruction_desc three_byte_inst_0x3A[256] =
 {
@@ -1872,22 +1449,22 @@ static const struct instruction_desc three_byte_inst_0x3A[256] =
 	/* 0x05: ??? */ UNKNOWN()
 	/* 0x06: ??? */ UNKNOWN()
 	/* 0x07: ??? */ UNKNOWN()
-	/* 0x08: MANDATORY */ MANDATORY(0x0F3A08)
-	/* 0x09: MANDATORY */ MANDATORY(0x0F3A09)
-	/* 0x0A: MANDATORY */ MANDATORY(0x0F3A0A)
-	/* 0x0B: MANDATORY */ MANDATORY(0x0F3A0B)
-	/* 0x0C: MANDATORY */ MANDATORY(0x0F3A0C)
-	/* 0x0D: MANDATORY */ MANDATORY(0x0F3A0D)
-	/* 0x0E: MANDATORY */ MANDATORY(0x0F3A0E)
-	/* 0x0F: MANDATORY */ MANDATORY(0x0F3A0F)
+	/* 0x08: ROUNDPS xmm1, xmm2/m128, imm8 */ INST(REQUIRE_0x66(), MODRM(), IMM(1), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 0x09: ROUNDPD xmm1, xmm2/m128, imm8 */ INST(REQUIRE_0x66(), MODRM(), IMM(1), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 0x0A: ROUNDSS xmm1, xmm2/m128, imm8 */ INST(REQUIRE_0x66(), MODRM(), IMM(1), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 0x0B: ROUNDSD xmm1, xmm2/m128, imm8 */ INST(REQUIRE_0x66(), MODRM(), IMM(1), READ(MODRM_RM), WRITE(MODRM_R))
+	/* 0x0C: BLENDPS xmm1, xmm2/m128, imm8 */ INST(REQUIRE_0x66(), MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x0D: BLENDPD xmm1, xmm2/m128, imm8 */ INST(REQUIRE_0x66(), MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x0E: PBLENDW xmm1, xmm2/m128, imm8 */ INST(REQUIRE_0x66(), MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x0F: PALIGNR ?mm1, ?mm2/m?, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
 	/* 0x10: ??? */ UNKNOWN()
 	/* 0x11: ??? */ UNKNOWN()
 	/* 0x12: ??? */ UNKNOWN()
 	/* 0x13: ??? */ UNKNOWN()
-	/* 0x14: MANDATORY */ MANDATORY(0x0F3A14)
-	/* 0x15: MANDATORY */ MANDATORY(0x0F3A15)
-	/* 0x16: MANDATORY */ MANDATORY(0x0F3A16)
-	/* 0x17: MANDATORY */ MANDATORY(0x0F3A17)
+	/* 0x14: PEXTRB reg/m8, xmm2, imm8 */ INST(REQUIRE_0x66(), MODRM(), IMM(1), READ(MODRM_RM_R), WRITE(MODRM_R))
+	/* 0x15: PEXTRW reg/m16, xmm2, imm8 */ INST(REQUIRE_0x66(), MODRM(), IMM(1), READ(MODRM_RM_R), WRITE(MODRM_R))
+	/* 0x16: PEXTRD/PEXTRQ reg/m?, xmm2, imm8 */ INST(REQUIRE_0x66(), MODRM(), IMM(1), READ(MODRM_RM_R), WRITE(MODRM_R))
+	/* 0x17: EXTRACTPS reg/m32, xmm2, imm8 */ INST(REQUIRE_0x66(), MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
 	/* 0x18: ??? */ UNKNOWN()
 	/* 0x19: ??? */ UNKNOWN()
 	/* 0x1A: ??? */ UNKNOWN()
@@ -1896,9 +1473,9 @@ static const struct instruction_desc three_byte_inst_0x3A[256] =
 	/* 0x1D: ??? */ UNKNOWN()
 	/* 0x1E: ??? */ UNKNOWN()
 	/* 0x1F: ??? */ UNKNOWN()
-	/* 0x20: MANDATORY */ MANDATORY(0x0F3A20)
-	/* 0x21: MANDATORY */ MANDATORY(0x0F3A21)
-	/* 0x22: MANDATORY */ MANDATORY(0x0F3A22)
+	/* 0x20: PINSRB xmm1, r32/m8, imm8 */ INST(REQUIRE_0x66(), MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x21: INSERTPS xmm1, xmm2/m32, imm8 */ INST(REQUIRE_0x66(), MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x22: PINSRD/PINSRQ xmm1, r/m?, imm8 */ INST(REQUIRE_0x66(), MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
 	/* 0x23: ??? */ UNKNOWN()
 	/* 0x24: ??? */ UNKNOWN()
 	/* 0x25: ??? */ UNKNOWN()
@@ -1928,9 +1505,9 @@ static const struct instruction_desc three_byte_inst_0x3A[256] =
 	/* 0x3D: ??? */ UNKNOWN()
 	/* 0x3E: ??? */ UNKNOWN()
 	/* 0x3F: ??? */ UNKNOWN()
-	/* 0x40: MANDATORY */ MANDATORY(0x0F3A40)
-	/* 0x41: MANDATORY */ MANDATORY(0x0F3A41)
-	/* 0x42: MANDATORY */ MANDATORY(0x0F3A42)
+	/* 0x40: DPPS xmm1, xmm2/m128, imm8 */ INST(REQUIRE_0x66(), MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x41: DPPD xmm1, xmm2/m128, imm8 */ INST(REQUIRE_0x66(), MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x42: MPSADBW xmm1, xmm2/m128, imm8 */ INST(REQUIRE_0x66(), MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
 	/* 0x43: ??? */ UNKNOWN()
 	/* 0x44: ??? */ UNKNOWN()
 	/* 0x45: ??? */ UNKNOWN()
@@ -1960,10 +1537,11 @@ static const struct instruction_desc three_byte_inst_0x3A[256] =
 	/* 0x5D: ??? */ UNKNOWN()
 	/* 0x5E: ??? */ UNKNOWN()
 	/* 0x5F: ??? */ UNKNOWN()
-	/* 0x60: MANDATORY */ MANDATORY(0x0F3A60)
-	/* 0x61: MANDATORY */ MANDATORY(0x0F3A61)
-	/* 0x62: MANDATORY */ MANDATORY(0x0F3A62)
-	/* 0x63: MANDATORY */ MANDATORY(0x0F3A63)
+	/* TODO: I'm not sure whether read/write flags of these 4 instructions are correct */
+	/* 0x60: PCMPESTRM xmm1, xmm2/m128, imm8 */ INST(REQUIRE_0x66(), MODRM(), IMM(1), READ(MODRM_R | MODRM_RM | REG_AX | REG_DX), WRITE(REG_AX))
+	/* 0x61: PCMPESTRI xmm1, xmm2/m128, imm8 */ INST(REQUIRE_0x66(), MODRM(), IMM(1), READ(MODRM_R | MODRM_RM | REG_AX | REG_CX | REG_DX), WRITE(REG_CX))
+	/* 0x62: PCMPISTRM xmm1, xmm2/m128, imm8 */ INST(REQUIRE_0x66(), MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(REG_AX))
+	/* 0x63: PCMPISTRI xmm1, xmm2/m128, imm8 */ INST(REQUIRE_0x66(), MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(REG_CX))
 	/* 0x64: ??? */ UNKNOWN()
 	/* 0x65: ??? */ UNKNOWN()
 	/* 0x66: ??? */ UNKNOWN()
