@@ -55,24 +55,30 @@
 #define MODRM_RM_M		0x04000000 /* Memory type of ModR/M R/M field */
 #define MODRM_RM		MODRM_RM_R | MODRM_RM_M /* R/M field of ModR/M */
 
-#define PREFIX_OPERAND_SIZE		-1 /* Indicate imm_bytes is 2 or 4 bytes depends on operand size prefix */
+#define PREFIX_OPERAND_SIZE		9 /* Indicate imm_bytes is 2 or 4 bytes depends on operand size prefix */
 #ifdef _WIN64
-#define PREFIX_OPERAND_SIZE_64	-2 /* Indicate imm_bytes is 2 or 4 or 8 bytes depends on operand size prefix */
+#define PREFIX_OPERAND_SIZE_64	10 /* Indicate imm_bytes is 2 or 4 or 8 bytes depends on operand size prefix */
 #else
 #define PREFIX_OPERAND_SIZE_64	PREFIX_OPERAND_SIZE /* Not supported on x86 */
 #endif
-#define PREFIX_ADDRESS_SIZE		-3 /* Indicate imm_bytes is 2 or 4 or 8 bytes depends on address size prefix */
+#define PREFIX_ADDRESS_SIZE		11 /* Indicate imm_bytes is 2 or 4 or 8 bytes depends on address size prefix */
 #define PREFIX_ADDRESS_SIZE_64	PREFIX_ADDRESS_SIZE /* Indicate imm_bytes is 2 or 4 or 8 bytes depends on address size prefix */
 struct instruction_desc
 {
-	int type; /* Instruction type */
-	int has_modrm; /* Whether the instruction has ModR/M opcode */
-	int require_0x66; /* Whether the instruction requires a mandatory 0x66 prefix */
-	int is_privileged; /* Whether the instruction is a privileged instruction */
-	int imm_bytes; /* Bytes of immediate, or PREFIX_OPERAND_SIZE(_64) */
-	int read_regs; /* The bitmask of registers which are read from */
-	int write_regs; /* The bitmask of registers which are written to */
-	struct instruction_desc *extension_table; /* Secondary lookup table for INST_TYPE_EXTENSION */
+	int type:8; /* Instruction type */
+	int has_modrm:1; /* Whether the instruction has ModR/M opcode */
+	int require_0x66:1; /* Whether the instruction requires a mandatory 0x66 prefix */
+	int is_privileged:1; /* Whether the instruction is a privileged instruction */
+	uint8_t imm_bytes:4; /* Bytes of immediate, 1, 2, 4, 8, or PREFIX_xxx_SIZE */
+	union
+	{
+		struct
+		{
+			int read_regs; /* The bitmask of registers which are read from */
+			int write_regs; /* The bitmask of registers which are written to */
+		};
+		struct instruction_desc *extension_table; /* Secondary lookup table for INST_TYPE_EXTENSION */
+	};
 };
 #define UNKNOWN()		{ .type = INST_TYPE_UNKNOWN },
 #define INVALID()		{ .type = INST_TYPE_INVALID },
