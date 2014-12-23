@@ -4,12 +4,11 @@
 /* Generic instruction types */
 #define INST_TYPE_UNKNOWN		0 /* Unknown/not implemented */
 #define INST_TYPE_INVALID		1 /* Invalid instruction */
-#define INST_TYPE_PRIVILEGED	2 /* Privileged instruction */
-#define INST_TYPE_UNSUPPORTED	3 /* Unsupported instruction */
-#define INST_TYPE_EXTENSION		4 /* Opcode extension, use ModR/M R field to distinguish */
-#define INST_TYPE_MANDATORY		5 /* SIMD opcode, distinguished with a mandatory prefix (none, 0x66, 0xF3, 0xF2) */
-#define INST_TYPE_X87			6 /* An x87 escape code */
-#define INST_TYPE_NORMAL		7 /* Normal instruction which does not need special handling */
+#define INST_TYPE_UNSUPPORTED	2 /* Unsupported instruction */
+#define INST_TYPE_EXTENSION		3 /* Opcode extension, use ModR/M R field to distinguish */
+#define INST_TYPE_MANDATORY		4 /* SIMD opcode, distinguished with a mandatory prefix (none, 0x66, 0xF3, 0xF2) */
+#define INST_TYPE_X87			5 /* An x87 escape code */
+#define INST_TYPE_NORMAL		6 /* Normal instruction which does not need special handling */
 
 /* Extension table indices for mandatory prefixes */
 #define MANDATORY_NONE			0
@@ -18,7 +17,7 @@
 #define MANDATORY_0xF2			3
 
 /* Special instruction types */
-#define INST_TYPE_SPECIAL		8
+#define INST_TYPE_SPECIAL		7
 #define INST_MOV_MOFFSET		(INST_TYPE_SPECIAL + 0)
 #define INST_CALL_DIRECT		(INST_TYPE_SPECIAL + 1)
 #define INST_CALL_INDIRECT		(INST_TYPE_SPECIAL + 2)
@@ -69,6 +68,7 @@ struct instruction_desc
 	int type; /* Instruction type */
 	int has_modrm; /* Whether the instruction has ModR/M opcode */
 	int require_0x66; /* Whether the instruction requires a mandatory 0x66 prefix */
+	int is_privileged; /* Whether the instruction is a privileged instruction */
 	int imm_bytes; /* Bytes of immediate, or PREFIX_OPERAND_SIZE(_64) */
 	int read_regs; /* The bitmask of registers which are read from */
 	int write_regs; /* The bitmask of registers which are written to */
@@ -76,7 +76,6 @@ struct instruction_desc
 };
 #define UNKNOWN()		{ .type = INST_TYPE_UNKNOWN },
 #define INVALID()		{ .type = INST_TYPE_INVALID },
-#define PRIVILEGED()	{ .type = INST_TYPE_PRIVILEGED },
 #define UNSUPPORTED()	{ .type = INST_TYPE_UNSUPPORTED },
 #define MANDATORY(x)	{ .type = INST_TYPE_MANDATORY, .extension_table = &mandatory_##x },
 #define X87()			{ .type = INST_TYPE_X87 },
@@ -87,6 +86,7 @@ struct instruction_desc
 #define SPECIAL(s, ...)	{ .type = s, __VA_ARGS__ },
 #define MODRM()			.has_modrm = 1
 #define REQUIRE_0x66()	.require_0x66 = 1
+#define PRIVILEGED()	.is_privileged = 1
 #define IMM(i)			.imm_bytes = (i)
 #define READ(x)			.read_regs = (x)
 #define WRITE(x)		.write_regs = (x)
@@ -483,7 +483,7 @@ static const struct instruction_desc one_byte_inst[256] =
 	/* 0xF1: ??? */ UNKNOWN()
 	/* 0xF2: ??? */ UNKNOWN()
 	/* 0xF3: ??? */ UNKNOWN()
-	/* 0xF4: HLT */ PRIVILEGED()
+	/* 0xF4: HLT */ INST(PRIVILEGED())
 	/* 0xF5: CMC */ INST_UNTESTED()
 	/* 0xF6 */ EXTENSION(F6)
 	/* 0xF7 */ EXTENSION(F7)
@@ -948,9 +948,9 @@ static const struct instruction_desc two_byte_inst[256] =
 	/* 0x2D: MANDATORY */ MANDATORY(0x0F2D)
 	/* 0x2E: MANDATORY */ MANDATORY(0x0F2E)
 	/* 0x2F: MANDATORY */ MANDATORY(0x0F2F)
-	/* 0x30: WRMSR */ PRIVILEGED()
+	/* 0x30: WRMSR */ INST(PRIVILEGED(), READ(REG_AX | REG_CX | REG_DX))
 	/* 0x31: RDTSC */ INST(WRITE(REG_AX | REG_DX))
-	/* 0x32: RDMSR */ PRIVILEGED()
+	/* 0x32: RDMSR */ INST(PRIVILEGED(), READ(REG_CX), WRITE(REG_AX | REG_DX))
 	/* 0x33: RDPMC */ INST_UNTESTED(READ(REG_CX), WRITE(REG_AX | REG_DX))
 	/* 0x34: SYSENTER */ UNSUPPORTED()
 	/* 0x35: SYSEXIT */ UNSUPPORTED()

@@ -561,7 +561,7 @@ static struct dbt_block *dbt_translate(size_t pc)
 	block->pc = pc;
 	block->start = ((size_t)dbt->out + DBT_OUT_ALIGN - 1) & -(size_t)DBT_OUT_ALIGN;
 
-	//log_debug("pc: %p, block start: %p\n", block->pc, block->start);
+	//log_debug("block id: %d, pc: %p, block start: %p\n", dbt->blocks_count, block->pc, block->start);
 
 	uint8_t *code = (uint8_t *)pc;
 	uint8_t *out = block->start;
@@ -684,7 +684,6 @@ done_prefix:
 		{
 		case INST_TYPE_UNKNOWN: log_error("Unknown opcode.\n"); __debugbreak(); break;
 		case INST_TYPE_INVALID: log_error("Invalid opcode.\n"); __debugbreak(); break;
-		case INST_TYPE_PRIVILEGED: log_error("Privileged opcode.\n"); __debugbreak(); break;
 		case INST_TYPE_UNSUPPORTED: log_error("Unsupported opcode.\n"); __debugbreak(); break;
 
 		case INST_TYPE_EXTENSION:
@@ -757,11 +756,17 @@ done_prefix:
 				/* mov temp_reg, fs:[scratch] */
 				gen_fs_prefix(&out);
 				gen_mov_r_rm_32(&out, temp_reg, modrm_rm_disp(dbt->tls_scratch_offset));
-				break;
 			}
+			else /* If nothing special, directly copy instruction */
+				dbt_copy_instruction(&out, &code, &ins);
 
-			/* Directly copy instruction */
-			dbt_copy_instruction(&out, &code, &ins);
+			if (ins.desc->is_privileged)
+			{
+				/* We have to support translate privileged opcodes because e.g. glibc uses HLT as
+				 * a backup program terminator. */
+				/* The instructions following it won't be executed and could be crap so we stop here */
+				goto end_block;
+			}
 			break;
 		}
 
