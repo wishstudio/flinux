@@ -1050,7 +1050,7 @@ size_t dbt_find_direct(size_t pc, size_t patch_addr)
 	return block_start;
 }
 
-void dbt_run(size_t pc, size_t sp)
+void __declspec(noreturn) dbt_run(size_t pc, size_t sp)
 {
 	size_t entrypoint = dbt_find_next(pc);
 	extern __declspec(noreturn) void dbt_run_internal(size_t pc, size_t sp);

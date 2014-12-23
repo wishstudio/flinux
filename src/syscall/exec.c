@@ -37,7 +37,7 @@ __declspec(noreturn) void goto_entrypoint(const char *stack, void *entrypoint);
 #define AUX_VEC(id, value) PTR(value); PTR(id)
 #define ALLOC(size) (stack -= (size))
 
-static void run(struct elf_header *executable, struct elf_header *interpreter, int argc, char *argv[], int env_size, char *envp[], PCONTEXT context)
+static void run(struct elf_header *executable, struct elf_header *interpreter, int argc, char *argv[], int env_size, char *envp[])
 {
 	/* Generate initial stack */
 	char *stack_base = process_get_stack_base();
@@ -75,42 +75,13 @@ static void run(struct elf_header *executable, struct elf_header *interpreter, i
 	/* Call executable entrypoint */
 	size_t entrypoint = interpreter? interpreter->load_base + interpreter->eh.e_entry: executable->load_base + executable->eh.e_entry;
 	log_info("Entrypoint: %p\n", entrypoint);
-#ifdef _WIN64
-	/* If we're starting from main(), just jump to entrypoint */
-	if (!context)
-		goto_entrypoint(stack, entrypoint);
-	/* Otherwise, we're at execve() in syscall handler context */
-	/* TODO: Add a trampoline to free original stack */
-	context->Rax = 0;
-	context->Rcx = 0;
-	context->Rdx = 0;
-	context->Rbx = 0;
-	context->Rsp = stack;
-	context->Rbp = 0;
-	context->Rsi = 0;
-	context->Rdi = 0;
-	context->Rip = entrypoint;
-	context->R8 = 0;
-	context->R9 = 0;
-	context->R10 = 0;
-	context->R11 = 0;
-	context->R12 = 0;
-	context->R13 = 0;
-	context->R14 = 0;
-	context->R15 = 0;
-#else
-	if (!context)
-		dbt_run(entrypoint, stack);
-	context->Eax = 0;
-	context->Ecx = 0;
-	context->Edx = 0;
-	context->Ebx = 0;
-	context->Esp = stack;
-	context->Ebp = 0;
-	context->Esi = 0;
-	context->Edi = 0;
-	context->Eip = entrypoint;
-#endif
+
+	/* TODO: The current way isn't bullet-proof
+	 * Basically our 'kernel' routines uses the application's stack
+	 * When doing an execve we are overwritting the upper part of the stack while relying on the bottom part!!!
+	 * To get proper behaviour, we first have to save and restore esp on kernel/app switches, which is left to be done
+	 */
+	dbt_run(entrypoint, stack);
 }
 
 static int load_elf(const char *filename, struct elf_header **executable, struct elf_header **interpreter)
@@ -244,19 +215,19 @@ static int load_elf(const char *filename, struct elf_header **executable, struct
 	return 0;
 }
 
-int do_execve(const char *filename, int argc, char *argv[], int env_size, char *envp[], PCONTEXT context)
+int do_execve(const char *filename, int argc, char *argv[], int env_size, char *envp[])
 {
 	struct elf_header *executable, *interpreter;
 	int r = load_elf(filename, &executable, &interpreter);
 	if (r < 0)
 		return r;
-	run(executable, interpreter, argc, argv, env_size, envp, context);
+	run(executable, interpreter, argc, argv, env_size, envp);
 	return 0;
 }
 
 static char *const startup = (char *)STARTUP_DATA_BASE;
 
-DEFINE_SYSCALL(execve, const char *, filename, char **, argv, char **, envp, int, _4, int, _5, int, _6, PCONTEXT, context)
+DEFINE_SYSCALL(execve, const char *, filename, char **, argv, char **, envp)
 {
 	/* TODO: Deal with argv/envp == NULL */
 	/* TODO: Don't destroy things on failure */
@@ -316,7 +287,8 @@ DEFINE_SYSCALL(execve, const char *, filename, char **, argv, char **, envp, int
 	vfs_reset();
 	mm_reset();
 	tls_reset();
-	if (do_execve(f, argc, new_argv, env_size, new_envp, context) != 0)
+	dbt_reset();
+	if (do_execve(f, argc, new_argv, env_size, new_envp) != 0)
 	{
 		log_warning("execve() failed.\n");
 		ExitProcess(0); /* TODO: Recover */

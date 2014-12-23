@@ -92,7 +92,7 @@ void main()
 			filename = argv[i];
 	}
 	if (filename)
-		do_execve(filename, argc - 1, argv + 1, env_size, envp, NULL);
+		do_execve(filename, argc - 1, argv + 1, env_size, envp);
 	kprintf("Execution failed.\n");
 	ExitProcess(1);
 }
