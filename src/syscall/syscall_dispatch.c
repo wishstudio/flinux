@@ -40,7 +40,7 @@ syscall_fn* syscall_table[SYSCALL_COUNT] =
 #undef SYSCALL
 #endif
 
-void sys_unimplemented_show(intptr_t id)
+void sys_unimplemented_imp(intptr_t id)
 {
 	log_error("FATAL: Unimplemented syscall: %d\n", id);
 	ExitProcess(1);

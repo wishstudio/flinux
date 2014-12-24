@@ -98,16 +98,14 @@
  */
 
 #define MAX_TLS_ENTRIES		0x10
-#define MAX_KERNEL_ENTRIES	0x10
 
 struct tls_data
 {
 	DWORD entries[MAX_TLS_ENTRIES]; /* Win32 TLS slot id */
 	DWORD current_values[MAX_TLS_ENTRIES]; /* Set by fork() to passing tls data to the new process */
 	int entry_count;
-	DWORD kernel_entries[MAX_KERNEL_ENTRIES];
-	DWORD current_kernel_values[MAX_KERNEL_ENTRIES];
-	int kernel_entry_count;
+	DWORD kernel_entries[TLS_KERNEL_ENTRY_COUNT];
+	DWORD current_kernel_values[TLS_KERNEL_ENTRY_COUNT];
 };
 
 static struct tls_data *const tls = TLS_DATA_BASE;
@@ -115,6 +113,11 @@ static struct tls_data *const tls = TLS_DATA_BASE;
 void tls_init()
 {
 	mm_mmap(TLS_DATA_BASE, sizeof(struct tls_data), PROT_READ | PROT_WRITE | PROT_EXEC, MAP_FIXED | MAP_PRIVATE | MAP_ANONYMOUS, NULL, 0);
+	for (int i = 0; i < TLS_KERNEL_ENTRY_COUNT; i++)
+	{
+		tls->kernel_entries[i] = TlsAlloc();
+		log_info("Allocated kernel TLS entry, entry: %d, slot: %d, fs offset 0x%x\n", i, tls->kernel_entries[i], tls_slot_to_offset(tls->kernel_entries[i]));
+	}
 }
 
 void tls_reset()
@@ -128,7 +131,7 @@ void tls_shutdown()
 {
 	for (int i = 0; i < tls->entry_count; i++)
 		TlsFree(tls->entries[i]);
-	for (int i = 0; i < tls->kernel_entry_count; i++)
+	for (int i = 0; i < TLS_KERNEL_ENTRY_COUNT; i++)
 		TlsFree(tls->kernel_entries[i]);
 	mm_munmap(TLS_DATA_BASE, sizeof(struct tls_data));
 }
@@ -142,7 +145,7 @@ void tls_beforefork()
 		tls->current_values[i] = TlsGetValue(tls->entries[i]);
 		log_info("user entry %d value 0x%p\n", tls->entries[i], tls->current_values[i]);
 	}
-	for (int i = 0; i < tls->kernel_entry_count; i++)
+	for (int i = 0; i < TLS_KERNEL_ENTRY_COUNT; i++)
 	{
 		tls->current_kernel_values[i] = TlsGetValue(tls->kernel_entries[i]);
 		log_info("kernel entry %d value 0x%p\n", tls->kernel_entries[i], tls->current_kernel_values[i]);
@@ -158,7 +161,7 @@ void tls_afterfork()
 		TlsSetValue(tls->entries[i], tls->current_values[i]);
 		log_info("user entry %d value 0x%p\n", tls->entries[i], tls->current_values[i]);
 	}
-	for (int i = 0; i < tls->kernel_entry_count; i++)
+	for (int i = 0; i < TLS_KERNEL_ENTRY_COUNT; i++)
 	{
 		tls->kernel_entries[i] = TlsAlloc();
 		TlsSetValue(tls->kernel_entries[i], tls->current_kernel_values[i]);
@@ -166,7 +169,7 @@ void tls_afterfork()
 	}
 }
 
-int tls_slot_to_offset(int slot)
+static int tls_slot_to_offset(int slot)
 {
 	if (slot < 64)
 		return offsetof(TEB, TlsSlots[slot]);
@@ -174,7 +177,7 @@ int tls_slot_to_offset(int slot)
 		return offsetof(TEB, TlsExpansionSlots) + (slot - 64) * sizeof(PVOID);
 }
 
-int tls_offset_to_slot(int offset)
+static int tls_offset_to_slot(int offset)
 {
 	if (offset < offsetof(TEB, TlsSlots[64]))
 		return (offset - offsetof(TEB, TlsSlots)) / sizeof(PVOID);
@@ -182,13 +185,14 @@ int tls_offset_to_slot(int offset)
 		return (offset - offsetof(TEB, TlsExpansionSlots)) / sizeof(PVOID) + 64;
 }
 
-int tls_alloc()
+int tls_kernel_entry_to_offset(int entry)
 {
-	int slot = TlsAlloc();
-	tls->kernel_entries[tls->kernel_entry_count] = slot;
-	log_info("Allocated kernel tls entry %d (slot %d)\n", tls->kernel_entry_count, slot);
-	tls->kernel_entry_count++;
-	return slot;
+	return tls_slot_to_offset(tls->kernel_entries[entry]);
+}
+
+int tls_user_entry_to_offset(int entry)
+{
+	return tls_slot_to_offset(tls->entries[entry]);
 }
 
 /* Segment register format:
@@ -207,11 +211,13 @@ DEFINE_SYSCALL(set_thread_area, struct user_desc *, u_info)
 			return -ESRCH;
 		int slot = TlsAlloc();
 		tls->entries[tls->entry_count] = slot;
-		u_info->entry_number = slot;
+		u_info->entry_number = tls->entry_count;
 		log_info("allocated entry %d (slot %d), fs offset 0x%x\n", tls->entry_count, slot, tls_slot_to_offset(u_info->entry_number));
 		tls->entry_count++;
+		TlsSetValue(slot, u_info->base_addr);
 	}
-	TlsSetValue(u_info->entry_number, u_info->base_addr);
+	else
+		TlsSetValue(tls_slot_to_offset(tls->entries[u_info->entry_number]), u_info->base_addr);
 	return 0;
 }
 

@@ -365,7 +365,7 @@ struct dbt_data
 	struct dbt_block *blocks;
 	int blocks_count;
 	uint8_t *out, *end;
-	/* Offsets for accessing thread local storage in fs:[.] */
+	/* Cached offsets for accessing thread local storage in fs:[.] */
 	int tls_scratch_offset; /* scratch variable */
 	int tls_gs_offset; /* gs value */
 	int tls_gs_addr_offset; /* gs base address */
@@ -387,16 +387,9 @@ void dbt_init()
 	dbt->blocks_count = 0;
 	dbt->out = dbt_cache;
 	dbt->end = dbt_cache + DBT_CACHE_SIZE;
-
-	int scratch_slot = tls_alloc();
-	dbt->tls_scratch_offset = tls_slot_to_offset(scratch_slot);
-	log_info("scratch slot: %d, offset: %p\n", scratch_slot, dbt->tls_scratch_offset);
-	int gs_slot = tls_alloc();
-	dbt->tls_gs_offset = tls_slot_to_offset(gs_slot);
-	log_info("gs slot: %d, offset: %p\n", gs_slot, dbt->tls_gs_offset);
-	int gs_addr_slot = tls_alloc();
-	dbt->tls_gs_addr_offset = tls_slot_to_offset(gs_addr_slot);
-	log_info("gs_addr slot: %d, offset: %p\n", gs_addr_slot, dbt->tls_gs_addr_offset);
+	dbt->tls_scratch_offset = tls_kernel_entry_to_offset(TLS_ENTRY_SCRATCH);
+	dbt->tls_gs_offset = tls_kernel_entry_to_offset(TLS_ENTRY_GS);
+	dbt->tls_gs_addr_offset = tls_kernel_entry_to_offset(TLS_ENTRY_GS_ADDR);
 	log_info("dbt subsystem initialized.\n");
 }
 
@@ -938,8 +931,9 @@ done_prefix:
 				log_error("INT 0x%x not supported.\n", id);
 				__debugbreak();
 			}
-			gen_call(&out, &syscall_handler);
-			break;
+			gen_push_imm32(&out, (size_t)code);
+			gen_jmp(&out, &syscall_handler);
+			goto end_block;
 		}
 
 		case INST_MOV_FROM_SEG:
@@ -995,7 +989,7 @@ done_prefix:
 			gen_push_rm(&out, modrm_rm_reg(1));
 			gen_push_rm(&out, modrm_rm_reg(2));
 			gen_push_rm(&out, modrm_rm_reg(temp_reg));
-			gen_call(&out, &tls_slot_to_offset);
+			gen_call(&out, &tls_user_entry_to_offset);
 			
 			/* mov temp_reg, fs:eax */
 			gen_fs_prefix(&out);
