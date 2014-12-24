@@ -1152,6 +1152,8 @@ DEFINE_SYSCALL(fcntl, int, fd, int, cmd, int, arg)
 		return -EBADF;
 	switch (cmd)
 	{
+	case F_DUPFD:
+		return sys_dup(fd);
 	case F_GETFD:
 	{
 		int cloexec = vfs->fds_cloexec[fd];
