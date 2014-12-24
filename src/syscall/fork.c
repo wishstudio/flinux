@@ -188,13 +188,13 @@ fail:
 	return -1;
 }
 
-DEFINE_SYSCALL(fork, int, _1, int, _2, int, _3, int, _4, int, _5, int, _6, PCONTEXT, context)
+int sys_fork_imp(struct syscall_context *context)
 {
 	log_info("fork()\n");
 	return fork_process(context, 0, NULL, NULL);
 }
 
-DEFINE_SYSCALL(vfork, int, _1, int, _2, int, _3, int, _4, int, _5, int, _6, PCONTEXT, context)
+int sys_vfork_imp(struct syscall_context *context)
 {
 	log_info("vfork()\n");
 	return fork_process(context, 0, NULL, NULL);

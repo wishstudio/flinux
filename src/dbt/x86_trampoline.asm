@@ -94,6 +94,26 @@ sys_unimplemented PROC
 	call sys_unimplemented_imp
 sys_unimplemented ENDP
 
+EXTERN sys_fork_imp: NEAR
+sys_fork PROC
+	; inject context pointer as the first argument
+	lea eax, [esp + 4]
+	mov [esp], eax
+	call sys_fork_imp
+	add esp, 4
+	jmp syscall_done
+sys_fork ENDP
+
+EXTERN sys_vfork_imp: NEAR
+sys_vfork PROC
+	; inject context pointer as the first argument
+	lea eax, [esp + 4]
+	mov [esp], eax
+	call sys_vfork_imp
+	add esp, 4
+	jmp syscall_done
+sys_vfork ENDP
+
 EXTERN sys_clone_imp: NEAR
 sys_clone PROC
 	; inject context pointer as the first argument
