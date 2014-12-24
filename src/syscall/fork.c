@@ -164,10 +164,10 @@ static pid_t fork_process(struct syscall_context *context, unsigned long flags, 
 	/* Set up fork_info in child process */
 	void *stack_base = process_get_stack_base();
 	VirtualAllocEx(info.hProcess, FORK_INFO_BASE, BLOCK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-	WriteProcessMemory(info.hProcess, FORK_INFO_BASE, context, sizeof(CONTEXT), NULL);
-	WriteProcessMemory(info.hProcess, FORK_INFO_BASE + sizeof(CONTEXT), &stack_base, sizeof(stack_base), NULL);
+	WriteProcessMemory(info.hProcess, &fork->context, context, sizeof(struct syscall_context), NULL);
+	WriteProcessMemory(info.hProcess, &fork->stack_base, &stack_base, sizeof(stack_base), NULL);
 	if (flags & CLONE_CHILD_SETTID)
-		WriteProcessMemory(info.hProcess, FORK_INFO_BASE + sizeof(CONTEXT) + sizeof(stack_base), &ctid, sizeof(void*), NULL);
+		WriteProcessMemory(info.hProcess, &fork->ctid, &ctid, sizeof(void*), NULL);
 
 	/* Copy stack */
 	VirtualAllocEx(info.hProcess, stack_base, STACK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
