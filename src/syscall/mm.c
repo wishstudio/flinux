@@ -1094,19 +1094,22 @@ DEFINE_SYSCALL(mprotect, void *, addr, size_t, length, int, prot)
 DEFINE_SYSCALL(msync, void *, addr, size_t, len, int, flags)
 {
 	log_info("msync(0x%p, 0x%p, %d)\n", addr, len, flags);
-	/* TODO */
+	log_error("msync() not implemented.\n");
+	return -ENOSYS;
 }
 
 DEFINE_SYSCALL(mlock, const void *, addr, size_t, len)
 {
 	log_info("mlock(0x%p, 0x%p)\n", addr, len);
-	/* TODO */
+	log_error("mlock() not implemented.\n");
+	return -ENOSYS;
 }
 
 DEFINE_SYSCALL(munlock, const void *, addr, size_t, len)
 {
 	log_info("munlock(0x%p, 0x%p)\n", addr, len);
-	/* TODO */
+	log_error("munlock() not implemented.\n");
+	return -ENOSYS;
 }
 
 DEFINE_SYSCALL(brk, void *, addr)
