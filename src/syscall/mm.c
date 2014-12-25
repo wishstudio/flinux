@@ -1117,8 +1117,12 @@ DEFINE_SYSCALL(brk, void *, addr)
 	addr = ALIGN_TO_PAGE(addr);
 	if (addr > 0 && addr < mm->brk)
 	{
-		log_error("brk shrinking not supported.\n");
-		return -ENOMEM;
+		if (sys_munmap(brk, addr, (size_t)brk - (size_t)addr) < 0)
+		{
+			log_error("Shrink brk failed.\n");
+			return -ENOMEM;
+		}
+		mm->brk = addr;
 	}
 	else if (addr > mm->brk)
 	{
