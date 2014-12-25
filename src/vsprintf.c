@@ -68,6 +68,13 @@ int kvsprintf(char *buffer, const char *format, va_list args)
 				*buf++ = '%';
 				continue;
 
+			case 'c':
+			{
+				format = f;
+				*buf++ = va_arg(args, const char *);
+				continue;
+			}
+
 			case 's':
 			{
 				format = f;
