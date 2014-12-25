@@ -285,6 +285,11 @@ static void control_escape_param(struct console_state *console, char ch)
 		break;
 
 	case 'H':
+		/* Zero or one both represents the first row/column */
+		if (console->params[0] > 0)
+			console->params[0]--;
+		if (console->params[1] > 0)
+			console->params[1]--;
 		set_cursor_pos(console, console->params[0], console->params[1]);
 		console->processor = NULL;
 		break;
@@ -374,6 +379,18 @@ static void control_escape_param(struct console_state *console, char ch)
 	}
 }
 
+static void control_escape_set_default_character_set(struct console_state *console, char ch)
+{
+	log_warning("console: set default character set: %c, ignored.\n", ch);
+	console->processor = NULL;
+}
+
+static void control_escape_set_alternate_character_set(struct console_state *console, char ch)
+{
+	log_warning("console: set alternate character set: %c, ignored.\n", ch);
+	console->processor = NULL;
+}
+
 static void control_escape(struct console_state *console, char ch)
 {
 	switch (ch)
@@ -386,13 +403,11 @@ static void control_escape(struct console_state *console, char ch)
 		break;
 
 	case '(':
-		log_warning("Set default font: ignored.\n");
-		console->processor = NULL;
+		console->processor = control_escape_set_default_character_set;
 		break;
 
 	case ')':
-		log_warning("Set alternate font: ignored.\n");
-		console->processor = NULL;
+		console->processor = control_escape_set_alternate_character_set;
 		break;
 
 	default:
@@ -437,11 +452,11 @@ int console_is_ready(struct file *f)
 	/* If it's a writing fd, already return true */
 	if (!console_file->is_read)
 		return 1;
-	;
+
 	struct console_state *console = console_file->state;
 	if (console->input_buffer_head != console->input_buffer_tail)
 		return 1;
-	;
+
 	INPUT_RECORD ir;
 	DWORD num_read;
 	while (PeekConsoleInputW(console->in, &ir, 1, &num_read) && num_read > 0)
@@ -492,7 +507,7 @@ static size_t console_read(struct file *f, char *buf, size_t count)
 	struct console_file *console_file = (struct console_file *)f;
 	if (!console_file->is_read)
 		return -EBADF;
-	;
+
 	struct console_state *console = (struct console_state *) console_file->state;
 	size_t bytes_read = 0;
 	while (console->input_buffer_head != console->input_buffer_tail && count > 0)
@@ -604,7 +619,7 @@ static size_t console_write(struct file *f, const char *buf, size_t count)
 	struct console_file *console_file = (struct console_file *)f;
 	if (console_file->is_read)
 		return -EBADF;
-	;
+
 	#define OUTPUT() \
 		if (last != -1) \
 		{ \
