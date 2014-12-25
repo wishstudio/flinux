@@ -540,6 +540,14 @@ static void dbt_gen_push_gs_rm(uint8_t **out, int temp_reg, struct modrm_rm_t rm
 	gen_mov_r_rm_32(out, temp_reg, modrm_rm_disp(dbt->tls_scratch_offset));
 }
 
+/* CAUTION
+ * We do not save x87/MMX/SSE/AVX states across a translation request
+ * Thus we have to ensure these get unchanged during the translation
+ * All Windows system calls cannot be used as they reset XMM registers to 0 upon return
+ * This means log_*() cannot be used inside the translation routine
+ * Later we should introduce extended state saving/restoring functions to make it easier to
+ * wrap unsafe functions during debugging.
+ */
 static struct dbt_block *dbt_translate(size_t pc)
 {
 	extern void dbt_find_indirect_internal();
@@ -554,6 +562,7 @@ static struct dbt_block *dbt_translate(size_t pc)
 	block->pc = pc;
 	block->start = ((size_t)dbt->out + DBT_OUT_ALIGN - 1) & -(size_t)DBT_OUT_ALIGN;
 
+	//Do not uncomment, see CAUTION section
 	//log_debug("block id: %d, pc: %p, block start: %p\n", dbt->blocks_count, block->pc, block->start);
 
 	uint8_t *code = (uint8_t *)pc;
