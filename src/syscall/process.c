@@ -327,3 +327,12 @@ DEFINE_SYSCALL(futex, int *, uaddr, int, op, int, val, const struct timespec *, 
 	log_error("Unsupported futex operation, returning -ENOSYS\n");
 	return -ENOSYS;
 }
+
+DEFINE_SYSCALL(set_robust_list, struct robust_list_head *, head, int, len)
+{
+	log_info("set_robust_list(head=%p, len=%d)\n", head, len);
+	if (len != sizeof(struct robust_list_head))
+		log_error("len (%d) != sizeof(struct robust_list_head)\n", len);
+	log_error("set_robust_list() not supported.\n");
+	return 0;
+}
