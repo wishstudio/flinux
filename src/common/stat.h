@@ -39,15 +39,13 @@
 
 struct stat
 {
-	uint16_t st_dev;
-	uint16_t __pad1;
+	uint32_t st_dev;
 	uint32_t st_ino;
 	uint16_t st_mode;
 	uint16_t st_nlink;
 	uint16_t st_uid;
 	uint16_t st_gid;
-	uint16_t st_rdev;
-	uint16_t __pad2;
+	uint32_t st_rdev;
 	uint32_t st_size;
 	uint32_t st_blksize;
 	uint32_t st_blocks;
@@ -57,7 +55,15 @@ struct stat
 	uint32_t st_mtime_nsec;
 	uint32_t st_ctime;
 	uint32_t st_ctime_nsec;
+	uint32_t __unused4;
+	uint32_t __unused5;
 };
+
+#define INIT_STRUCT_STAT_PADDING(st) \
+	do { \
+		st->__unused4 = 0; \
+		st->__unused5 = 0; \
+	} while (0)
 
 #pragma pack(push, 4)
 struct stat64
@@ -84,6 +90,12 @@ struct stat64
 };
 #pragma pack(pop)
 
+#define INIT_STRUCT_STAT64_PADDING(st) \
+	do { \
+		st->__pad1 = 0; \
+		st->__pad2 = 0; \
+	} while (0)
+
 #pragma pack(push, 4)
 struct newstat
 {
@@ -107,6 +119,14 @@ struct newstat
 	uint64_t __unused[3];
 };
 #pragma pack(pop)
+
+#define INIT_STRUCT_NEWSTAT_PADDING(st) \
+	do { \
+		st->__pad0 = 0; \
+		st->__unused[0] = 0; \
+		st->__unused[1] = 0; \
+		st->__unused[2] = 0; \
+	} while (0)
 
 #define major(dev)		((unsigned int) ((dev) >> 8))
 #define minor(dev)		((unsigned int) ((dev) & 0xFF))

@@ -897,11 +897,15 @@ DEFINE_SYSCALL(getdents64, int, fd, struct linux_dirent64 *, dirent, unsigned in
 
 static int stat_from_newstat(struct stat *stat, const struct newstat *newstat)
 {
-	/* TODO: Correctly handle EOVERFLOW */
+	INIT_STRUCT_STAT_PADDING(stat);
 	stat->st_dev = newstat->st_dev;
 	stat->st_ino = newstat->st_ino;
+	if (stat->st_ino != newstat->st_ino)
+		return -EOVERFLOW;
 	stat->st_mode = newstat->st_mode;
 	stat->st_nlink = newstat->st_nlink;
+	if (stat->st_nlink != newstat->st_nlink)
+		return -EOVERFLOW;
 	stat->st_uid = newstat->st_uid;
 	stat->st_gid = newstat->st_gid;
 	stat->st_rdev = newstat->st_rdev;
@@ -919,7 +923,7 @@ static int stat_from_newstat(struct stat *stat, const struct newstat *newstat)
 
 static int stat64_from_newstat(struct stat64 *stat, const struct newstat *newstat)
 {
-	/* TODO: Correctly handle EOVERFLOW */
+	INIT_STRUCT_STAT64_PADDING(stat);
 	stat->st_dev = newstat->st_dev;
 	stat->st_ino = newstat->st_ino;
 	stat->st_mode = newstat->st_mode;
