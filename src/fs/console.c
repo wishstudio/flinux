@@ -592,7 +592,7 @@ static size_t console_read(struct file *f, char *buf, size_t count)
 				default:
 					if (ch == '\r' && console->termios.c_iflag & IGNCR)
 						break;
-					if (ch == '\r')
+					if (ch == '\r' && console->termios.c_iflag & INLCR)
 						ch = '\n';
 					else if (ch == '\n' && console->termios.c_iflag & ICRNL)
 						ch = '\r';
@@ -786,7 +786,7 @@ int console_alloc(struct file **in_file, struct file **out_file)
 	console->reverse = 0;
 	console->foreground = 7;
 	console->background = 0;
-	console->termios.c_iflag = ICRNL;
+	console->termios.c_iflag = INLCR;
 	console->termios.c_oflag = ONLCR | OPOST;
 	console->termios.c_cflag = 0;
 	console->termios.c_lflag = ICANON | ECHO | ECHOCTL;
