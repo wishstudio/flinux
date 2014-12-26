@@ -314,6 +314,13 @@ DEFINE_SYSCALL(getcpu, unsigned int *, cpu, unsigned int *, node, void *, tcache
 	return 0;
 }
 
+DEFINE_SYSCALL(set_tid_address, int *, tidptr)
+{
+	log_info("set_tid_address(tidptr=%p)\n", tidptr);
+	log_error("clear_child_tid not supported.\n");
+	return GetCurrentThreadId();
+}
+
 DEFINE_SYSCALL(futex, int *, uaddr, int, op, int, val, const struct timespec *, timeout, int *, uaddr2, int, val3)
 {
 	log_info("futex(%p, %d, %d, %p, %p, %d)\n", uaddr, op, val, timeout, uaddr2, val3);
