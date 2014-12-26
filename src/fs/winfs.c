@@ -222,8 +222,13 @@ static int winfs_stat(struct file *f, struct newstat *buf)
 		return -1; /* TODO */
 	}
 	/* Programs (ld.so) may use st_dev and st_ino to identity files so these must be unique for each file. */
+	INIT_STRUCT_NEWSTAT_PADDING(buf);
 	buf->st_dev = mkdev(8, 0); // (8, 0): /dev/sda
-	buf->st_ino = ((uint64_t)info.nFileIndexHigh << 32ULL) + info.nFileIndexLow;
+	//buf->st_ino = ((uint64_t)info.nFileIndexHigh << 32ULL) + info.nFileIndexLow;
+	/* Hash 64 bit inode to 32 bit to fix legacy applications
+	 * We may later add an option for changing this behaviour
+	 */
+	buf->st_ino = info.nFileIndexHigh ^ info.nFileIndexLow;
 	if (info.dwFileAttributes & FILE_ATTRIBUTE_READONLY)
 		buf->st_mode = 0555;
 	else
