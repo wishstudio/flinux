@@ -151,4 +151,18 @@ syscall_done::
 	jmp dbt_find_indirect_internal
 syscall_handler ENDP
 
+; TODO: Thread safety
+dbt_save_simd_state PROC
+	fxsave dbt_simd_state
+	ret
+dbt_save_simd_state ENDP
+
+dbt_restore_simd_state PROC
+	fxrstor dbt_simd_state
+	ret
+dbt_restore_simd_state ENDP
+
+.data
+dbt_simd_state DB 512 DUP(?)
+
 END
