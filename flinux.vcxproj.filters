@@ -169,6 +169,9 @@
     <ClInclude Include="src\dbt\x86_inst.h">
       <Filter>dbt</Filter>
     </ClInclude>
+    <ClInclude Include="src\fs\null.h">
+      <Filter>fs</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
@@ -224,6 +227,9 @@
     </ClCompile>
     <ClCompile Include="src\dbt\x86.c">
       <Filter>dbt</Filter>
+    </ClCompile>
+    <ClCompile Include="src\fs\null.c">
+      <Filter>fs</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

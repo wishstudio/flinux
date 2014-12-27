@@ -330,6 +330,8 @@ static int find_filesystem(const char *path, struct file_system **out_fs, char *
 		{
 			*out_fs = fs;
 			*out_subpath = subpath;
+			if (**out_subpath == '/')
+				(*out_subpath)++;
 			return 1;
 		}
 	}
@@ -366,7 +368,10 @@ static int normalize_path(const char *current, const char *pathname, char *out)
 		else if (pathname[0] == '.' && pathname[1] == '/')
 			pathname += 2;
 		else if (pathname[0] == '.' && pathname[1] == 0)
-			pathname += 1;
+			/* Do not omit the tailing dot, as e.g. "/blah/" is not equivalent for "/blah/." for O_NOFOLLOW
+			 * when "/blah" is a symlink to some other directory.
+			 */
+			*p++ = *pathname++;
 		else if (pathname[0] == '.' && pathname[1] == '.' && (pathname[2] == '/' || pathname[2] == 0))
 		{
 			if (pathname[2] == 0)
@@ -1120,6 +1125,15 @@ DEFINE_SYSCALL(chdir, const char *, pathname)
 		return fd;
 	sys_close(fd);
 	normalize_path(vfs->cwd, pathname, vfs->cwd);
+	/* Remove tailing "/." */
+	int l = strlen(vfs->cwd);
+	if (l >= 2 && vfs->cwd[l - 2] == '/' && vfs->cwd[l - 1] == '.')
+	{
+		if (l == 2)
+			vfs->cwd[l - 1] = 0;
+		else
+			vfs->cwd[l - 2] = 0;
+	}
 	return 0;
 }
 
