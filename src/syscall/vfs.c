@@ -86,8 +86,6 @@ void vfs_init()
 	vfs_add(winfs_alloc());
 	vfs_add(devfs_alloc());
 	/* Initialize CWD */
-	//static wchar_t wcwd[PATH_MAX];
-	//int len = GetCurrentDirectoryW(PATH_MAX, wcwd);
 	vfs->cwd[0] = '/';
 	vfs->cwd[1] = 0;
 	vfs->umask = S_IWGRP | S_IWOTH;
@@ -492,9 +490,7 @@ int vfs_open(const char *pathname, int flags, int mode, struct file **f)
 	for (int symlink_level = 0;; symlink_level++)
 	{
 		if (symlink_level == MAX_SYMLINK_LEVEL)
-		{
 			return -ELOOP;
-		}
 		/* Find filesystem */
 		struct file_system *fs;
 		char *subpath;
@@ -594,9 +590,7 @@ DEFINE_SYSCALL(link, const char *, oldpath, const char *, newpath)
 	for (int symlink_level = 0;; symlink_level++)
 	{
 		if (symlink_level == MAX_SYMLINK_LEVEL)
-		{
 			return -ELOOP;
-		}
 		struct file_system *fs;
 		char *subpath;
 		if (!find_filesystem(path, &fs, &subpath))
@@ -644,9 +638,7 @@ DEFINE_SYSCALL(unlink, const char *, pathname)
 	for (int symlink_level = 0;; symlink_level++)
 	{
 		if (symlink_level == MAX_SYMLINK_LEVEL)
-		{
 			return -ELOOP;
-		}
 		struct file_system *fs;
 		char *subpath;
 		if (!find_filesystem(path, &fs, &subpath))
@@ -680,9 +672,7 @@ DEFINE_SYSCALL(symlink, const char *, symlink_target, const char *, linkpath)
 	for (int symlink_level = 0;; symlink_level++)
 	{
 		if (symlink_level == MAX_SYMLINK_LEVEL)
-		{
 			return -ELOOP;
-		}
 		struct file_system *fs;
 		char *subpath;
 		if (!find_filesystem(path, &fs, &subpath))
@@ -716,9 +706,7 @@ DEFINE_SYSCALL(readlink, const char *, pathname, char *, buf, int, bufsize)
 	for (int symlink_level = 0;; symlink_level++)
 	{
 		if (symlink_level == MAX_SYMLINK_LEVEL)
-		{
 			return -ELOOP;
-		}
 		struct file_system *fs;
 		char *subpath;
 		if (!find_filesystem(path, &fs, &subpath))
@@ -821,9 +809,7 @@ DEFINE_SYSCALL(mkdir, const char *, pathname, int, mode)
 	for (int symlink_level = 0;; symlink_level++)
 	{
 		if (symlink_level == MAX_SYMLINK_LEVEL)
-		{
 			return -ELOOP;
-		}
 		struct file_system *fs;
 		char *subpath;
 		if (!find_filesystem(path, &fs, &subpath))
