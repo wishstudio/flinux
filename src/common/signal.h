@@ -77,3 +77,12 @@ struct sigaction
 #define	SIGUSR2		31	/* User-defined signal 2.  */
 
 #define	_NSIG		32
+
+#define MINSIGSTKSZ     2048
+#define SIGSTKSZ        8192
+
+typedef struct sigaltstack {
+	void *ss_sp;
+	int ss_flags;
+	size_t ss_size;
+} stack_t;
