@@ -1,6 +1,7 @@
 #include <common/errno.h>
 #include <fs/devfs.h>
 #include <fs/null.h>
+#include <fs/random.h>
 #include <heap.h>
 #include <log.h>
 
@@ -21,6 +22,16 @@ static int devfs_open(const char *path, int flags, int mode, struct file **fp, c
 		*fp = get_null_dev();
 		return 0;
 	}
+	else if (!strcmp(path, "random"))
+	{
+		*fp = get_random_dev();
+		return 0;
+	}
+	else if (!strcmp(path, "urandom"))
+	{
+		*fp = get_urandom_dev();
+		return 0;
+	}
 	else
 	{
 		log_warning("devfs: '%s' not found.\n");
@@ -34,5 +45,6 @@ struct file_system *devfs_alloc()
 	fs->base_fs.mountpoint = "/dev";
 	fs->base_fs.open = devfs_open;
 	init_null_dev();
+	init_random_dev();
 	return fs;
 }

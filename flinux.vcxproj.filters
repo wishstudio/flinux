@@ -172,6 +172,9 @@
     <ClInclude Include="src\fs\null.h">
       <Filter>fs</Filter>
     </ClInclude>
+    <ClInclude Include="src\fs\random.h">
+      <Filter>fs</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
@@ -229,6 +232,9 @@
       <Filter>dbt</Filter>
     </ClCompile>
     <ClCompile Include="src\fs\null.c">
+      <Filter>fs</Filter>
+    </ClCompile>
+    <ClCompile Include="src\fs\random.c">
       <Filter>fs</Filter>
     </ClCompile>
   </ItemGroup>
