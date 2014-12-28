@@ -26,6 +26,8 @@
 #define O_TMPFILE_MASK	(__O_TMPFILE | O_DIRECTORY | O_CREAT)
 #define O_NDELAY		O_NONBLOCK
 
+#define __O_DELETE		040000000 /* Internal mode */
+
 #define AT_FDCWD				-100    /* Special value used to indicate openat should use the current working directory. */
 #define AT_SYMLINK_NOFOLLOW     0x100   /* Do not follow symbolic links.  */
 #define AT_REMOVEDIR            0x200   /* Remove directory instead of unlinking file.  */

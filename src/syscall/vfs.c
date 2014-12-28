@@ -801,6 +801,60 @@ DEFINE_SYSCALL(dup2, int, fd, int, newfd)
 	return newfd;
 }
 
+DEFINE_SYSCALL(rename, const char *, oldpath, const char *, newpath)
+{
+	log_info("rename(\"%s\", \"%s\")\n", oldpath, newpath);
+	if (!mm_check_read_string(oldpath) || !mm_check_read_string(newpath))
+		return -EFAULT;
+	struct file *f;
+	char path[MAX_PATH], target[MAX_PATH];
+	if (!normalize_path(vfs->cwd, newpath, path))
+		return -ENOENT;
+	int r = vfs_open(oldpath, O_PATH | __O_DELETE | O_NOFOLLOW, 0, &f);
+	if (r < 0)
+		return r;
+	if (!winfs_is_winfile(f))
+		return -EPERM;
+	for (int symlink_level = 0;; symlink_level++)
+	{
+		if (symlink_level == MAX_SYMLINK_LEVEL)
+			return -ELOOP;
+		struct file_system *fs;
+		char *subpath;
+		if (!find_filesystem(path, &fs, &subpath))
+		{
+			vfs_release(f);
+			return -ENOENT;
+		}
+		log_info("Try renaming file...\n");
+		int ret;
+		if (!fs->rename)
+			ret = -ENOENT;
+		else
+			ret = fs->rename(f, subpath);
+		if (ret == 0)
+		{
+			log_info("Rename succeeded.\n");
+			vfs_release(f);
+			return 0;
+		}
+		else if (ret == -ENOENT)
+		{
+			log_info("Rename failed, testing whether a component is a symlink...\n");
+			if (resolve_symlink(fs, path, subpath, target) < 0)
+			{
+				vfs_release(f);
+				return -ENOENT;
+			}
+		}
+		else
+		{
+			vfs_release(f);
+			return ret;
+		}
+	}
+}
+
 DEFINE_SYSCALL(mkdir, const char *, pathname, int, mode)
 {
 	log_info("mkdir(\"%s\", %x)\n", pathname, mode);

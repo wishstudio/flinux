@@ -412,15 +412,13 @@ static int winfs_link(struct file *f, const char *newpath)
 	info->RootDirectory = NULL;
 	info->FileNameLength = 2 * filename_to_nt_pathname(newpath, info->FileName, PATH_MAX);
 	if (info->FileNameLength == 0)
-	{
 		return -ENOENT;
-	}
 	IO_STATUS_BLOCK status_block;
 	status = NtSetInformationFile(winfile->handle, &status_block, info, info->FileNameLength + sizeof(FILE_LINK_INFORMATION), FileLinkInformation);
 	if (status != STATUS_SUCCESS)
 	{
 		log_warning("NtSetInformationFile() failed, status: %x.\n", status);
-		return -EMLINK;
+		return -ENOENT;
 	}
 	return 0;
 }
@@ -434,6 +432,27 @@ static int winfs_unlink(const char *pathname)
 	if (!DeleteFileW(wpathname))
 	{
 		log_warning("DeleteFile() failed.\n");
+		return -ENOENT;
+	}
+	return 0;
+}
+
+static int winfs_rename(struct file *f, const char *newpath)
+{
+	struct winfs_file *winfile = (struct winfs_file *)f;
+	char buf[sizeof(FILE_RENAME_INFORMATION) + PATH_MAX * 2];
+	NTSTATUS status;
+	FILE_RENAME_INFORMATION *info = (FILE_RENAME_INFORMATION *)buf;
+	info->ReplaceIfExists = TRUE;
+	info->RootDirectory = NULL;
+	info->FileNameLength = 2 * filename_to_nt_pathname(newpath, info->FileName, PATH_MAX);
+	if (info->FileNameLength == 0)
+		return -ENOENT;
+	IO_STATUS_BLOCK status_block;
+	status = NtSetInformationFile(winfile->handle, &status_block, info, info->FileNameLength + sizeof(FILE_RENAME_INFORMATION), FileRenameInformation);
+	if (status != STATUS_SUCCESS)
+	{
+		log_warning("NtSetInformationFile() failed, status: %x\n", status);
 		return -ENOENT;
 	}
 	return 0;
@@ -479,6 +498,8 @@ static int winfs_open(const char *pathname, int flags, int mode, struct file **f
 		desiredAccess = GENERIC_WRITE;
 	else
 		desiredAccess = GENERIC_READ;
+	if (flags & __O_DELETE)
+		desiredAccess |= DELETE;
 	shareMode = FILE_SHARE_READ | FILE_SHARE_DELETE;
 	creationDisposition;
 	if (flags & O_EXCL)
@@ -582,6 +603,7 @@ struct file_system *winfs_alloc()
 	fs->base_fs.readlink = winfs_readlink;
 	fs->base_fs.link = winfs_link;
 	fs->base_fs.unlink = winfs_unlink;
+	fs->base_fs.rename = winfs_rename;
 	fs->base_fs.mkdir = winfs_mkdir;
 	return fs;
 }

@@ -167,6 +167,20 @@ typedef enum _FILE_INFORMATION_CLASS {
 	FileMaximumInformation
 } FILE_INFORMATION_CLASS, *PFILE_INFORMATION_CLASS;
 
+typedef struct _FILE_RENAME_INFORMATION {
+	BOOLEAN ReplaceIfExists;
+	HANDLE  RootDirectory;
+	ULONG   FileNameLength;
+	WCHAR   FileName[1];
+} FILE_RENAME_INFORMATION, *PFILE_RENAME_INFORMATION;
+
+typedef struct _FILE_LINK_INFORMATION {
+	BOOLEAN ReplaceIfExists;
+	HANDLE  RootDirectory;
+	ULONG   FileNameLength;
+	WCHAR   FileName[1];
+} FILE_LINK_INFORMATION, *PFILE_LINK_INFORMATION;
+
 typedef struct _FILE_ID_FULL_DIR_INFORMATION {
 	ULONG         NextEntryOffset;
 	ULONG         FileIndex;
@@ -182,27 +196,6 @@ typedef struct _FILE_ID_FULL_DIR_INFORMATION {
 	LARGE_INTEGER FileId;
 	WCHAR         FileName[1];
 } FILE_ID_FULL_DIR_INFORMATION, *PFILE_ID_FULL_DIR_INFORMATION;
-
-typedef struct _FILE_LINK_INFORMATION {
-	BOOLEAN ReplaceIfExists;
-	HANDLE  RootDirectory;
-	ULONG   FileNameLength;
-	WCHAR   FileName[1];
-} FILE_LINK_INFORMATION, *PFILE_LINK_INFORMATION;
-
-typedef struct _FILE_FULL_EA_INFORMATION {
-	ULONG  NextEntryOffset;
-	UCHAR  Flags;
-	UCHAR  EaNameLength;
-	USHORT EaValueLength;
-	CHAR   EaName[1];
-} FILE_FULL_EA_INFORMATION, *PFILE_FULL_EA_INFORMATION;
-
-typedef struct _FILE_GET_EA_INFORMATION {
-	ULONG NextEntryOffset;
-	UCHAR EaNameLength;
-	CHAR  EaName[1];
-} FILE_GET_EA_INFORMATION, *PFILE_GET_EA_INFORMATION;
 
 NTSYSAPI NTSTATUS NTAPI NtSetInformationFile(
 	_In_		HANDLE FileHandle,
@@ -225,6 +218,21 @@ NTSYSAPI NTSTATUS NTAPI NtQueryDirectoryFile(
 	_In_opt_	PUNICODE_STRING FileName,
 	_In_		BOOLEAN RestartScan
 	);
+
+/* Extended attributes */
+typedef struct _FILE_FULL_EA_INFORMATION {
+	ULONG  NextEntryOffset;
+	UCHAR  Flags;
+	UCHAR  EaNameLength;
+	USHORT EaValueLength;
+	CHAR   EaName[1];
+} FILE_FULL_EA_INFORMATION, *PFILE_FULL_EA_INFORMATION;
+
+typedef struct _FILE_GET_EA_INFORMATION {
+	ULONG NextEntryOffset;
+	UCHAR EaNameLength;
+	CHAR  EaName[1];
+} FILE_GET_EA_INFORMATION, *PFILE_GET_EA_INFORMATION;
 
 NTSYSAPI NTSTATUS NTAPI NtQueryEaFile(
 	_In_		HANDLE FileHandle,

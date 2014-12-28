@@ -40,5 +40,6 @@ struct file_system
 	int (*is_symlink)(const char *pathname, char *target, int buflen);
 	int (*link)(struct file *f, const char *newpath);
 	int (*unlink)(const char *pathname);
+	int (*rename)(struct file *f, const char *newpath);
 	int (*mkdir)(const char *pathname, int mode);
 };
