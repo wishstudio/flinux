@@ -42,4 +42,5 @@ struct file_system
 	int (*unlink)(const char *pathname);
 	int (*rename)(struct file *f, const char *newpath);
 	int (*mkdir)(const char *pathname, int mode);
+	int (*rmdir)(const char *pathname);
 };

@@ -478,6 +478,19 @@ static int winfs_mkdir(const char *pathname, int mode)
 	return 0;
 }
 
+static int winfs_rmdir(const char *pathname, int mode)
+{
+	WCHAR wpathname[PATH_MAX];
+	if (utf8_to_utf16_filename(pathname, strlen(pathname) + 1, wpathname, PATH_MAX) <= 0)
+		return -ENOENT;
+	if (!RemoveDirectoryW(wpathname))
+	{
+		log_warning("RemoveDirectoryW() failed, error code: %d\n", GetLastError());
+		return -ENOENT;
+	}
+	return 0;
+}
+
 static int winfs_open(const char *pathname, int flags, int mode, struct file **fp, char *target, int buflen)
 {
 	/* TODO: mode */
@@ -605,6 +618,7 @@ struct file_system *winfs_alloc()
 	fs->base_fs.unlink = winfs_unlink;
 	fs->base_fs.rename = winfs_rename;
 	fs->base_fs.mkdir = winfs_mkdir;
+	fs->base_fs.rmdir = winfs_rmdir;
 	return fs;
 }
 

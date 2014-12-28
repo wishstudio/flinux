@@ -879,10 +879,47 @@ DEFINE_SYSCALL(mkdir, const char *, pathname, int, mode)
 		if (!find_filesystem(path, &fs, &subpath))
 			return -ENOENT;
 		log_info("Try creating directory...\n");
-		int ret = fs->mkdir(subpath, mode);
+		int ret;
+		if (!fs->mkdir)
+			ret = -ENOENT;
+		else
+			ret = fs->mkdir(subpath, mode);
 		if (ret == -ENOENT)
 		{
 			log_info("Creating directory failed, testing whether a component is a symlink...\n");
+			if (resolve_symlink(fs, path, subpath, target) < 0)
+				return -ENOENT;
+		}
+		else
+			return ret;
+	}
+}
+
+DEFINE_SYSCALL(rmdir, const char *, pathname)
+{
+	log_info("rmdir(\"%s\")\n", pathname);
+	if (!mm_check_read_string(pathname))
+		return -EFAULT;
+	char path[MAX_PATH], target[MAX_PATH];
+	if (!normalize_path(vfs->cwd, pathname, path))
+		return -ENOENT;
+	for (int symlink_level = 0;; symlink_level++)
+	{
+		if (symlink_level == MAX_SYMLINK_LEVEL)
+			return -ELOOP;
+		struct file_system *fs;
+		char *subpath;
+		if (!find_filesystem(path, &fs, &subpath))
+			return -ENOENT;
+		log_info("Try removing directory...\n");
+		int ret;
+		if (!fs->rmdir)
+			ret = -ENOENT;
+		else
+			ret = fs->rmdir(subpath);
+		if (ret == -ENOENT)
+		{
+			log_info("Removing directory failed, testing whether a component is a symlink...\n");
 			if (resolve_symlink(fs, path, subpath, target) < 0)
 				return -ENOENT;
 		}
