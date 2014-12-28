@@ -87,7 +87,6 @@ struct instruction_desc
 #define X87()			{ .type = INST_TYPE_X87 },
 #define EXTENSION(x)	{ .type = INST_TYPE_EXTENSION, .has_modrm = 1, .extension_table = &extension_##x },
 
-#define INST_UNTESTED(...)		UNSUPPORTED() /* FIXME: Temporary for now */
 #define INST(...)		{ .type = INST_TYPE_NORMAL, __VA_ARGS__ },
 #define SPECIAL(s, ...)	{ .type = s, __VA_ARGS__ },
 #define MODRM()			.has_modrm = 1
@@ -216,7 +215,7 @@ static const struct instruction_desc one_byte_inst[256] =
 #ifdef _WIN64
 	/* 0x27: INVALID */ INVALID()
 #else
-	/* 0x27: DAA */ INST_UNTESTED(READ(REG_AX), WRITE(REG_AX))
+	/* 0x27: DAA */ INST(READ(REG_AX), WRITE(REG_AX))
 #endif
 	/* 0x28: SUB r/m8, r8 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_RM))
 	/* 0x29: SUB r/m?, r? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_RM))
@@ -228,7 +227,7 @@ static const struct instruction_desc one_byte_inst[256] =
 #ifdef _WIN64
 	/* 0x2F: INVALID */ INVALID()
 #else
-	/* 0x2F: DAS */ INST_UNTESTED(READ(REG_AX), WRITE(REG_AX))
+	/* 0x2F: DAS */ INST(READ(REG_AX), WRITE(REG_AX))
 #endif
 	/* 0x30: XOR r/m8, r8 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_RM))
 	/* 0x31: XOR r/m?, r? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_RM))
@@ -240,7 +239,7 @@ static const struct instruction_desc one_byte_inst[256] =
 #ifdef _WIN64
 	/* 0x37: Invalid */ INVALID()
 #else
-	/* 0x37: AAA */ INST_UNTESTED(READ(REG_AX), WRITE(REG_AX))
+	/* 0x37: AAA */ INST(READ(REG_AX), WRITE(REG_AX))
 #endif
 	/* 0x38: CMP r/m8, r8 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_RM))
 	/* 0x39: CMP r/m?, r? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_RM))
@@ -268,7 +267,7 @@ static const struct instruction_desc one_byte_inst[256] =
 	/* 0x4E: REX prefix */ INVALID()
 	/* 0x4F: REX prefix */ INVALID()
 #else
-	/* 0x3F: AAS */ INST_UNTESTED(READ(REG_AX), WRITE(REG_AX))
+	/* 0x3F: AAS */ INST(READ(REG_AX), WRITE(REG_AX))
 	/* 0x40: INC ?AX */ INST(READ(REG_AX), WRITE(REG_AX))
 	/* 0x41: INC ?CX */ INST(READ(REG_CX), WRITE(REG_CX))
 	/* 0x42: INC ?DX */ INST(READ(REG_DX), WRITE(REG_DX))
@@ -311,8 +310,8 @@ static const struct instruction_desc one_byte_inst[256] =
 #else
 	/* 0x60: PUSHA_PUSHAD */ INST(READ(REG_AX | REG_CX | REG_DX | REG_BX | REG_SP | REG_BP | REG_SI | REG_DI), WRITE(REG_SP))
 	/* 0x61: POPA/POPAD */ INST(READ(REG_SP), WRITE(REG_AX | REG_CX | REG_DX | REG_BX | REG_SP | REG_BP | REG_SI | REG_DI))
-	/* 0x62: BOUND r?, m?&? */ INST_UNTESTED(MODRM(), READ(MODRM_R | MODRM_RM_M))
-	/* 0x63: ARPL r/m16, r16 */ INST_UNTESTED(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R | MODRM_RM))
+	/* 0x62: BOUND r?, m?&? */ INST(MODRM(), READ(MODRM_R | MODRM_RM_M))
+	/* 0x63: ARPL r/m16, r16 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R | MODRM_RM))
 #endif
 	/* 0x64: FS segment prefix */ INVALID()
 	/* 0x65: GS segment prefix */ INVALID()
@@ -375,15 +374,15 @@ static const struct instruction_desc one_byte_inst[256] =
 #else
 	/* 0x9A: CALL FAR ptr16:? */ UNSUPPORTED()
 #endif
-	/* 0x9B: FWAIT */ INST_UNTESTED()
+	/* 0x9B: FWAIT */ INST()
 	/* 0x9C: PUSHF/PUSHFD/PUSHFQ */ INST(READ(REG_SP), WRITE(REG_SP))
 	/* 0x9D: POPF/POPFD/POPFQ */ INST(READ(REG_SP), WRITE(REG_SP))
 #ifdef _WIN64
 	/* 0x9E: INVALID */ INVALID()
 	/* 0x9F: INVALID */ INVALID()
 #else
-	/* 0x9E: SAHF */ INST_UNTESTED(READ(REG_AX))
-	/* 0x9F: LAHF */ INST_UNTESTED(WRITE(REG_AX))
+	/* 0x9E: SAHF */ INST(READ(REG_AX))
+	/* 0x9F: LAHF */ INST(WRITE(REG_AX))
 #endif
 	/* 0xA0: MOV AL, moffs8 */ SPECIAL(INST_MOV_MOFFSET, IMM(PREFIX_ADDRESS_SIZE_64), WRITE(REG_AX))
 	/* 0xA1: MOV ?AX, moffs? */ SPECIAL(INST_MOV_MOFFSET, IMM(PREFIX_ADDRESS_SIZE_64), WRITE(REG_AX))
@@ -434,8 +433,8 @@ static const struct instruction_desc one_byte_inst[256] =
 	/* 0xC7: */ EXTENSION(C7)
 	/* 0xC8: ENTER */ UNSUPPORTED()
 	/* 0xC9: LEAVE */ INST(READ(REG_BP), WRITE(REG_BP | REG_SP))
-	/* 0xCA: RET FAR imm16 */ INST_UNTESTED(IMM(2))
-	/* 0xCB: RET FAR */ INST_UNTESTED()
+	/* 0xCA: RET FAR imm16 */ UNSUPPORTED(IMM(2))
+	/* 0xCB: RET FAR */ UNSUPPORTED()
 	/* 0xCC: INT 3 */ INST()
 	/* 0xCD: INT */ SPECIAL(INST_INT, IMM(1))
 #ifdef _WIN64
@@ -443,7 +442,7 @@ static const struct instruction_desc one_byte_inst[256] =
 #else
 	/* 0xCE: INTO */ INST()
 #endif
-	/* 0xCF: IRET/IRETD/IRETQ */ INST_UNTESTED()
+	/* 0xCF: IRET/IRETD/IRETQ */ UNSUPPORTED()
 	/* 0xD0: [GRP2] r/m8, 1 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_RM))
 	/* 0xD1: [GRP2] r/m?, 1 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_RM))
 	/* 0xD2: [GRP2] r/m8, CL */ INST(MODRM(), READ(MODRM_RM | REG_CX), WRITE(MODRM_RM))
@@ -452,8 +451,8 @@ static const struct instruction_desc one_byte_inst[256] =
 	/* 0xD4: INVALID */ INVALID()
 	/* 0xD5: INVALID */ INVALID()
 #else
-	/* 0xD4: AAM */ INST_UNTESTED(IMM(1), READ(REG_AX), WRITE(REG_AX))
-	/* 0xD5: AAD */ INST_UNTESTED(IMM(1), READ(REG_AX), WRITE(REG_AX))
+	/* 0xD4: AAM */ INST(IMM(1), READ(REG_AX), WRITE(REG_AX))
+	/* 0xD5: AAD */ INST(IMM(1), READ(REG_AX), WRITE(REG_AX))
 #endif
 	/* 0xD6: ??? */ UNKNOWN()
 	/* 0xD7: XLAT */ UNSUPPORTED()
@@ -469,10 +468,10 @@ static const struct instruction_desc one_byte_inst[256] =
 	/* 0xE1: LOOPE rel8 */ SPECIAL(INST_JCC_REL8, IMM(1), READ(REG_CX), WRITE(REG_CX))
 	/* 0xE2: LOOP rel8 */ SPECIAL(INST_JCC_REL8, IMM(1), READ(REG_CX), WRITE(REG_CX))
 	/* 0xE3: JCXZ/JECXZ rel8 */ SPECIAL(INST_JCC_REL8, IMM(1), READ(REG_CX))
-	/* 0xE4: IN AL, imm8 */ INST_UNTESTED(IMM(1), WRITE(REG_AX))
-	/* 0xE5: IN AX/EAX, imm8 */ INST_UNTESTED(IMM(1), WRITE(REG_AX))
-	/* 0xE6: OUT imm8, AL */ INST_UNTESTED(IMM(1), READ(REG_AX))
-	/* 0xE7: OUT imm8, AX/EAX */ INST_UNTESTED(IMM(1), READ(REG_AX))
+	/* 0xE4: IN AL, imm8 */ INST(PRIVILEGED(), IMM(1), WRITE(REG_AX))
+	/* 0xE5: IN AX/EAX, imm8 */ INST(PRIVILEGED(), IMM(1), WRITE(REG_AX))
+	/* 0xE6: OUT imm8, AL */ INST(PRIVILEGED(), IMM(1), READ(REG_AX))
+	/* 0xE7: OUT imm8, AX/EAX */ INST(PRIVILEGED(), IMM(1), READ(REG_AX))
 	/* 0xE8: CALL rel16/rel32 */ SPECIAL(INST_CALL_DIRECT, IMM(PREFIX_OPERAND_SIZE))
 	/* 0xE9: JMP rel? */ SPECIAL(INST_JMP_DIRECT, IMM(PREFIX_OPERAND_SIZE))
 #ifdef _WIN64
@@ -481,16 +480,16 @@ static const struct instruction_desc one_byte_inst[256] =
 	/* 0xEA: JMP FAR ptr16:? */ UNSUPPORTED()
 #endif
 	/* 0xEB: JMP rel8 */ SPECIAL(INST_JMP_DIRECT, IMM(1))
-	/* 0xEC: IN AL, DX */ INST_UNTESTED(READ(REG_DX), WRITE(REG_AX))
-	/* 0xED: IN AX/EAX, DX */ INST_UNTESTED(READ(REG_DX), WRITE(REG_AX))
-	/* 0xEE: OUT DX, AL */ INST_UNTESTED(READ(REG_DX | REG_AX))
-	/* 0xEF: OUT DX, AX/EAX */ INST_UNTESTED(READ(REG_DX | REG_AX))
+	/* 0xEC: IN AL, DX */ INST(PRIVILEGED(), READ(REG_DX), WRITE(REG_AX))
+	/* 0xED: IN AX/EAX, DX */ INST(PRIVILEGED(), READ(REG_DX), WRITE(REG_AX))
+	/* 0xEE: OUT DX, AL */ INST(PRIVILEGED(), READ(REG_DX | REG_AX))
+	/* 0xEF: OUT DX, AX/EAX */ INST(PRIVILEGED(), READ(REG_DX | REG_AX))
 	/* 0xF0: LOCK prefix */ INVALID()
 	/* 0xF1: ??? */ UNKNOWN()
 	/* 0xF2: ??? */ UNKNOWN()
 	/* 0xF3: ??? */ UNKNOWN()
 	/* 0xF4: HLT */ INST(PRIVILEGED())
-	/* 0xF5: CMC */ INST_UNTESTED()
+	/* 0xF5: CMC */ INST()
 	/* 0xF6 */ EXTENSION(F6)
 	/* 0xF7 */ EXTENSION(F7)
 	/* 0xF8: CLC */ INST()
@@ -943,7 +942,7 @@ static const struct instruction_desc two_byte_inst[256] =
 	/* 0x1C: ??? */ UNKNOWN()
 	/* 0x1D: ??? */ UNKNOWN()
 	/* 0x1E: ??? */ UNKNOWN()
-	/* 0x1F: NOP r/m? */ INST_UNTESTED() /* TODO */
+	/* 0x1F: NOP r/m? */ INST(MODRM())
 	/* 0x20: MOV r32, CR0-CR7; MOV r64, CR0-CR7 */ UNSUPPORTED()
 	/* 0x21: MOV r32, DR0-DR7; MOV r64, DR0-DR7 */ UNSUPPORTED()
 	/* 0x22: MOV CR0-CR7, r32; MOV CR0-CR7, r64 */ UNSUPPORTED()
@@ -963,7 +962,7 @@ static const struct instruction_desc two_byte_inst[256] =
 	/* 0x30: WRMSR */ INST(PRIVILEGED(), READ(REG_AX | REG_CX | REG_DX))
 	/* 0x31: RDTSC */ INST(WRITE(REG_AX | REG_DX))
 	/* 0x32: RDMSR */ INST(PRIVILEGED(), READ(REG_CX), WRITE(REG_AX | REG_DX))
-	/* 0x33: RDPMC */ INST_UNTESTED(READ(REG_CX), WRITE(REG_AX | REG_DX))
+	/* 0x33: RDPMC */ INST(READ(REG_CX), WRITE(REG_AX | REG_DX))
 	/* 0x34: SYSENTER */ UNSUPPORTED()
 	/* 0x35: SYSEXIT */ UNSUPPORTED()
 	/* 0x36: ??? */ UNKNOWN()
@@ -1033,7 +1032,7 @@ static const struct instruction_desc two_byte_inst[256] =
 	/* 0x74: PCMPEQB ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
 	/* 0x75: PCMPEQW ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
 	/* 0x76: PCMPEQD ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
-	/* 0x77: EMMS */ UNSUPPORTED()
+	/* 0x77: EMMS */ INST()
 	/* 0x78: ??? */ UNKNOWN()
 	/* 0x79: ??? */ UNKNOWN()
 	/* 0x7A: ??? */ UNKNOWN()
@@ -1087,7 +1086,7 @@ static const struct instruction_desc two_byte_inst[256] =
 #ifdef _WIN64
 	/* 0xAA: INVALID */ INVALID()
 #else
-	/* 0xAA: RSM */ INST_UNTESTED()
+	/* 0xAA: RSM */ UNSUPPORTED()
 #endif
 	/* 0xAB: BTS r/m?, r? */ INST(MODRM(), READ(MODRM_R | MODRM_RM))
 	/* 0xAC: SHRD r/m?, r?, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_RM | MODRM_R), WRITE(MODRM_RM))
@@ -1114,14 +1113,14 @@ static const struct instruction_desc two_byte_inst[256] =
 	/* 0xB8: MANDATORY */ MANDATORY(0x0FB8)
 	/* 0xB9: ??? */ UNKNOWN()
 	/* GRP8: 4/BT, 5/BTS, 6/BTR, 7/BTC */
-	/* 0xBA: [GRP8] r/m?, imm8 */ INST_UNTESTED(MODRM(), IMM(1), READ(MODRM_RM))
+	/* 0xBA: [GRP8] r/m?, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_RM))
 	/* 0xBB: BTC r/m?, r? */ INST(MODRM(), READ(MODRM_R | MODRM_RM))
 	/* 0xBC: BSF r?, r/m? */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
 	/* 0xBD: BSR r?, r/m? */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
 	/* 0xBE: MOVSX r?, r/m8 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
 	/* 0xBF: MOVSX r?, r/m16 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
-	/* 0xC0: XADD r/m8, r8 */ INST_UNTESTED(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R | MODRM_RM))
-	/* 0xC1: XADD r/m?, r? */ INST_UNTESTED(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R | MODRM_RM))
+	/* 0xC0: XADD r/m8, r8 */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R | MODRM_RM))
+	/* 0xC1: XADD r/m?, r? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R | MODRM_RM))
 	/* 0xC2: MANDATORY */ MANDATORY(0x0FC2)
 	/* 0xC3: MOVNTI m?, r? */ INST(MODRM(), READ(MODRM_R), WRITE(MODRM_RM_M))
 	/* 0xC4: PINSRW ?mm1, r32/m16, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
