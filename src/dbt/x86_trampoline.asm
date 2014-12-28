@@ -92,6 +92,8 @@ EXTERN sys_unimplemented_imp:NEAR
 sys_unimplemented PROC
 	push eax
 	call sys_unimplemented_imp
+	add esp, 4
+	ret
 sys_unimplemented ENDP
 
 EXTERN sys_fork_imp: NEAR
@@ -129,6 +131,10 @@ syscall_handler PROC
 	; save context
 	push ecx
 	push edx
+	; test validity
+	cmp eax, 338
+	jae out_of_range
+
 	; push esp and eip context in case of fork()
 	push [esp + 8]
 	lea edx, [esp + 16]
@@ -146,6 +152,12 @@ syscall_handler PROC
 syscall_done::
 	add esp, 32
 	; restore context
+	pop edx
+	pop ecx
+	jmp dbt_find_indirect_internal
+
+out_of_range:
+	call sys_unimplemented
 	pop edx
 	pop ecx
 	jmp dbt_find_indirect_internal
