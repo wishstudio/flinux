@@ -404,6 +404,11 @@ Return 0 for success, errno for error
 */
 static int resolve_symlink(struct file_system *fs, char *path, char *subpath, char *target)
 {
+	if (!fs->readlink)
+	{
+		log_warning("The underlying filesystem does not support symlink.\n");
+		return -ENOENT;
+	}
 	/* Test from right to left */
 	/* Note: Currently we assume the symlink only appears in subpath */
 	int found = 0;

@@ -34,7 +34,7 @@ static int devfs_open(const char *path, int flags, int mode, struct file **fp, c
 	}
 	else
 	{
-		log_warning("devfs: '%s' not found.\n");
+		log_warning("devfs: '%s' not found.\n", path);
 		return -ENOENT;
 	}
 }
