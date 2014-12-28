@@ -919,7 +919,9 @@ static const struct instruction_desc two_byte_inst[256] =
 	/* 0x0A: ??? */ UNKNOWN()
 	/* 0x0B: UD2 */ INVALID()
 	/* 0x0C: ??? */ UNKNOWN()
-	/* 0x0D: ??? */ UNKNOWN()
+	/* 0x0D:
+	1: PREFETCHW m8
+	2: PREFETCHWT1 m8 */ INST(MODRM(), READ(MODRM_RM_M))
 	/* 0x0E: ??? */ UNKNOWN()
 	/* 0x0F: ??? */ UNKNOWN()
 	/* 0x10: MANDATORY */ MANDATORY(0x0F10)
@@ -930,7 +932,11 @@ static const struct instruction_desc two_byte_inst[256] =
 	/* 0x15: ??? */ UNKNOWN()
 	/* 0x16: MANDATORY */ MANDATORY(0x0F16)
 	/* 0x17: MANDATORY */ MANDATORY(0x0F17)
-	/* 0x18: ??? */ UNKNOWN()
+	/* 0x18:
+	0: PREFETCHNTA m8
+	1: PREFETCH0 m8
+	2: PREFETCH1 m8
+	3: PREFETCH2 m8 */ INST(MODRM(), READ(MODRM_RM_M))
 	/* 0x19: ??? */ UNKNOWN()
 	/* 0x1A: ??? */ UNKNOWN()
 	/* 0x1B: ??? */ UNKNOWN()
