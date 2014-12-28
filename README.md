@@ -1,9 +1,9 @@
 Foreign LINUX
 ======
 
-Foreign LINUX is a Linux system call translator for the Windows platform. It can run *unmodified* Linux binaries on Windows without any drivers or modifications to the system. You can think it as [WINE](http://www.winehq.org) but in reverse. 
+Foreign LINUX is a Linux system call translator for the Windows platform. It is capable of running *unmodified* Linux binaries on Windows without any drivers or modifications to the system.
 
-This project is still in heavy development. It's still buggy and not meant for everyday use. On the other hand it already runs a lot of [busybox](http://busybox.net) utilities, including *ash*, *tar*, *grep*, etc.
+This project is still in heavy development. It's still buggy and not meant for everyday use. On the other hand it already runs a lot of Linux utilities, including *bash*, *coreutils*, *nano*, *python*, etc.
 
 Feature highlights
 ======
@@ -13,11 +13,17 @@ Feature highlights
 * On-demand paging to save memory and improve fork performance
 * Dynamically and statically compiled executables
 * NTFS native hardlink
-* Cygwin-style emulated symlink
+* Emulated symlink
 * Interprocess pipes
-* vt102 terminal emulation on Win32 console
+* vt100 terminal emulation on Win32 console
 * Small footprint (flinux executable < 100k)
-* Support both x86 and x86_64 linux userland
+
+Implemenation details
+======
+Foreign LINUX serves as a low level emulator (LLE) unlike WINE or cygwin which is an HLE (high leval emulator). We only implement kernel system calls and use the original unmodified system librareis to provide common ABIs. This greatly reduces the amount of work and improves emulation accuracy.
+
+
+Foreign LINUX dynamically translates Linux system calls to their Windows equivalents, or emulates them if not directly available natively (notably fork). This is like [WINE](http://www.winehq.org). But due to some incompatiblities between the two systems and the limitations of Windows, the binary cannot be directly run like in WINE. Instead I implemented a dynamic binary translator to process the binaries and transform the incompatible bits before it is run.
 
 Comparison
 ======
