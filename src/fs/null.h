@@ -2,5 +2,4 @@
 
 #include <fs/file.h>
 
-struct file *get_null_dev();
-void init_null_dev();
+struct file *null_dev_alloc();
