@@ -132,7 +132,7 @@ syscall_handler PROC
 	push ecx
 	push edx
 	; test validity
-	cmp eax, 338
+	cmp eax, 354
 	jae out_of_range
 
 	; push esp and eip context in case of fork()

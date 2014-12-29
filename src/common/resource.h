@@ -28,6 +28,11 @@ struct rlimit {
 	unsigned long rlim_max;  /* Hard limit (ceiling for rlim_cur) */
 };
 
+struct rlimit64 {
+	uint64_t rlim_cur; /* Soft limit */
+	uint64_t rlim_max; /* Hard limit (ceiling for rlim_cur */
+};
+
 /*
  * Definition of struct rusage taken from BSD 4.3 Reno
  *
