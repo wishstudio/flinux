@@ -1284,6 +1284,12 @@ DEFINE_SYSCALL(access, const char *, pathname, int, mode)
 	log_info("access(\"%s\", %d)\n", pathname, mode);
 	if (!mm_check_read_string(pathname))
 		return -EFAULT;
+	/* Currently emulate access behaviour by testing whether the file exists */
+	struct file *f;
+	int r = vfs_open(pathname, O_PATH, mode, &f);
+	if (r < 0)
+		return r;
+	vfs_release(f);
 	return 0;
 }
 
