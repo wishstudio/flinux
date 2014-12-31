@@ -235,7 +235,21 @@ DEFINE_SYSCALL(execve, const char *, filename, char **, argv, char **, envp)
 	log_info("Reinitializing...\n");
 
 	/* Copy argv[] and envp[] to startup data */
-	char *base = startup;
+	char *current_startup_base;
+	if (*(uintptr_t*)startup)
+	{
+		*(uintptr_t*)startup = 0;
+		*(uintptr_t*)(startup + (BLOCK_SIZE / 2)) = 1;
+		current_startup_base = startup + (BLOCK_SIZE / 2) + sizeof(uintptr_t);
+	}
+	else
+	{
+		*(uintptr_t*)(startup + (BLOCK_SIZE / 2)) = 0;
+		*(uintptr_t*)startup = 1;
+		current_startup_base = startup + sizeof(uintptr_t);
+	}
+
+	char *base = current_startup_base;
 	int argc, env_size;
 	for (argc = 0; argv[argc]; argc++)
 	{
@@ -255,7 +269,7 @@ DEFINE_SYSCALL(execve, const char *, filename, char **, argv, char **, envp)
 	char **new_argv = (char **)((uintptr_t)(base + sizeof(void*) - 1) & -sizeof(void*));
 	char **new_envp = new_argv + argc + 1;
 
-	base = startup;
+	base = current_startup_base;
 	for (int i = 0; i < argc; i++)
 	{
 		new_argv[i] = base;

@@ -13,6 +13,12 @@
 
 #pragma comment(linker,"/entry:main")
 
+/*
+ * Startup data is divided into two parts
+ * The actual used part is flipped upon execve()
+ * This is to prevent data corruption when the arguments of execve() used pointers at data inside the startup area
+ * The first uintptr_t data itme in each side is set to 1 when the part is currently in use
+ */
 static char *const startup = (char *)STARTUP_DATA_BASE;
 
 #define ALIGN_TO(x, a) ((uintptr_t)((x) + (a) - 1) & -(a))
@@ -41,9 +47,11 @@ void main()
 	}
 
 	mm_mmap(STARTUP_DATA_BASE, BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, NULL, 0);
-	memcpy(startup, cmdline, len + 1);
+	*(uintptr_t*) startup = 1;
+	char *current_startup_base = startup + sizeof(uintptr_t);
+	memcpy(current_startup_base, cmdline, len + 1);
 	/* TODO: This works now, but looks too ugly */
-	char *envbuf = ALIGN_TO(startup + len + 1, sizeof(void*));
+	char *envbuf = ALIGN_TO(current_startup_base + len + 1, sizeof(void*));
 	envbuf[0] = 'T';
 	envbuf[1] = 'E';
 	envbuf[2] = 'R';
@@ -59,8 +67,8 @@ void main()
 	const char **argv = (const char **)(envbuf + 16);
 
 	int in_quote = 0;
-	const char *j = startup;
-	for (char *i = startup; i <= startup + len; i++)
+	const char *j = current_startup_base;
+	for (char *i = current_startup_base; i <= current_startup_base + len; i++)
 		if (!in_quote && (*i == ' ' || *i == '\t' || *i == '\r' || *i == '\n' || *i == 0))
 		{
 			*i = 0;
