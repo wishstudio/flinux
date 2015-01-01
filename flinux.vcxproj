@@ -196,6 +196,7 @@
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <EnableEnhancedInstructionSet>NoExtensions</EnableEnhancedInstructionSet>
+      <BasicRuntimeChecks>UninitializedLocalUsageCheck</BasicRuntimeChecks>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -208,6 +209,7 @@
       <Optimization>Disabled</Optimization>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
       <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <BasicRuntimeChecks>UninitializedLocalUsageCheck</BasicRuntimeChecks>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
