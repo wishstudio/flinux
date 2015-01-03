@@ -1163,6 +1163,103 @@ DEFINE_SYSCALL(lstat, const char *, pathname, struct stat *, buf)
 	return stat_from_newstat(buf, &stat);
 }
 
+static int statfs_from_statfs64(struct statfs *statfs, struct statfs64 *statfs64)
+{
+	statfs->f_type = statfs64->f_type;
+	statfs->f_bsize = statfs64->f_bsize;
+	statfs->f_blocks = statfs64->f_blocks;
+	if (statfs->f_blocks != statfs64->f_blocks)
+		return -EOVERFLOW;
+	statfs->f_bfree = statfs64->f_bfree;
+	if (statfs->f_bfree != statfs64->f_bfree)
+		return -EOVERFLOW;
+	statfs->f_bavail = statfs64->f_bavail;
+	if (statfs->f_bavail != statfs64->f_bavail)
+		return -EOVERFLOW;
+	statfs->f_files = statfs64->f_files;
+	if (statfs->f_files != statfs64->f_files)
+		return -EOVERFLOW;
+	statfs->f_ffree = statfs64->f_ffree;
+	if (statfs->f_ffree != statfs64->f_ffree)
+		return -EOVERFLOW;
+	statfs->f_fsid = statfs64->f_fsid;
+	statfs->f_namelen = statfs64->f_namelen;
+	statfs->f_frsize = statfs64->f_frsize;
+	statfs->f_flags = statfs64->f_flags;
+	statfs->f_spare[0] = 0;
+	statfs->f_spare[1] = 0;
+	statfs->f_spare[2] = 0;
+	statfs->f_spare[3] = 0;
+	return 0;
+}
+
+static int vfs_fstatfs(int fd, struct statfs64 *buf)
+{
+	struct file *f = vfs->fds[fd];
+	if (f && f->op_vtable->statfs)
+		return f->op_vtable->statfs(f, buf);
+	else
+		return -EBADF;
+}
+
+static int vfs_statfs(const char *pathname, struct statfs64 *buf)
+{
+	struct file *f;
+	int r = vfs_open(pathname, O_PATH, 0, &f);
+	if (r)
+		return r;
+	if (f->op_vtable->statfs)
+		r = f->op_vtable->statfs(f, buf);
+	else
+		r = -EBADF;
+	vfs_release(f);
+	return r;
+}
+
+DEFINE_SYSCALL(fstatfs, int, fd, struct statfs *, buf)
+{
+	log_info("fstatfs(%d, %p)\n", fd, buf);
+	if (!mm_check_write(buf, sizeof(struct statfs)))
+		return -EFAULT;
+	struct statfs64 statfs64;
+	int r = vfs_fstatfs(fd, &statfs64);
+	if (r)
+		return r;
+	return statfs_from_statfs64(buf, &statfs64);
+}
+
+DEFINE_SYSCALL(statfs, const char *, pathname, struct statfs *, buf)
+{
+	log_info("statfs(\"%s\", %p)\n", pathname, buf);
+	if (!mm_check_write(buf, sizeof(struct statfs)))
+		return -EFAULT;
+	struct statfs64 statfs64;
+	int r = vfs_statfs(pathname, &statfs64);
+	if (r)
+		return r;
+	return statfs_from_statfs64(buf, &statfs64);
+}
+
+DEFINE_SYSCALL(fstatfs64, int, fd, size_t, sz, struct statfs64 *, buf)
+{
+	log_info("fstatfs64(%d, %d, %p)\n", fd, sz, buf);
+	if (sz != sizeof(struct statfs64))
+		return -EINVAL;
+	if (!mm_check_write(buf, sizeof(struct statfs64)))
+		return -EFAULT;
+	return vfs_fstatfs(fd, buf);
+}
+
+DEFINE_SYSCALL(statfs64, const char *, pathname, size_t, sz, struct statfs64 *, buf)
+{
+	log_info("statfs64(\"%s\", %d, %p)\n", pathname, sz, buf);
+	if (sz != sizeof(struct statfs64))
+		return -EINVAL;
+	if (!mm_check_write(buf, sizeof(struct statfs64)))
+		return -EFAULT;
+	return vfs_statfs(pathname, buf);
+}
+
 DEFINE_SYSCALL(ioctl, int, fd, unsigned int, cmd, unsigned long, arg)
 {
 	log_info("ioctl(%d, %x, %x)\n", fd, cmd, arg);

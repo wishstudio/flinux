@@ -175,6 +175,9 @@
     <ClInclude Include="src\fs\random.h">
       <Filter>fs</Filter>
     </ClInclude>
+    <ClInclude Include="src\common\statfs.h">
+      <Filter>common</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />

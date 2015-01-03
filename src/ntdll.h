@@ -219,6 +219,37 @@ NTSYSAPI NTSTATUS NTAPI NtQueryDirectoryFile(
 	_In_		BOOLEAN RestartScan
 	);
 
+/* FsInformation */
+typedef enum _FS_INFORMATION_CLASS {
+	FileFsVolumeInformation = 1,
+	FileFsLabelInformation,
+	FileFsSizeInformation,
+	FileFsDeviceInformation,
+	FileFsAttributeInformation,
+	FileFsControlInformation,
+	FileFsFullSizeInformation,
+	FileFsObjectIdInformation,
+	FileFsDriverPathInformation,
+	FileFsVolumeFlagsInformation,
+	FileFsSectorSizeInformation,
+} FS_INFORMATION_CLASS, *PFS_INFORMATION_CLASS;
+
+typedef struct _FILE_FS_FULL_SIZE_INFORMATION {
+	LARGE_INTEGER TotalAllocationUnits;
+	LARGE_INTEGER CallerAvailableAllocationUnits;
+	LARGE_INTEGER ActualAvailableAllocationUnits;
+	ULONG         SectorsPerAllocationUnit;
+	ULONG         BytesPerSector;
+} FILE_FS_FULL_SIZE_INFORMATION, *PFILE_FS_FULL_SIZE_INFORMATION;
+
+NTSYSAPI NTSTATUS NTAPI NtQueryVolumeInformationFile(
+	_In_		HANDLE FileHandle,
+	_Out_		PIO_STATUS_BLOCK IoStatusBlock,
+	_Out_		PVOID FsInformation,
+	_In_		ULONG Length,
+	_In_		FS_INFORMATION_CLASS FsInformationClass
+	);
+
 /* Extended attributes */
 typedef struct _FILE_FULL_EA_INFORMATION {
 	ULONG  NextEntryOffset;

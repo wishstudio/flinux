@@ -328,6 +328,35 @@ static int winfs_getdents(struct file *f, void *dirent, size_t count, getdents_c
 	#undef BUFFER_SIZE
 }
 
+static int winfs_statfs(struct file *f, struct statfs64 *buf)
+{
+	struct winfs_file *winfile = (struct winfs_file *) f;
+	FILE_FS_FULL_SIZE_INFORMATION info;
+	NTSTATUS status = NtQueryVolumeInformationFile(winfile->handle, NULL, &info, sizeof(info), FileFsFullSizeInformation);
+	if (status != STATUS_SUCCESS)
+	{
+		log_warning("NtQueryVolumeInformationFile() failed, status: %x\n", status);
+		return -EIO;
+	}
+	buf->f_type = 0x5346544e; /* NTFS_SB_MAGIC */
+	buf->f_bsize = info.SectorsPerAllocationUnit * info.BytesPerSector;
+	buf->f_blocks = info.TotalAllocationUnits.QuadPart;
+	buf->f_bfree = info.ActualAvailableAllocationUnits.QuadPart;
+	buf->f_bavail = info.CallerAvailableAllocationUnits.QuadPart;
+	buf->f_files = 0;
+	buf->f_ffree = 0;
+	buf->f_fsid.val[0] = 0;
+	buf->f_fsid.val[1] = 0;
+	buf->f_namelen = PATH_MAX;
+	buf->f_frsize = 0;
+	buf->f_flags = 0;
+	buf->f_spare[0] = 0;
+	buf->f_spare[1] = 0;
+	buf->f_spare[2] = 0;
+	buf->f_spare[3] = 0;
+	return 0;
+}
+
 static struct file_ops winfs_ops = 
 {
 	.close = winfs_close,
@@ -339,6 +368,7 @@ static struct file_ops winfs_ops =
 	.stat = winfs_stat,
 	.utimes = winfs_utimes,
 	.getdents = winfs_getdents,
+	.statfs = winfs_statfs,
 };
 
 static int winfs_symlink(const char *target, const char *linkpath)

@@ -35,6 +35,7 @@
     <ClInclude Include="src\common\select.h" />
     <ClInclude Include="src\common\signal.h" />
     <ClInclude Include="src\common\stat.h" />
+    <ClInclude Include="src\common\statfs.h" />
     <ClInclude Include="src\common\termios.h" />
     <ClInclude Include="src\common\time.h" />
     <ClInclude Include="src\common\types.h" />

@@ -6,6 +6,7 @@ EXPORTS
 	NtClose@4
 	NtSetInformationFile@20
 	NtQueryDirectoryFile@44
+	NtQueryVolumeInformationFile@20
 	NtCreateSection@28
 	NtMapViewOfSection@40
 	NtUnmapViewOfSection@8

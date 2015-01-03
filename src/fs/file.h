@@ -2,6 +2,7 @@
 
 #include <common/dirent.h>
 #include <common/stat.h>
+#include <common/statfs.h>
 #include <common/types.h>
 #include <common/utime.h>
 
@@ -22,6 +23,7 @@ struct file_ops
 	int (*utimes)(struct file *f, const struct timeval times[2]);
 	int (*getdents)(struct file *f, void *dirent, size_t count, getdents_callback *fill_callback);
 	int (*ioctl)(struct file *f, unsigned int cmd, unsigned long arg);
+	int (*statfs)(struct file *f, struct statfs64 *buf);
 };
 
 struct file
