@@ -91,7 +91,7 @@ void mm_dump_windows_memory_mappings(HANDLE process);
 void mm_dump_memory_mappings();
 
 /* Check if the memory region is compatible with desired access */
-int mm_check_read(void *addr, size_t size);
+int mm_check_read(const void *addr, size_t size);
 int mm_check_read_string(const char *addr);
 int mm_check_write(void *addr, size_t size);
 
