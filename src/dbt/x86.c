@@ -6,6 +6,7 @@
 #include <log.h>
 
 #include <stdint.h>
+#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
 #define GET_MODRM_MOD(c)	(((c) >> 6) & 7)

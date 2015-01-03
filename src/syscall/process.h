@@ -3,6 +3,7 @@
 #include <common/types.h>
 #include <common/utsname.h>
 
+#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
 #define STACK_SIZE	1048576

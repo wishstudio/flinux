@@ -4,6 +4,7 @@
 #include <syscall/syscall.h>
 #include <log.h>
 
+#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
 DEFINE_SYSCALL(alarm, unsigned int, seconds)

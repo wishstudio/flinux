@@ -1,5 +1,6 @@
 #include <common/errno.h>
 #include <common/fcntl.h>
+#include <common/fs.h>
 #include <fs/winfs.h>
 #include <syscall/mm.h>
 #include <syscall/vfs.h>
@@ -8,7 +9,9 @@
 #include <log.h>
 #include <str.h>
 
+#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
+#include <limits.h>
 #include <ntdll.h>
 
 #define WINFS_SYMLINK_HEADER		"!<SYMLINK>\379\378"
@@ -508,7 +511,7 @@ static int winfs_mkdir(const char *pathname, int mode)
 	return 0;
 }
 
-static int winfs_rmdir(const char *pathname, int mode)
+static int winfs_rmdir(const char *pathname)
 {
 	WCHAR wpathname[PATH_MAX];
 	if (utf8_to_utf16_filename(pathname, strlen(pathname) + 1, wpathname, PATH_MAX) <= 0)
@@ -628,7 +631,7 @@ after_symlink_test:
 	file->base_file.op_vtable = &winfs_ops;
 	file->base_file.ref = 1;
 	file->handle = handle;
-	*fp = file;
+	*fp = (struct file *)file;
 	return 0;
 }
 
@@ -649,7 +652,7 @@ struct file_system *winfs_alloc()
 	fs->base_fs.rename = winfs_rename;
 	fs->base_fs.mkdir = winfs_mkdir;
 	fs->base_fs.rmdir = winfs_rmdir;
-	return fs;
+	return (struct file_system *)fs;
 }
 
 int winfs_is_winfile(struct file *f)

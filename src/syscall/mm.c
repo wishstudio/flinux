@@ -6,9 +6,10 @@
 #include <log.h>
 
 #include <stdint.h>
-#include <ntdll.h>
+#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <Psapi.h>
+#include <ntdll.h>
 
 /* Linux mmap() allows mapping into 4kB page boundaries, while Windows only
  * allows 64kB boundaries (called allocation granularity), although both

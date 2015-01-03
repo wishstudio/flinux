@@ -3,15 +3,18 @@
 #include <fs/console.h>
 #include <fs/devfs.h>
 #include <fs/pipe.h>
+#include <fs/socket.h>
 #include <fs/winfs.h>
 #include <syscall/mm.h>
 #include <syscall/syscall.h>
 #include <syscall/vfs.h>
 #include <log.h>
+#include <str.h>
+
+#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <limits.h>
 #include <malloc.h>
-#include <str.h>
 
 /* Notes on symlink solving:
 
@@ -89,6 +92,7 @@ void vfs_init()
 	vfs->cwd[0] = '/';
 	vfs->cwd[1] = 0;
 	vfs->umask = S_IWGRP | S_IWOTH;
+	socket_init();
 	log_info("vfs subsystem initialized.\n");
 }
 
@@ -112,15 +116,20 @@ void vfs_shutdown()
 		if (f)
 			vfs_close(i);
 	}
+	socket_shutdown();
 	mm_munmap(VFS_DATA_BASE, sizeof(struct vfs_data));
 }
 
-static int alloc_fd_slot()
+int vfs_store_file(struct file *f, int cloexec)
 {
 	for (int i = 0; i < MAX_FD_COUNT; i++)
 		if (vfs->fds[i] == NULL)
+		{
+			vfs->fds[i] = f;
+			vfs->fds_cloexec[i] = cloexec;
 			return i;
-	return -1;
+		}
+	return -EMFILE;
 }
 
 DEFINE_SYSCALL(read, int, fd, char *, buf, size_t, count)
@@ -553,14 +562,9 @@ DEFINE_SYSCALL(open, const char *, pathname, int, flags, int, mode)
 	int r = vfs_open(pathname, flags, mode, &f);
 	if (r < 0)
 		return r;
-	int fd = alloc_fd_slot();
-	if (fd == -1)
-	{
+	int fd = vfs_store_file(f, (flags & O_CLOEXEC) > 0);
+	if (fd < 0)
 		vfs_release(f);
-		return -EMFILE;
-	}
-	vfs->fds[fd] = f;
-	vfs->fds_cloexec[fd] = (flags & O_CLOEXEC) > 0;
 	return fd;
 }
 
@@ -755,12 +759,20 @@ DEFINE_SYSCALL(pipe2, int *, pipefd, int, flags)
 	if (r < 0)
 		return r;
 	/* TODO: Deal with EMFILE error */
-	int rfd = alloc_fd_slot();
-	vfs->fds[rfd] = fread;
-	vfs->fds_cloexec[rfd] = (flags & O_CLOEXEC) > 0;
-	int wfd = alloc_fd_slot();
-	vfs->fds[wfd] = fwrite;
-	vfs->fds_cloexec[wfd] = (flags & O_CLOEXEC) > 0;
+	int rfd = vfs_store_file(fread, (flags & O_CLOEXEC) > 0);
+	if (rfd < 0)
+	{
+		vfs_release(fread);
+		vfs_release(fwrite);
+		return rfd;
+	}
+	int wfd = vfs_store_file(fwrite, (flags & O_CLOEXEC) > 0);
+	if (wfd < 0)
+	{
+		vfs_close(rfd);
+		vfs_release(fwrite);
+		return wfd;
+	}
 	pipefd[0] = rfd;
 	pipefd[1] = wfd;
 	log_info("read fd: %d\n", rfd);
@@ -1435,17 +1447,10 @@ DEFINE_SYSCALL(faccessat, int, dirfd, const char *, pathname, int, mode, int, fl
 	return -ENOENT;
 }
 
-DEFINE_SYSCALL(socket, int, domain, int, type, int, protocol)
-{
-	log_info("socket(%d, %d, %d)\n", domain, type, protocol);
-	/* TODO */
-	return -EINVAL;
-}
-
-DEFINE_SYSCALL(poll, struct pollfd *, fds, int, nfds, int, timeout)
+DEFINE_SYSCALL(poll, struct linux_pollfd *, fds, int, nfds, int, timeout)
 {
 	log_info("poll(0x%p, %d, %d)\n", fds, nfds, timeout);
-	if (!mm_check_write(fds, nfds * sizeof(struct pollfd)))
+	if (!mm_check_write(fds, nfds * sizeof(struct linux_pollfd)))
 		return -EFAULT;
 
 	/* Count of handles to be waited on */
@@ -1469,7 +1474,7 @@ DEFINE_SYSCALL(poll, struct pollfd *, fds, int, nfds, int, timeout)
 		/* TODO: Support for regular file */
 		if (!f)
 		{
-			fds[i].revents = POLLNVAL;
+			fds[i].revents = LINUX_POLLNVAL;
 			num_result++;
 		}
 		else if (f->op_vtable->get_poll_handle)
@@ -1518,7 +1523,7 @@ DEFINE_SYSCALL(poll, struct pollfd *, fds, int, nfds, int, timeout)
 				Special case: console may be not readable even if it is signaled
 				Query the state using console_is_ready() utility function
 				*/
-				if (e == POLLIN && console_is_console_file(f))
+				if (e == LINUX_POLLIN && console_is_console_file(f))
 				{
 					if (!console_is_ready(f))
 					{
@@ -1556,16 +1561,16 @@ DEFINE_SYSCALL(select, int, nfds, struct fdset *, readfds, struct fdset *, write
 	else
 		time = -1;
 	int cnt = 0;
-	struct pollfd *fds = (struct pollfd *)alloca(sizeof(struct pollfd) * nfds);
+	struct linux_pollfd *fds = (struct linux_pollfd *)alloca(sizeof(struct linux_pollfd) * nfds);
 	for (int i = 0; i < nfds; i++)
 	{
 		int events = 0;
 		if (readfds && LINUX_FD_ISSET(i, readfds))
-			events |= POLLIN;
+			events |= LINUX_POLLIN;
 		if (writefds && LINUX_FD_ISSET(i, writefds))
-			events |= POLLOUT;
+			events |= LINUX_POLLOUT;
 		if (exceptfds && LINUX_FD_ISSET(i, exceptfds))
-			events |= POLLERR;
+			events |= LINUX_POLLERR;
 		if (events)
 		{
 			fds[cnt].fd = i;
@@ -1584,11 +1589,11 @@ DEFINE_SYSCALL(select, int, nfds, struct fdset *, readfds, struct fdset *, write
 		LINUX_FD_ZERO(nfds, exceptfds);
 	for (int i = 0; i < nfds; i++)
 	{
-		if (readfds && (fds[i].revents & POLLIN))
+		if (readfds && (fds[i].revents & LINUX_POLLIN))
 			LINUX_FD_SET(i, readfds);
-		if (writefds && (fds[i].revents & POLLOUT))
+		if (writefds && (fds[i].revents & LINUX_POLLOUT))
 			LINUX_FD_SET(i, writefds);
-		if (exceptfds && (fds[i].revents & POLLERR))
+		if (exceptfds && (fds[i].revents & LINUX_POLLERR))
 			LINUX_FD_SET(i, exceptfds);
 	}
 	return r;

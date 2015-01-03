@@ -6,7 +6,8 @@ struct utimbuf
 	long modtime;
 };
 
-#include <Windows.h>
+#define WIN32_LEAN_AND_MEAN
+#include <WinSock2.h>
 /* Defined in WinSock2.h
 struct timeval
 {

@@ -5,6 +5,7 @@
 #include <heap.h>
 #include <log.h>
 
+#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
 struct pipe_file
@@ -18,9 +19,9 @@ static HANDLE pipe_get_poll_handle(struct file *f, int **poll_flags)
 {
 	struct pipe_file *pipe = (struct pipe_file *) f;
 	if (pipe->is_read)
-		*poll_flags = POLLIN;
+		*poll_flags = LINUX_POLLIN;
 	else
-		*poll_flags = POLLOUT;
+		*poll_flags = LINUX_POLLOUT;
 	return pipe->handle;
 }
 

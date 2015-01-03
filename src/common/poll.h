@@ -1,27 +1,27 @@
 #pragma once
 
 /* These are specified by iBCS2 */
-#define POLLIN		0x0001
-#define POLLPRI		0x0002
-#define POLLOUT		0x0004
-#define POLLERR		0x0008
-#define POLLHUP		0x0010
-#define POLLNVAL	0x0020
+#define LINUX_POLLIN		0x0001
+#define LINUX_POLLPRI		0x0002
+#define LINUX_POLLOUT		0x0004
+#define LINUX_POLLERR		0x0008
+#define LINUX_POLLHUP		0x0010
+#define LINUX_POLLNVAL		0x0020
 
 /* The rest seem to be more-or-less nonstandard. Check them! */
-#define POLLRDNORM	0x0040
-#define POLLRDBAND	0x0080
-#define POLLWRNORM	0x0100
-#define POLLWRBAND	0x0200
-#define POLLMSG		0x0400
-#define POLLREMOVE	0x1000
-#define POLLRDHUP	0x2000
+#define LINUX_POLLRDNORM	0x0040
+#define LINUX_POLLRDBAND	0x0080
+#define LINUX_POLLWRNORM	0x0100
+#define LINUX_POLLWRBAND	0x0200
+#define LINUX_POLLMSG		0x0400
+#define LINUX_POLLREMOVE	0x1000
+#define LINUX_POLLRDHUP		0x2000
 
-#define POLLFREE	0x4000	/* currently only for epoll */
+#define LINUX_POLLFREE		0x4000	/* currently only for epoll */
 
-#define POLL_BUSY_LOOP	0x8000
+#define LINUX_POLL_BUSY_LOOP	0x8000
 
-struct pollfd {
+struct linux_pollfd {
 	int fd;
 	short events;
 	short revents;

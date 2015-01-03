@@ -9,6 +9,7 @@
 #include <heap.h>
 #include <str.h>
 
+#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
 #pragma comment(linker,"/entry:main")

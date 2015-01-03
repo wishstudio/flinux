@@ -6,6 +6,7 @@
 #include <heap.h>
 #include <log.h>
 
+#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
 /* TODO: UTF-8 support */
@@ -476,7 +477,7 @@ static HANDLE console_get_poll_handle(struct file *f, int **poll_flags)
 	struct console_file *console = (struct console_file *)f;
 	if (console->is_read)
 	{
-		*poll_flags = POLLIN;
+		*poll_flags = LINUX_POLLIN;
 		if (console_is_ready(f))
 			return NULL;
 		else
@@ -484,7 +485,7 @@ static HANDLE console_get_poll_handle(struct file *f, int **poll_flags)
 	}
 	else
 	{
-		*poll_flags = POLLOUT;
+		*poll_flags = LINUX_POLLOUT;
 		return console->state->out;
 	}
 }

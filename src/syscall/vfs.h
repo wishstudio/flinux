@@ -16,6 +16,7 @@
 void vfs_init();
 void vfs_reset();
 void vfs_shutdown();
+int vfs_store_file(struct file *f, int cloexec);
 
 int vfs_open(const char *pathname, int flags, int mode, struct file **f);
 void vfs_close(int fd);

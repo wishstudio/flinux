@@ -6,6 +6,7 @@
 #include <common/types.h>
 #include <common/utime.h>
 
+#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
 typedef intptr_t getdents_callback(void *buffer, uint64_t inode, const wchar_t *name, int namelen, char type, size_t size);

@@ -1,8 +1,9 @@
 #include <str.h>
 #include <vsprintf.h>
 
-#include <stdarg.h>
+#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
+#include <stdarg.h>
 
 #define BUFFER_SIZE	4096
 char buffer[BUFFER_SIZE];

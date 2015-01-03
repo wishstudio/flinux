@@ -1,5 +1,4 @@
 #pragma once
 
-#include <fs/file.h>
-
-struct file *socket_socket(int domain, int type, int protocol);
+void socket_init();
+void socket_shutdown();

@@ -6,6 +6,7 @@
 #include <platform.h>
 
 #include <stdint.h>
+#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
 extern void *mm_check_read_begin, *mm_check_read_end, *mm_check_read_fail;
