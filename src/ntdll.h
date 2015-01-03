@@ -298,3 +298,9 @@ NTSYSAPI NTSTATUS NTAPI NtDelayExecution(
 	_In_		BOOLEAN Alertable,
 	_In_		PLARGE_INTEGER DelayInterval
 	);
+
+NTSYSAPI NTSTATUS NTAPI NtQueryTimerResolution(
+	_Out_		PULONG MinimumResolution,
+	_Out_		PULONG MaximumResolution,
+	_Out_		PULONG ActualResolution
+	);

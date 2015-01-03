@@ -10,4 +10,5 @@ EXPORTS
 	NtMapViewOfSection@40
 	NtUnmapViewOfSection@8
 	NtDelayExecution@8
+	NtQueryTimerResolution@12
 	

@@ -53,7 +53,7 @@ DEFINE_SYSCALL(nanosleep, const struct timespec *, req, struct timespec *, rem)
 
 DEFINE_SYSCALL(clock_gettime, int, clk_id, struct timespec *, tp)
 {
-	log_debug("sys_clock_gettime(%d, 0x%p)\n", clk_id, tp);
+	log_info("sys_clock_gettime(%d, 0x%p)\n", clk_id, tp);
 	if (!mm_check_write(tp, sizeof(struct timespec)))
 		return -EFAULT;
 	switch (clk_id)
@@ -64,9 +64,57 @@ DEFINE_SYSCALL(clock_gettime, int, clk_id, struct timespec *, tp)
 		FILETIME system_time;
 		GetSystemTimeAsFileTime(&system_time);
 		filetime_to_unix_timespec(&system_time, tp);
+		return 0;
+	}
+	case CLOCK_MONOTONIC:
+	{
+		LARGE_INTEGER freq, counter;
+		QueryPerformanceFrequency(&freq);
+		QueryPerformanceCounter(&counter);
+		uint64_t ns = (double)counter.QuadPart / (double)freq.QuadPart;
+		tp->tv_sec = ns / NANOSECONDS_PER_SECOND;
+		tp->tv_nsec = ns % NANOSECONDS_PER_SECOND;
+		return 0;
 	}
 	default:
 		return -EINVAL;
 	}
-	return 0;
+}
+
+DEFINE_SYSCALL(clock_getres, int, clk_id, struct timespec *, res)
+{
+	log_info("clock_getres(%d, 0x%p)\n", clk_id, res);
+	if (!mm_check_write(res, sizeof(struct timespec)))
+		return -EFAULT;
+	switch (clk_id)
+	{
+	case CLOCK_REALTIME:
+	{
+		ULONG coarse, fine, actual;
+		NtQueryTimerResolution(&coarse, &fine, &actual);
+		uint64_t ns = (uint64_t)actual * NANOSECONDS_PER_TICK;
+		res->tv_sec = ns / NANOSECONDS_PER_SECOND;
+		res->tv_nsec = ns % NANOSECONDS_PER_SECOND;
+		return 0;
+	}
+	case CLOCK_MONOTONIC:
+	{
+		LARGE_INTEGER freq;
+		QueryPerformanceFrequency(&freq);
+		uint64_t ns = (double)1. / (double)freq.QuadPart;
+		if (ns == 0)
+		{
+			res->tv_sec = 0;
+			res->tv_nsec = 1;
+		}
+		else
+		{
+			res->tv_sec = ns / NANOSECONDS_PER_SECOND;
+			res->tv_nsec = ns % NANOSECONDS_PER_SECOND;
+		}
+		return 0;
+	}
+	default:
+		return -EINVAL;
+	}
 }
