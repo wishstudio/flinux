@@ -335,7 +335,8 @@ static int winfs_statfs(struct file *f, struct statfs64 *buf)
 {
 	struct winfs_file *winfile = (struct winfs_file *) f;
 	FILE_FS_FULL_SIZE_INFORMATION info;
-	NTSTATUS status = NtQueryVolumeInformationFile(winfile->handle, NULL, &info, sizeof(info), FileFsFullSizeInformation);
+	IO_STATUS_BLOCK status_block;
+	NTSTATUS status = NtQueryVolumeInformationFile(winfile->handle, &status_block, &info, sizeof(info), FileFsFullSizeInformation);
 	if (status != STATUS_SUCCESS)
 	{
 		log_warning("NtQueryVolumeInformationFile() failed, status: %x\n", status);
