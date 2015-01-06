@@ -19,7 +19,7 @@
 #define LINUX_AF_SECURITY	14		/* Security callback pseudo AF */
 #define LINUX_AF_KEY		15		/* PF_KEY key management API */
 #define LINUX_AF_NETLINK	16
-#define LINUX_AF_ROUTE		AF_NETLINK /* Alias to emulate 4.4BSD */
+#define LINUX_AF_ROUTE		LINUX_AF_NETLINK /* Alias to emulate 4.4BSD */
 #define LINUX_AF_PACKET		17		/* Packet family                */
 #define LINUX_AF_ASH		18		/* Ash                          */
 #define LINUX_AF_ECONET		19		/* Acorn Econet                 */
@@ -46,8 +46,8 @@
 #define LINUX_AF_MAX		41		/* For now.. */
 
 /* Socket types */
-#define LINUX_SOCK_DGRAM		1
-#define LINUX_SOCK_STREAM		2
+#define LINUX_SOCK_STREAM		1
+#define LINUX_SOCK_DGRAM		2
 #define LINUX_SOCK_RAW			3
 #define LINUX_SOCK_RDM			4
 #define LINUX_SOCK_SEQPACKET	5

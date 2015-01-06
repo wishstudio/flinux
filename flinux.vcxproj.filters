@@ -178,6 +178,15 @@
     <ClInclude Include="src\common\statfs.h">
       <Filter>common</Filter>
     </ClInclude>
+    <ClInclude Include="src\common\net.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="src\common\socket.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="src\common\fs.h">
+      <Filter>common</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />

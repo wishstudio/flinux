@@ -48,8 +48,8 @@ void socket_shutdown()
 
 struct socket_file
 {
-	SOCKET socket;
 	struct file base_file;
+	SOCKET socket;
 };
 
 static int socket_close(struct file *f)
@@ -75,7 +75,6 @@ static int translate_socket_error(int error)
 	case WSAEINVAL: return -EINVAL;
 	case WSAEMFILE: return -EMFILE;
 	case WSAEWOULDBLOCK: return -EWOULDBLOCK;
-	case WSAEINPROGRESS: return -EINPROGRESS;
 	case WSAEALREADY: return -EALREADY;
 	case WSAENOTSOCK: return -ENOTSOCK;
 	case WSAEDESTADDRREQ: return -EDESTADDRREQ;
@@ -109,6 +108,17 @@ static int translate_socket_error(int error)
 		log_error("Unhandled WSA error code: %d\n", error);
 		return -EIO;
 	}
+}
+
+static int get_sockfd(int fd, struct socket_file **sock)
+{
+	struct file *f = vfs_get(fd);
+	if (!f)
+		return -EBADF;
+	if (f->op_vtable != &socket_ops)
+		return -ENOTSOCK;
+	*sock = (struct socket_file *)f;
+	return 0;
 }
 
 DEFINE_SYSCALL(socket, int, domain, int, type, int, protocol)
@@ -165,15 +175,41 @@ DEFINE_SYSCALL(socket, int, domain, int, type, int, protocol)
 		}
 	}
 
-	struct socket_file *f = (struct file *) kmalloc(sizeof(struct socket_file));
+	struct socket_file *f = (struct socket_file *) kmalloc(sizeof(struct socket_file));
 	f->base_file.op_vtable = &socket_ops;
 	f->base_file.ref = 1;
 	f->socket = sock;
 	
-	int fd = vfs_store_file(f, (type & O_CLOEXEC) > 0);
+	int fd = vfs_store_file((struct file *)f, (type & O_CLOEXEC) > 0);
 	if (fd < 0)
-		vfs_release(f);
+		vfs_release((struct file *)f);
+	log_info("socket fd: %d\n", fd);
 	return fd;
+}
+
+DEFINE_SYSCALL(connect, int, sockfd, const struct sockaddr *, addr, size_t, addrlen)
+{
+	log_info("connect(%d, %p, %d)\n", sockfd, addr, addrlen);
+	if (!mm_check_read(addr, sizeof(struct sockaddr)))
+		return -EFAULT;
+	struct socket_file *f;
+	int r = get_sockfd(sockfd, &f);
+	if (r)
+		return r;
+	/* WinSock2 sockaddr struct is compatible with the Linux one */
+	r = connect(f->socket, addr, addrlen);
+	if (r)
+	{
+		int e = WSAGetLastError();
+		if (e == WSAEWOULDBLOCK)
+		{
+			log_info("connect() returned EINPROGRESS.\n");
+			return -EINPROGRESS;
+		}
+		log_warning("connect() failed, error code: %d\n", WSAGetLastError());
+		return translate_socket_error(WSAGetLastError());
+	}
+	return 0;
 }
 
 /* Argument list sizes for sys_socketcall */
@@ -196,10 +232,13 @@ DEFINE_SYSCALL(socketcall, int, call, uintptr_t *, args)
 	case SYS_SOCKET:
 		return sys_socket(args[0], args[1], args[2]);
 
+	case SYS_CONNECT:
+		return sys_connect(args[0], (const struct sockaddr *)args[1], args[2]);
+
 	default:
 	{
 		log_error("Unimplemented socketcall: %d\n", call);
-		return -ENOSYS;
+		return -EINVAL;
 	}
 	}
 }
