@@ -50,18 +50,93 @@ struct socket_file
 {
 	struct file base_file;
 	SOCKET socket;
+	HANDLE event_handle;
 };
+
+static HANDLE socket_get_poll_handle(struct file *f, int *poll_events)
+{
+	struct socket_file *socket_file = (struct socket_file *) f;
+	WSANETWORKEVENTS events;
+	WSAEnumNetworkEvents(socket_file->socket, NULL, &events);
+	*poll_events = 0;
+	if ((events.lNetworkEvents & FD_READ) > 0)
+	{
+		if (events.iErrorCode[FD_READ_BIT])
+		{
+			*poll_events = LINUX_POLLERR;
+			return NULL;
+		}
+		*poll_events |= LINUX_POLLIN;
+	}
+	if ((events.lNetworkEvents & FD_ACCEPT) > 0)
+	{
+		if (events.iErrorCode[FD_ACCEPT_BIT])
+		{
+			*poll_events = LINUX_POLLERR;
+			return NULL;
+		}
+		*poll_events |= LINUX_POLLIN;
+	}
+	if ((events.lNetworkEvents & FD_WRITE) > 0)
+	{
+		if (events.iErrorCode[FD_WRITE_BIT])
+		{
+			*poll_events = LINUX_POLLERR;
+			return NULL;
+		}
+		*poll_events |= LINUX_POLLOUT;
+	}
+	if ((events.lNetworkEvents & FD_CONNECT) > 0)
+	{
+		if (events.iErrorCode[FD_CONNECT_BIT])
+		{
+			*poll_events = LINUX_POLLERR;
+			return NULL;
+		}
+		*poll_events |= LINUX_POLLOUT;
+	}
+	if (*poll_events)
+		return NULL;
+
+	*poll_events = LINUX_POLLIN | LINUX_POLLOUT | LINUX_POLLERR;
+	return socket_file->event_handle;
+}
 
 static int socket_close(struct file *f)
 {
-	kfree(f, sizeof(struct socket_file));
+	struct socket_file *socket_file = (struct socket_file *) f;
+	closesocket(socket_file->socket);
+	CloseHandle(socket_file->event_handle);
+	kfree(socket_file, sizeof(struct socket_file));
 	return 0;
 }
 
 struct file_ops socket_ops =
 {
+	.get_poll_handle = socket_get_poll_handle,
 	.close = socket_close,
 };
+
+static HANDLE init_socket_event(int sock)
+{
+	SECURITY_ATTRIBUTES attr;
+	attr.nLength = sizeof(SECURITY_ATTRIBUTES);
+	attr.lpSecurityDescriptor = NULL;
+	attr.bInheritHandle = TRUE;
+	HANDLE handle = CreateEventW(&attr, FALSE, FALSE, NULL);
+	if (handle == NULL)
+	{
+		log_error("CreateEventW() failed, error code: %d\n", GetLastError());
+		return NULL;
+	}
+	if (WSAEventSelect(sock, handle, FD_READ | FD_WRITE | FD_ACCEPT | FD_CONNECT) == SOCKET_ERROR)
+	{
+		log_error("WSAEventSelect() failed, error code: %d\n", WSAGetLastError());
+		CloseHandle(handle);
+		return NULL;
+	}
+	return handle;
+}
 
 static int translate_socket_error(int error)
 {
@@ -174,11 +249,19 @@ DEFINE_SYSCALL(socket, int, domain, int, type, int, protocol)
 			return translate_socket_error(WSAGetLastError());
 		}
 	}
+	HANDLE event_handle = init_socket_event(sock);
+	if (!event_handle)
+	{
+		closesocket(sock);
+		log_error("init_socket_event() failed.\n");
+		return -ENFILE;
+	}
 
 	struct socket_file *f = (struct socket_file *) kmalloc(sizeof(struct socket_file));
 	f->base_file.op_vtable = &socket_ops;
 	f->base_file.ref = 1;
 	f->socket = sock;
+	f->event_handle = event_handle;
 	
 	int fd = vfs_store_file((struct file *)f, (type & O_CLOEXEC) > 0);
 	if (fd < 0)

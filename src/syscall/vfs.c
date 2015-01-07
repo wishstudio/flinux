@@ -1481,7 +1481,7 @@ DEFINE_SYSCALL(poll, struct linux_pollfd *, fds, int, nfds, int, timeout)
 		{
 			int e;
 			HANDLE handle = f->op_vtable->get_poll_handle(f, &e);
-			if (fds[i].events & e != 0)
+			if ((fds[i].events & e) > 0)
 			{
 				if (!handle)
 				{
