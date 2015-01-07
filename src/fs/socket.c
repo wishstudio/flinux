@@ -383,6 +383,31 @@ DEFINE_SYSCALL(send, int, sockfd, const void *, buf, size_t, len, int, flags)
 	return r;
 }
 
+DEFINE_SYSCALL(recv, int, sockfd, void *, buf, size_t, len, int, flags)
+{
+	log_info("recv(%d, %p, %d, %x)\n", sockfd, buf, len, flags);
+	if (!mm_check_write(buf, len))
+		return -EFAULT;
+	if (flags)
+		log_error("flags (0x%x) ignored.\n", flags);
+	struct socket_file *f;
+	int r = get_sockfd(sockfd, &f);
+	if (r)
+		return r;
+	if ((f->flags & O_NONBLOCK) == 0)
+	{
+		/* TODO */
+		__debugbreak();
+	}
+	r = recv(f->socket, buf, len, 0);
+	if (r == SOCKET_ERROR)
+	{
+		log_warning("recv() faield, error code: %d\n", WSAGetLastError());
+		return translate_socket_error(WSAGetLastError());
+	}
+	return r;
+}
+
 DEFINE_SYSCALL(sendto, int, sockfd, const void *, buf, size_t, len, int, flags, const struct sockaddr *, dest_addr, int, addrlen)
 {
 	log_info("sendto(%d, %p, %d, %x, %p, %d)\n", sockfd, buf, len, flags, dest_addr, addrlen);
@@ -405,6 +430,38 @@ DEFINE_SYSCALL(sendto, int, sockfd, const void *, buf, size_t, len, int, flags, 
 	if (r == SOCKET_ERROR)
 	{
 		log_warning("sendto() failed, error code: %d\n", WSAGetLastError());
+		return translate_socket_error(WSAGetLastError());
+	}
+	return r;
+}
+
+DEFINE_SYSCALL(recvfrom, int, sockfd, void *, buf, size_t, len, int, flags, struct sockaddr *, src_addr, int *, addrlen)
+{
+	log_info("recvfrom(%d, %p, %d, %x, %p, %p)\n", sockfd, buf, len, flags, src_addr, addrlen);
+	if (!mm_check_write(buf, len))
+		return -EFAULT;
+	if (src_addr)
+	{
+		if (!mm_check_write(addrlen, sizeof(*addrlen)))
+			return -EFAULT;
+		if (!mm_check_write(src_addr, *addrlen))
+			return -EFAULT;
+	}
+	if (flags)
+		log_error("flags (0x%x) ignored.\n", flags);
+	struct socket_file *f;
+	int r = get_sockfd(sockfd, &f);
+	if (r)
+		return r;
+	if ((f->flags & O_NONBLOCK) == 0)
+	{
+		/* TODO */
+		__debugbreak();
+	}
+	r = recvfrom(f->socket, buf, len, 0, src_addr, addrlen);
+	if (r == SOCKET_ERROR)
+	{
+		log_warning("recvfrom() faield, error code: %d\n", WSAGetLastError());
 		return translate_socket_error(WSAGetLastError());
 	}
 	return r;
@@ -448,8 +505,14 @@ DEFINE_SYSCALL(socketcall, int, call, uintptr_t *, args)
 	case SYS_SEND:
 		return sys_send(args[0], (const void *)args[1], args[2], args[3]);
 
+	case SYS_RECV:
+		return sys_recv(args[0], (void *)args[1], args[2], args[3]);
+
 	case SYS_SENDTO:
 		return sys_sendto(args[0], (const void *)args[1], args[2], args[3], (const struct sockaddr *)args[4], args[5]);
+		
+	case SYS_RECVFROM:
+		return sys_recvfrom(args[0], (void *)args[1], args[2], args[3], (struct sockaddr *)args[4], (int *)args[5]);
 
 	case SYS_SENDMSG:
 		return sys_sendmsg(args[0], (const struct msghdr *)args[1], args[2]);
