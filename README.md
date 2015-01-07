@@ -16,7 +16,6 @@ Feature highlights
 * Emulated symlink
 * Interprocess pipes
 * vt100 terminal emulation on Win32 console
-* Small footprint (flinux executable < 100k)
 
 Implemenation details
 ======
