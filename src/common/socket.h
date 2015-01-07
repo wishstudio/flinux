@@ -1,5 +1,8 @@
 #pragma once
 
+#include <common/types.h>
+#include <common/uio.h>
+
 /* Supported address families. */
 #define LINUX_AF_UNSPEC		0
 #define LINUX_AF_UNIX		1		/* Unix domain sockets          */
@@ -56,3 +59,19 @@
 
 #define LINUX_SOCK_MAX	(LINUX_SOCK_PACKET + 1)
 #define LINUX_SOCK_TYPE_MASK	0xf
+
+struct msghdr {
+	void *msg_name;			/* ptr to socket address structure */
+	int msg_namelen;		/* size of socket address structure */
+	struct iovec *msg_iov;	/* scatter/gather array */
+	size_t msg_iovlen;		/* # elements in msg_iov */
+	void *msg_control;		/* ancillary data */
+	size_t msg_controllen;	/* ancillary data buffer length */
+	unsigned int msg_flags;	/* flags on received message */
+};
+
+/* For recvmmsg/sendmmsg */
+struct mmsghdr {
+	struct msghdr msg_hdr;
+	unsigned int msg_len;
+};
