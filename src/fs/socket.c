@@ -358,6 +358,58 @@ DEFINE_SYSCALL(connect, int, sockfd, const struct sockaddr *, addr, size_t, addr
 	return 0;
 }
 
+DEFINE_SYSCALL(send, int, sockfd, const void *, buf, size_t, len, int, flags)
+{
+	log_info("send(%d, %p, %d, %x)\n", sockfd, buf, len, flags);
+	if (!mm_check_read(buf, len))
+		return -EFAULT;
+	if (flags)
+		log_error("flags (0x%x) ignored.\n", flags);
+	struct socket_file *f;
+	int r = get_sockfd(sockfd, &f);
+	if (r)
+		return r;
+	if ((f->flags & O_NONBLOCK) == 0)
+	{
+		/* TODO */
+		__debugbreak();
+	}
+	r = send(f->socket, buf, len, 0);
+	if (r == SOCKET_ERROR)
+	{
+		log_warning("send() failed, error code: %d\n", WSAGetLastError());
+		return translate_socket_error(WSAGetLastError());
+	}
+	return r;
+}
+
+DEFINE_SYSCALL(sendto, int, sockfd, const void *, buf, size_t, len, int, flags, const struct sockaddr *, dest_addr, int, addrlen)
+{
+	log_info("sendto(%d, %p, %d, %x, %p, %d)\n", sockfd, buf, len, flags, dest_addr, addrlen);
+	if (!mm_check_read(buf, len))
+		return -EFAULT;
+	if (dest_addr && !mm_check_read(dest_addr, addrlen))
+		return -EFAULT;
+	if (flags)
+		log_error("flags (0x%x) ignored.\n", flags);
+	struct socket_file *f;
+	int r = get_sockfd(sockfd, &f);
+	if (r)
+		return r;
+	if ((f->flags & O_NONBLOCK) == 0)
+	{
+		/* TODO */
+		__debugbreak();
+	}
+	r = sendto(f->socket, buf, len, 0, dest_addr, addrlen);
+	if (r == SOCKET_ERROR)
+	{
+		log_warning("sendto() failed, error code: %d\n", WSAGetLastError());
+		return translate_socket_error(WSAGetLastError());
+	}
+	return r;
+}
+
 DEFINE_SYSCALL(sendmsg, int, sockfd, const struct msghdr *, msg, int, flags)
 {
 	log_info("sendmsg(%d, %p)\n", sockfd, msg);
@@ -392,6 +444,12 @@ DEFINE_SYSCALL(socketcall, int, call, uintptr_t *, args)
 
 	case SYS_CONNECT:
 		return sys_connect(args[0], (const struct sockaddr *)args[1], args[2]);
+
+	case SYS_SEND:
+		return sys_send(args[0], (const void *)args[1], args[2], args[3]);
+
+	case SYS_SENDTO:
+		return sys_sendto(args[0], (const void *)args[1], args[2], args[3], (const struct sockaddr *)args[4], args[5]);
 
 	case SYS_SENDMSG:
 		return sys_sendmsg(args[0], (const struct msghdr *)args[1], args[2]);

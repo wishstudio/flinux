@@ -60,6 +60,29 @@
 #define LINUX_SOCK_MAX	(LINUX_SOCK_PACKET + 1)
 #define LINUX_SOCK_TYPE_MASK	0xf
 
+/* Flags to be used with send and recv */
+#define LINUX_MSG_OOB				1
+#define LINUX_MSG_PEEK				2
+#define LINUX_MSG_DONTROUTE			4
+#define LINUX_MSG_TRYHARD			4		/* Synonym for MSG_DONTROUTE for DECnet */
+#define LINUX_MSG_CTRUNC			8
+#define LINUX_MSG_PROBE				0x10	/* Do not send. Only probe path f.e. for MTU */
+#define LINUX_MSG_TRUNC				0x20
+#define LINUX_MSG_DONTWAIT			0x40	/* Nonblocking io                */
+#define LINUX_MSG_EOR				0x80	/* End of record */
+#define LINUX_MSG_WAITALL			0x100	/* Wait for a full request */
+#define LINUX_MSG_FIN				0x200
+#define LINUX_MSG_SYN				0x400
+#define LINUX_MSG_CONFIRM			0x800	/* Confirm path validity */
+#define LINUX_MSG_RST				0x1000
+#define LINUX_MSG_ERRQUEUE			0x2000	/* Fetch message from error queue */
+#define LINUX_MSG_NOSIGNAL			0x4000	/* Do not generate SIGPIPE */
+#define LINUX_MSG_MORE				0x8000	/* Sender will send more */
+#define LINUX_MSG_WAITFORONE		0x10000	/* recvmmsg(): block until 1+ packets avail */
+#define LINUX_MSG_SENDPAGE_NOTLAST	0x20000	/* sendpage() internal : not the last page */
+#define LINUX_MSG_FASTOPEN			0x20000000 /* Send data in TCP SYN */
+#define LINUX_MSG_CMSG_CLOEXEC		0x40000000 /* Set close_on_exec for file descriptor received through SCM_RIGHTS */
+
 struct msghdr {
 	void *msg_name;			/* ptr to socket address structure */
 	int msg_namelen;		/* size of socket address structure */
