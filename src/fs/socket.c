@@ -160,6 +160,18 @@ static HANDLE socket_get_poll_handle(struct file *f, int *poll_events)
 	return socket_file->event_handle;
 }
 
+static int socket_blocking_wait(struct socket_file *f, int event_bit)
+{
+	do
+	{
+		WaitForSingleObject(f->event_handle, INFINITE);
+		WSANETWORKEVENTS events;
+		WSAEnumNetworkEvents(f->socket, f->event_handle, &events);
+		if ((events.lNetworkEvents & (1 << event_bit)) > 0)
+			return events.iErrorCode[event_bit];
+	} while (1);
+}
+
 static int socket_sendmsg(struct socket_file *f, const struct msghdr *msg, int flags)
 {
 	if (flags)
@@ -335,8 +347,7 @@ DEFINE_SYSCALL(connect, int, sockfd, const struct sockaddr *, addr, size_t, addr
 	if (r)
 		return r;
 	/* WinSock2 sockaddr struct is compatible with the Linux one */
-	r = connect(f->socket, addr, addrlen);
-	if (r)
+	if (connect(f->socket, addr, addrlen) == SOCKET_ERROR)
 	{
 		int e = WSAGetLastError();
 		if (e == WSAEWOULDBLOCK)
@@ -347,12 +358,47 @@ DEFINE_SYSCALL(connect, int, sockfd, const struct sockaddr *, addr, size_t, addr
 				return -EINPROGRESS;
 			}
 			else
-			{
-				/* TODO */
-				__debugbreak();
-			}
+				return socket_blocking_wait(f, FD_CONNECT_BIT);
 		}
 		log_warning("connect() failed, error code: %d\n", WSAGetLastError());
+		return translate_socket_error(WSAGetLastError());
+	}
+	return 0;
+}
+
+DEFINE_SYSCALL(getsockname, int, sockfd, struct sockaddr *, addr, int *, addrlen)
+{
+	log_info("getsockname(%d, %p, %p)\n", sockfd, addr, addrlen);
+	if (!mm_check_write(addrlen, sizeof(*addrlen)))
+		return -EFAULT;
+	if (!mm_check_write(addr, *addrlen))
+		return -EFAULT;
+	struct socket_file *f;
+	int r = get_sockfd(sockfd, &f);
+	if (r)
+		return r;
+	if (getsockname(f->socket, addr, addrlen) == SOCKET_ERROR)
+	{
+		log_warning("getsockname() failed, error code: %d\n", WSAGetLastError());
+		return translate_socket_error(WSAGetLastError());
+	}
+	return 0;
+}
+
+DEFINE_SYSCALL(getpeername, int, sockfd, struct sockaddr *, addr, int *, addrlen)
+{
+	log_info("getpeername(%d, %p, %p)\n", sockfd, addr, addrlen);
+	if (!mm_check_write(addrlen, sizeof(*addrlen)))
+		return -EFAULT;
+	if (!mm_check_write(addr, *addrlen))
+		return -EFAULT;
+	struct socket_file *f;
+	int r = get_sockfd(sockfd, &f);
+	if (r)
+		return r;
+	if (getpeername(f->socket, addr, addrlen) == SOCKET_ERROR)
+	{
+		log_warning("getsockname() failed, error code: %d\n", WSAGetLastError());
 		return translate_socket_error(WSAGetLastError());
 	}
 	return 0;
@@ -501,6 +547,12 @@ DEFINE_SYSCALL(socketcall, int, call, uintptr_t *, args)
 
 	case SYS_CONNECT:
 		return sys_connect(args[0], (const struct sockaddr *)args[1], args[2]);
+
+	case SYS_GETSOCKNAME:
+		return sys_getsockname(args[0], (struct sockaddr *)args[1], (int *)args[2]);
+
+	case SYS_GETPEERNAME:
+		return sys_getpeername(args[0], (struct sockaddr *)args[1], (int *)args[2]);
 
 	case SYS_SEND:
 		return sys_send(args[0], (const void *)args[1], args[2], args[3]);
