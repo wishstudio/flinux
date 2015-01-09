@@ -1,4 +1,5 @@
 #include <common/errno.h>
+#include <common/fadvise.h>
 #include <common/fcntl.h>
 #include <fs/console.h>
 #include <fs/devfs.h>
@@ -1270,6 +1271,32 @@ DEFINE_SYSCALL(statfs64, const char *, pathname, size_t, sz, struct statfs64 *, 
 	if (!mm_check_write(buf, sizeof(struct statfs64)))
 		return -EFAULT;
 	return vfs_statfs(pathname, buf);
+}
+
+DEFINE_SYSCALL(fadvise64_64, int, fd, loff_t, offset, loff_t, len, int, advice)
+{
+	log_info("fadvise64_64(%d, %lld, %lld, %d)\n", fd, offset, len, advice);
+	/* It seems windows does not support any of the fadvise semantics
+	 * We simply check the validity of parameters and return
+	 */
+	if (!vfs->fds[fd])
+		return -EBADF;
+	switch (advice)
+	{
+	case POSIX_FADV_NORMAL:
+	case POSIX_FADV_RANDOM:
+	case POSIX_FADV_SEQUENTIAL:
+	case POSIX_FADV_WILLNEED:
+	case POSIX_FADV_DONTNEED:
+	case POSIX_FADV_NOREUSE:
+		return 0;
+	}
+	return -EINVAL;
+}
+
+DEFINE_SYSCALL(fadvise64, int, fd, loff_t, offset, size_t, len, int, advice)
+{
+	return sys_fadvise64_64(fd, offset, len, advice);
 }
 
 DEFINE_SYSCALL(ioctl, int, fd, unsigned int, cmd, unsigned long, arg)

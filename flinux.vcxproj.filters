@@ -187,6 +187,9 @@
     <ClInclude Include="src\common\fs.h">
       <Filter>common</Filter>
     </ClInclude>
+    <ClInclude Include="src\common\fadvise.h">
+      <Filter>common</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />

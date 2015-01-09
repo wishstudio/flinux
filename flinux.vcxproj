@@ -23,6 +23,7 @@
     <ClInclude Include="src\binfmt\elf.h" />
     <ClInclude Include="src\common\auxvec.h" />
     <ClInclude Include="src\common\dirent.h" />
+    <ClInclude Include="src\common\fadvise.h" />
     <ClInclude Include="src\common\fcntl.h" />
     <ClInclude Include="src\common\fs.h" />
     <ClInclude Include="src\common\futex.h" />
