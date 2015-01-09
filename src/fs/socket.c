@@ -534,6 +534,41 @@ DEFINE_SYSCALL(sendmsg, int, sockfd, const struct msghdr *, msg, int, flags)
 	return socket_sendmsg(f, msg, flags);
 }
 
+DEFINE_SYSCALL(sendmmsg, int, sockfd, struct mmsghdr *, msgvec, unsigned int, vlen, unsigned int, flags)
+{
+	log_info("sendmmsg(sockfd=%d, msgvec=%p, vlen=%d, flags=%d)\n", sockfd, msgvec, vlen, flags);
+	if (!mm_check_write(msgvec, sizeof(struct mmsghdr) * vlen))
+		return -EFAULT;
+	for (int i = 0; i < vlen; i++)
+	{
+		log_info("msgvec %d:\n", i);
+		if (!mm_check_read_msghdr(&msgvec[i].msg_hdr))
+			return -EFAULT;
+	}
+	struct socket_file *f;
+	int r = get_sockfd(sockfd, &f);
+	if (r)
+		return r;
+	/* Windows have no native sendmmsg(), we emulate it by sending msgvec one by one */
+	for (int i = 0; i < vlen; i++)
+	{
+		int len = socket_sendmsg(f, &msgvec[i].msg_hdr, flags);
+		if (i == 0 && len < 0)
+			return len;
+		if (i == 0 && len == 0)
+			return -EWOULDBLOCK;
+		if (len <= 0)
+			return i;
+		msgvec[i].msg_len = len;
+		int total = 0;
+		for (int j = 0; j < msgvec[i].msg_hdr.msg_iovlen; j++)
+			total += msgvec[i].msg_hdr.msg_iov[j].iov_len;
+		if (len < total)
+			return i + 1;
+	}
+	return vlen;
+}
+
 /* Argument list sizes for sys_socketcall */
 #define AL(x) ((x) * sizeof(uintptr_t))
 static const unsigned char nargs[21] = {
@@ -578,45 +613,13 @@ DEFINE_SYSCALL(socketcall, int, call, uintptr_t *, args)
 	case SYS_SENDMSG:
 		return sys_sendmsg(args[0], (const struct msghdr *)args[1], args[2]);
 
+	case SYS_SENDMMSG:
+		return sys_sendmmsg(args[0], (struct mmsghdr *)args[1], args[2], args[3]);
+
 	default:
 	{
 		log_error("Unimplemented socketcall: %d\n", call);
 		return -EINVAL;
 	}
 	}
-}
-
-DEFINE_SYSCALL(sendmmsg, int, sockfd, struct mmsghdr *, msgvec, unsigned int, vlen, unsigned int, flags)
-{
-	log_info("sendmmsg(sockfd=%d, msgvec=%p, vlen=%d, flags=%d)\n", sockfd, msgvec, vlen, flags);
-	if (!mm_check_write(msgvec, sizeof(struct mmsghdr) * vlen))
-		return -EFAULT;
-	for (int i = 0; i < vlen; i++)
-	{
-		log_info("msgvec %d:\n", i);
-		if (!mm_check_read_msghdr(&msgvec[i].msg_hdr))
-			return -EFAULT;
-	}
-	struct socket_file *f;
-	int r = get_sockfd(sockfd, &f);
-	if (r)
-		return r;
-	/* Windows have no native sendmmsg(), we emulate it by sending msgvec one by one */
-	for (int i = 0; i < vlen; i++)
-	{
-		int len = socket_sendmsg(f, &msgvec[i].msg_hdr, flags);
-		if (i == 0 && len < 0)
-			return len;
-		if (i == 0 && len == 0)
-			return -EWOULDBLOCK;
-		if (len <= 0)
-			return i;
-		msgvec[i].msg_len = len;
-		int total = 0;
-		for (int j = 0; j < msgvec[i].msg_hdr.msg_iovlen; j++)
-			total += msgvec[i].msg_hdr.msg_iov[j].iov_len;
-		if (len < total)
-			return i + 1;
-	}
-	return vlen;
 }
