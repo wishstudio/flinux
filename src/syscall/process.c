@@ -319,6 +319,13 @@ DEFINE_SYSCALL(getrusage, int, who, struct rusage *, usage)
 	}
 }
 
+DEFINE_SYSCALL(prctl, int, option, uintptr_t, arg2, uintptr_t, arg3, uintptr_t, arg4, uintptr_t, arg5)
+{
+	log_info("prctl(%d)\n", option);
+	log_error("prctl() not implemented.\n");
+	return -ENOSYS;
+}
+
 DEFINE_SYSCALL(prlimit64, pid_t, pid, int, resource, const struct rlimit64 *, new_limit, struct rlimit64 *, old_limit)
 {
 	log_info("prlimit64(pid=%d, resource=%d, new_limit=%p, old_limit=%p\n", pid, resource, new_limit, old_limit);
