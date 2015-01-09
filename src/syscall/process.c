@@ -305,6 +305,20 @@ DEFINE_SYSCALL(setrlimit, int, resource, const struct rlimit *, rlim)
 	}
 }
 
+DEFINE_SYSCALL(getrusage, int, who, struct rusage *, usage)
+{
+	log_info("getrusage(%d, %p)\n", who, usage);
+	if (!mm_check_write(usage, sizeof(struct rusage)))
+		return -EFAULT;
+	ZeroMemory(usage, sizeof(struct rusage));
+	switch (who)
+	{
+	default:
+		log_error("Unhandled who: %d.\n", who);
+		return -EINVAL;
+	}
+}
+
 DEFINE_SYSCALL(prlimit64, pid_t, pid, int, resource, const struct rlimit64 *, new_limit, struct rlimit64 *, old_limit)
 {
 	log_info("prlimit64(pid=%d, resource=%d, new_limit=%p, old_limit=%p\n", pid, resource, new_limit, old_limit);
