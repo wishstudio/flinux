@@ -154,6 +154,7 @@ static int socket_get_poll_status(struct file *f)
 static HANDLE socket_get_poll_handle(struct file *f, int *poll_events)
 {
 	struct socket_file *socket_file = (struct socket_file *) f;
+	*poll_events = LINUX_POLLIN | LINUX_POLLOUT;
 	return socket_file->event_handle;
 }
 
@@ -170,10 +171,31 @@ static int socket_wait_event(struct socket_file *f, int event, int flags)
 	} while (1);
 }
 
+static int socket_sendto(struct socket_file *f, const void *buf, size_t len, int flags, const struct sockaddr *dest_addr, int addrlen)
+{
+	if (flags & ~LINUX_MSG_DONTWAIT)
+		log_error("flags (0x%x) contains unsupported bits.\n", flags);
+	int r;
+	while ((r = socket_wait_event(f, FD_WRITE, flags)) == 0)
+	{
+		r = sendto(f->socket, buf, len, 0, dest_addr, addrlen);
+		if (r != SOCKET_ERROR)
+			break;
+		int err = WSAGetLastError();
+		if (err != WSAEWOULDBLOCK)
+		{
+			log_warning("sendto() failed, error code: %d\n", err);
+			return translate_socket_error(err);
+		}
+		f->events &= ~FD_WRITE;
+	}
+	return r;
+}
+
 static int socket_sendmsg(struct socket_file *f, const struct msghdr *msg, int flags)
 {
-	if (flags)
-		log_error("socket_sendmsg(): flags (0x%x) ignored.\n", flags);
+	if (flags & ~LINUX_MSG_DONTWAIT)
+		log_error("socket_sendmsg(): flags (0x%x) contains unsupported bits.\n", flags);
 	WSABUF *buffers = (WSABUF *)alloca(sizeof(struct iovec) * msg->msg_iovlen);
 	for (int i = 0; i < msg->msg_iovlen; i++)
 	{
@@ -205,6 +227,28 @@ static int socket_sendmsg(struct socket_file *f, const struct msghdr *msg, int f
 	return r;
 }
 
+static int socket_recvfrom(struct socket_file *f, void *buf, size_t len, int flags, struct sockaddr *src_addr, int addrlen)
+{
+	if (flags & ~(LINUX_MSG_PEEK | LINUX_MSG_DONTWAIT))
+		log_error("flags (0x%x) contains unsupported bits.\n", flags);
+	int r;
+	while ((r = socket_wait_event(f, FD_READ, flags)) == 0)
+	{
+		if (!(flags & LINUX_MSG_PEEK))
+			f->events &= ~FD_READ;
+		r = recvfrom(f->socket, buf, len, flags, src_addr, addrlen);
+		if (r != SOCKET_ERROR)
+			break;
+		int err = WSAGetLastError();
+		if (err != WSAEWOULDBLOCK)
+		{
+			log_warning("recvfrom() failed, error code: %d\n", err);
+			return translate_socket_error(err);
+		}
+	}
+	return r;
+}
+
 static int socket_close(struct file *f)
 {
 	struct socket_file *socket_file = (struct socket_file *) f;
@@ -214,11 +258,25 @@ static int socket_close(struct file *f)
 	return 0;
 }
 
+static size_t socket_read(struct file *f, char *buf, size_t count)
+{
+	struct socket_file *socket_file = (struct socket_file *) f;
+	return socket_recvfrom(socket_file, buf, count, 0, NULL, 0);
+}
+
+static size_t socket_write(struct file *f, const char *buf, size_t count)
+{
+	struct socket_file *socket_file = (struct socket_file *) f;
+	return socket_sendto(socket_file, buf, count, 0, NULL, 0);
+}
+
 struct file_ops socket_ops =
 {
 	.get_poll_status = socket_get_poll_status,
 	.get_poll_handle = socket_get_poll_handle,
 	.close = socket_close,
+	.read = socket_read,
+	.write = socket_write,
 };
 
 static HANDLE init_socket_event(int sock)
@@ -412,26 +470,11 @@ DEFINE_SYSCALL(send, int, sockfd, const void *, buf, size_t, len, int, flags)
 	log_info("send(%d, %p, %d, %x)\n", sockfd, buf, len, flags);
 	if (!mm_check_read(buf, len))
 		return -EFAULT;
-	if (flags)
-		log_error("flags (0x%x) ignored.\n", flags);
 	struct socket_file *f;
 	int r = get_sockfd(sockfd, &f);
 	if (r)
 		return r;
-	while ((r = socket_wait_event(f, FD_WRITE, flags)) == 0)
-	{
-		r = send(f->socket, buf, len, 0);
-		if (r != SOCKET_ERROR)
-			break;
-		int err = WSAGetLastError();
-		if (err != WSAEWOULDBLOCK)
-		{
-			log_warning("send() failed, error code: %d\n", err);
-			return translate_socket_error(err);
-		}
-		f->events &= ~FD_WRITE;
-	}
-	return r;
+	return socket_sendto(f, buf, len, flags, NULL, 0);
 }
 
 DEFINE_SYSCALL(recv, int, sockfd, void *, buf, size_t, len, int, flags)
@@ -439,26 +482,11 @@ DEFINE_SYSCALL(recv, int, sockfd, void *, buf, size_t, len, int, flags)
 	log_info("recv(%d, %p, %d, %x)\n", sockfd, buf, len, flags);
 	if (!mm_check_write(buf, len))
 		return -EFAULT;
-	if (flags)
-		log_error("flags (0x%x) ignored.\n", flags);
 	struct socket_file *f;
 	int r = get_sockfd(sockfd, &f);
 	if (r)
 		return r;
-	while ((r = socket_wait_event(f, FD_READ, flags)) == 0)
-	{
-		f->events &= ~FD_READ;
-		r = recv(f->socket, buf, len, 0);
-		if (r != SOCKET_ERROR)
-			break;
-		int err = WSAGetLastError();
-		if (err != WSAEWOULDBLOCK)
-		{
-			log_warning("recv() failed, error code: %d\n", err);
-			return translate_socket_error(err);
-		}
-	}
-	return r;
+	return socket_recvfrom(f, buf, len, flags, NULL, 0);
 }
 
 DEFINE_SYSCALL(sendto, int, sockfd, const void *, buf, size_t, len, int, flags, const struct sockaddr *, dest_addr, int, addrlen)
@@ -468,26 +496,11 @@ DEFINE_SYSCALL(sendto, int, sockfd, const void *, buf, size_t, len, int, flags, 
 		return -EFAULT;
 	if (dest_addr && !mm_check_read(dest_addr, addrlen))
 		return -EFAULT;
-	if (flags)
-		log_error("flags (0x%x) ignored.\n", flags);
 	struct socket_file *f;
 	int r = get_sockfd(sockfd, &f);
 	if (r)
 		return r;
-	while ((r = socket_wait_event(f, FD_WRITE, flags)) == 0)
-	{
-		r = sendto(f->socket, buf, len, 0, dest_addr, addrlen);
-		if (r != SOCKET_ERROR)
-			break;
-		int err = WSAGetLastError();
-		if (err != WSAEWOULDBLOCK)
-		{
-			log_warning("sendto() failed, error code: %d\n", err);
-			return translate_socket_error(err);
-		}
-		f->events &= ~FD_WRITE;
-	}
-	return r;
+	return socket_sendto(f, buf, len, flags, dest_addr, addrlen);
 }
 
 DEFINE_SYSCALL(recvfrom, int, sockfd, void *, buf, size_t, len, int, flags, struct sockaddr *, src_addr, int *, addrlen)
@@ -502,26 +515,11 @@ DEFINE_SYSCALL(recvfrom, int, sockfd, void *, buf, size_t, len, int, flags, stru
 		if (!mm_check_write(src_addr, *addrlen))
 			return -EFAULT;
 	}
-	if (flags)
-		log_error("flags (0x%x) ignored.\n", flags);
 	struct socket_file *f;
 	int r = get_sockfd(sockfd, &f);
 	if (r)
 		return r;
-	while ((r = socket_wait_event(f, FD_READ, flags)) == 0)
-	{
-		f->events &= ~FD_READ;
-		r = recvfrom(f->socket, buf, len, 0, src_addr, addrlen);
-		if (r != SOCKET_ERROR)
-			break;
-		int err = WSAGetLastError();
-		if (err != WSAEWOULDBLOCK)
-		{
-			log_warning("recvfrom() failed, error code: %d\n", err);
-			return translate_socket_error(err);
-		}
-	}
-	return r;
+	return socket_recvfrom(f, buf, len, flags, src_addr, addrlen);
 }
 
 DEFINE_SYSCALL(sendmsg, int, sockfd, const struct msghdr *, msg, int, flags)
