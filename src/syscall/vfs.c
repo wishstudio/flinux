@@ -1471,32 +1471,37 @@ DEFINE_SYSCALL(poll, struct linux_pollfd *, fds, int, nfds, int, timeout)
 		if (fds[i].fd < 0)
 			continue;
 		struct file *f = vfs->fds[fds[i].fd];
-		/* TODO: Support for regular file */
+		/* TODO: Support for regular files */
 		if (!f)
 		{
 			fds[i].revents = LINUX_POLLNVAL;
 			num_result++;
+			continue;
 		}
-		else if (f->op_vtable->get_poll_handle)
+		if (!f->op_vtable->get_poll_handle)
 		{
-			int e;
-			HANDLE handle = f->op_vtable->get_poll_handle(f, &e);
+			log_error("get_poll_handled() not implemented for file %d\n", fds[i].fd);
+			continue;
+		}
+		if (f->op_vtable->get_poll_status)
+		{
+			int e = f->op_vtable->get_poll_status(f);
 			if ((fds[i].events & e) > 0)
 			{
-				if (!handle)
-				{
-					/* It is already readable/writeable at this moment */
-					fds[i].revents = e;
-					num_result++;
-					done = 1;
-				}
-				else
-				{
-					handles[cnt] = handle;
-					indices[cnt] = i;
-					cnt++;
-				}
+				/* It is ready at this moment */
+				fds[i].revents = fds[i].events & e;
+				num_result++;
+				done = 1;
+				continue;
 			}
+		}
+		int e;
+		HANDLE handle = f->op_vtable->get_poll_handle(f, &e);
+		if ((fds[i].events & e) > 0)
+		{
+			handles[cnt] = handle;
+			indices[cnt] = i;
+			cnt++;
 		}
 	}
 	if (cnt && !done)
@@ -1517,28 +1522,35 @@ DEFINE_SYSCALL(poll, struct linux_pollfd *, fds, int, nfds, int, timeout)
 				/* Wait successfully, fill in the revents field of that handle */
 				int id = indices[result - WAIT_OBJECT_0];
 				struct file *f = vfs->fds[fds[id].fd];
+				/* Retrieve current event flags */
 				int e;
-				f->op_vtable->get_poll_handle(f, &e);
-				/*
-				Special case: console may be not readable even if it is signaled
-				Query the state using console_is_ready() utility function
-				*/
-				if (e == LINUX_POLLIN && console_is_console_file(f))
+				if (f->op_vtable->get_poll_status)
 				{
-					if (!console_is_ready(f))
-					{
-						LARGE_INTEGER current;
-						QueryPerformanceCounter(&current);
-						if (timeout != INFINITE)
-						{
-							remain = timeout - (current.QuadPart - start.QuadPart) / (frequency.QuadPart * 1000LL);
-							if (remain < 0)
-								break;
-						}
-						continue;
-					}
+					/* The file descriptor provides get_poll_status() function, use this to query precise event flags */
+					e = f->op_vtable->get_poll_status(f);
 				}
-				fds[id].revents = e;
+				else
+				{
+					/* Otherwise, the event flags associated with the poll object is used */
+					f->op_vtable->get_poll_handle(f, &e);
+				}
+				if ((e & fds[id].events) == 0)
+				{
+					/*
+					 * Some file descriptors (console, socket) may be not readable even if it is signaled
+					 * Query the state again to make sure
+					 */
+					LARGE_INTEGER current;
+					QueryPerformanceCounter(&current);
+					if (timeout != INFINITE)
+					{
+						remain = timeout - (current.QuadPart - start.QuadPart) / (frequency.QuadPart * 1000LL);
+						if (remain < 0)
+							break;
+					}
+					continue;
+				}
+				fds[id].revents = fds[id].events & e;
 				num_result++;
 				break;
 			}

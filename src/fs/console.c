@@ -440,23 +440,16 @@ static void console_buffer_add_string(struct console_state *console, char *buf, 
 		console_add_input(console, str, size);
 }
 
-/*
-Called after WaitForMultipleObjects() in poll() to determine whether
-we're really ready to be read or written.
-This is needed because we may need to filter out mouse or other events,
-which means even the input buffer object is signaled, there may still
-be nothing to be read.
-*/
-int console_is_ready(struct file *f)
+static int console_get_poll_status(struct file *f)
 {
 	struct console_file *console_file = (struct console_file *) f;
-	/* If it's a writing fd, already return true */
+	/* A writing fd, always ready */
 	if (!console_file->is_read)
-		return 1;
+		return LINUX_POLLOUT;
 
 	struct console_state *console = console_file->state;
 	if (console->input_buffer_head != console->input_buffer_tail)
-		return 1;
+		return LINUX_POLLIN;
 
 	INPUT_RECORD ir;
 	DWORD num_read;
@@ -464,7 +457,7 @@ int console_is_ready(struct file *f)
 	{
 		/* Test if the event will be discarded */
 		if (ir.EventType == KEY_EVENT && ir.Event.KeyEvent.bKeyDown)
-			return 1;
+			return LINUX_POLLIN;
 		/* Discard the event */
 		ReadConsoleInputW(console->in, &ir, 1, &num_read);
 	}
@@ -472,20 +465,17 @@ int console_is_ready(struct file *f)
 	return 0;
 }
 
-static HANDLE console_get_poll_handle(struct file *f, int **poll_flags)
+static HANDLE console_get_poll_handle(struct file *f, int **poll_events)
 {
 	struct console_file *console = (struct console_file *)f;
 	if (console->is_read)
 	{
-		*poll_flags = LINUX_POLLIN;
-		if (console_is_ready(f))
-			return NULL;
-		else
-			return console->state->in;
+		*poll_events = LINUX_POLLIN;
+		return console->state->in;
 	}
 	else
 	{
-		*poll_flags = LINUX_POLLOUT;
+		*poll_events = LINUX_POLLOUT;
 		return console->state->out;
 	}
 }
@@ -743,6 +733,7 @@ static int console_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 }
 
 static const struct file_ops console_ops = {
+	.get_poll_status = console_get_poll_status,
 	.get_poll_handle = console_get_poll_handle,
 	.close = console_close,
 	.read = console_read,
@@ -803,9 +794,4 @@ int console_alloc(struct file **in_file, struct file **out_file)
 	*in_file = console_alloc_file(console, 1);
 	*out_file = console_alloc_file(console, 0);
 	return 0;
-}
-
-int console_is_console_file(struct file *f)
-{
-	return f->op_vtable == &console_ops;
 }

@@ -13,6 +13,7 @@ typedef intptr_t getdents_callback(void *buffer, uint64_t inode, const wchar_t *
 
 struct file_ops
 {
+	int (*get_poll_status)(struct file *f);
 	HANDLE (*get_poll_handle)(struct file *f, int *poll_events);
 	int (*close)(struct file *f);
 	size_t (*read)(struct file *f, char *buf, size_t count);
