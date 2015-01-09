@@ -3,7 +3,7 @@ Foreign LINUX
 
 Foreign LINUX is a Linux system call translator for the Windows platform. It is capable of running *unmodified* Linux binaries on Windows without any drivers or modifications to the system.
 
-This project is still in heavy development. It's still buggy and not meant for everyday use. On the other hand it already runs a lot of Linux utilities, including *bash*, *coreutils*, *nano*, *python*, *wget*, etc.
+This project is still in heavy development. It's still buggy and not meant for everyday use. On the other hand it already runs a lot of Linux utilities, including *bash*, *coreutils*, *nano*, *python*, *wget*, *gcc*, etc.
 
 Feature highlights
 ======
