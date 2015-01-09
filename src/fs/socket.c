@@ -100,75 +100,73 @@ struct socket_file
 	SOCKET socket;
 	HANDLE event_handle;
 	int flags;
+	int events, connect_error;
 };
+
+/* Reports current ready state
+ * If one event in error_report_events has potential error code, the last WSA error code is set to that
+ */
+static int socket_update_events(struct socket_file *f, int error_report_events)
+{
+	/* CAUTION:
+	 * When we finally get to add multi-process(thread) shared socket support,
+	 * We have to do proper synchronization to ensure even if a process die halfway
+	 * the other processes won't lose the ready notification.
+	 * This is very complicated and I don't want to touch too far for now
+	 */
+	WSANETWORKEVENTS events;
+	WSAEnumNetworkEvents(f->socket, f->event_handle, &events);
+	if (events.lNetworkEvents & FD_READ)
+		f->events |= FD_READ;
+	if (events.lNetworkEvents & FD_WRITE)
+		f->events |= FD_WRITE;
+	if (events.lNetworkEvents & FD_ACCEPT)
+		f->events |= FD_ACCEPT;
+	if (events.lNetworkEvents & FD_CONNECT)
+	{
+		f->events |= FD_CONNECT;
+		f->connect_error = events.iErrorCode[FD_CONNECT_BIT];
+	}
+	if (events.lNetworkEvents & FD_CLOSE)
+		f->events |= FD_CLOSE;
+	int e = f->events;
+	if (error_report_events & f->events & FD_CONNECT)
+	{
+		WSASetLastError(f->connect_error);
+		f->events &= ~FD_CONNECT;
+		f->connect_error = 0;
+	}
+	return e;
+}
+
+static int socket_get_poll_status(struct file *f)
+{
+	struct socket_file *socket_file = (struct socket_file *) f;
+	int e = socket_update_events(socket_file, 0);
+	int ret = 0;
+	if (e & FD_READ)
+		ret |= LINUX_POLLIN;
+	if (e & FD_WRITE)
+		ret |= LINUX_POLLOUT;
+	return ret;
+}
 
 static HANDLE socket_get_poll_handle(struct file *f, int *poll_events)
 {
 	struct socket_file *socket_file = (struct socket_file *) f;
-	WSANETWORKEVENTS events;
-	WSAEnumNetworkEvents(socket_file->socket, NULL, &events);
-	*poll_events = 0;
-	if ((events.lNetworkEvents & FD_READ) > 0)
-	{
-		if (events.iErrorCode[FD_READ_BIT])
-		{
-			*poll_events = LINUX_POLLERR;
-			return NULL;
-		}
-		*poll_events |= LINUX_POLLIN;
-	}
-	if ((events.lNetworkEvents & FD_ACCEPT) > 0)
-	{
-		if (events.iErrorCode[FD_ACCEPT_BIT])
-		{
-			*poll_events = LINUX_POLLERR;
-			return NULL;
-		}
-		*poll_events |= LINUX_POLLIN;
-	}
-	if ((events.lNetworkEvents & FD_WRITE) > 0)
-	{
-		if (events.iErrorCode[FD_WRITE_BIT])
-		{
-			*poll_events = LINUX_POLLERR;
-			return NULL;
-		}
-		*poll_events |= LINUX_POLLOUT;
-	}
-	if ((events.lNetworkEvents & FD_CONNECT) > 0)
-	{
-		if (events.iErrorCode[FD_CONNECT_BIT])
-		{
-			*poll_events = LINUX_POLLERR;
-			return NULL;
-		}
-		*poll_events |= LINUX_POLLOUT;
-	}
-	if ((events.lNetworkEvents & FD_CLOSE) > 0)
-	{
-		if (events.iErrorCode[FD_CLOSE_BIT])
-		{
-			*poll_events = LINUX_POLLERR;
-			return NULL;
-		}
-		*poll_events |= LINUX_POLLIN | LINUX_POLLOUT;
-	}
-	if (*poll_events)
-		return NULL;
-
-	*poll_events = LINUX_POLLIN | LINUX_POLLOUT | LINUX_POLLERR;
 	return socket_file->event_handle;
 }
 
-static int socket_blocking_wait(struct socket_file *f, int event_bit)
+static int socket_wait_event(struct socket_file *f, int event, int flags)
 {
 	do
 	{
+		int e = socket_update_events(f, event);
+		if (e & event)
+			return 0;
+		if ((f->flags & O_NONBLOCK) || (flags & LINUX_MSG_DONTWAIT))
+			return -EWOULDBLOCK;
 		WaitForSingleObject(f->event_handle, INFINITE);
-		WSANETWORKEVENTS events;
-		WSAEnumNetworkEvents(f->socket, f->event_handle, &events);
-		if ((events.lNetworkEvents & (1 << event_bit)) > 0)
-			return events.iErrorCode[event_bit];
 	} while (1);
 }
 
@@ -176,36 +174,35 @@ static int socket_sendmsg(struct socket_file *f, const struct msghdr *msg, int f
 {
 	if (flags)
 		log_error("socket_sendmsg(): flags (0x%x) ignored.\n", flags);
-	if ((f->flags & O_NONBLOCK))
+	WSABUF *buffers = (WSABUF *)alloca(sizeof(struct iovec) * msg->msg_iovlen);
+	for (int i = 0; i < msg->msg_iovlen; i++)
 	{
-		WSABUF *buffers = (WSABUF *)alloca(sizeof(struct iovec) * msg->msg_iovlen);
-		for (int i = 0; i < msg->msg_iovlen; i++)
-		{
-			buffers[i].len = msg->msg_iov[i].iov_len;
-			buffers[i].buf = msg->msg_iov[i].iov_base;
-		}
-		WSAMSG wsamsg;
-		wsamsg.name = msg->msg_name;
-		wsamsg.namelen = msg->msg_namelen;
-		wsamsg.lpBuffers = buffers;
-		wsamsg.dwBufferCount = msg->msg_iovlen;
-		wsamsg.Control.buf = msg->msg_control;
-		wsamsg.Control.len = msg->msg_controllen;
-		wsamsg.dwFlags = 0;
-		
-		DWORD sent;
-		if (WSASendMsg(f->socket, &wsamsg, 0, &sent, NULL, NULL) == SOCKET_ERROR)
-		{
-			log_warning("WSASendMsg() failed, error code: %d\n", WSAGetLastError());
-			return translate_socket_error(WSAGetLastError());
-		}
-		return sent;
+		buffers[i].len = msg->msg_iov[i].iov_len;
+		buffers[i].buf = msg->msg_iov[i].iov_base;
 	}
-	else
+	WSAMSG wsamsg;
+	wsamsg.name = msg->msg_name;
+	wsamsg.namelen = msg->msg_namelen;
+	wsamsg.lpBuffers = buffers;
+	wsamsg.dwBufferCount = msg->msg_iovlen;
+	wsamsg.Control.buf = msg->msg_control;
+	wsamsg.Control.len = msg->msg_controllen;
+	wsamsg.dwFlags = 0;
+	
+	int r;
+	while ((r = socket_wait_event(f, FD_WRITE, flags)) == 0)
 	{
-		/* TODO */
-		__debugbreak();
+		if (WSASendMsg(f->socket, &wsamsg, 0, &r, NULL, NULL) != SOCKET_ERROR)
+			break;
+		int err = WSAGetLastError();
+		if (err != WSAEWOULDBLOCK)
+		{
+			log_warning("WSASendMsg() failed, error code: %d\n", err);
+			return translate_socket_error(err);
+		}
+		f->flags &= ~FD_WRITE;
 	}
+	return r;
 }
 
 static int socket_close(struct file *f)
@@ -219,6 +216,7 @@ static int socket_close(struct file *f)
 
 struct file_ops socket_ops =
 {
+	.get_poll_status = socket_get_poll_status,
 	.get_poll_handle = socket_get_poll_handle,
 	.close = socket_close,
 };
@@ -229,7 +227,7 @@ static HANDLE init_socket_event(int sock)
 	attr.nLength = sizeof(SECURITY_ATTRIBUTES);
 	attr.lpSecurityDescriptor = NULL;
 	attr.bInheritHandle = TRUE;
-	HANDLE handle = CreateEventW(&attr, FALSE, FALSE, NULL);
+	HANDLE handle = CreateEventW(&attr, TRUE, FALSE, NULL);
 	if (handle == NULL)
 	{
 		log_error("CreateEventW() failed, error code: %d\n", GetLastError());
@@ -327,6 +325,8 @@ DEFINE_SYSCALL(socket, int, domain, int, type, int, protocol)
 	f->socket = sock;
 	f->event_handle = event_handle;
 	f->flags = 0;
+	f->events = 0;
+	f->connect_error = 0;
 	if ((type & O_NONBLOCK))
 		f->flags |= O_NONBLOCK;
 	
@@ -349,19 +349,22 @@ DEFINE_SYSCALL(connect, int, sockfd, const struct sockaddr *, addr, size_t, addr
 	/* WinSock2 sockaddr struct is compatible with the Linux one */
 	if (connect(f->socket, addr, addrlen) == SOCKET_ERROR)
 	{
-		int e = WSAGetLastError();
-		if (e == WSAEWOULDBLOCK)
+		int err = WSAGetLastError();
+		if (err != WSAEWOULDBLOCK)
 		{
-			if ((f->flags & O_NONBLOCK) > 0)
-			{
-				log_info("connect() returned EINPROGRESS.\n");
-				return -EINPROGRESS;
-			}
-			else
-				return socket_blocking_wait(f, FD_CONNECT_BIT);
+			log_warning("connect() failed, error code: %d\n", err);
+			return translate_socket_error(err);
 		}
-		log_warning("connect() failed, error code: %d\n", WSAGetLastError());
-		return translate_socket_error(WSAGetLastError());
+		if ((f->flags & O_NONBLOCK) > 0)
+		{
+			log_info("connect() returned EINPROGRESS.\n");
+			return -EINPROGRESS;
+		}
+		else
+		{
+			socket_wait_event(f, FD_CONNECT, 0);
+			return WSAGetLastError();
+		}
 	}
 	return 0;
 }
@@ -415,16 +418,18 @@ DEFINE_SYSCALL(send, int, sockfd, const void *, buf, size_t, len, int, flags)
 	int r = get_sockfd(sockfd, &f);
 	if (r)
 		return r;
-	if ((f->flags & O_NONBLOCK) == 0)
+	while ((r = socket_wait_event(f, FD_WRITE, flags)) == 0)
 	{
-		/* TODO */
-		__debugbreak();
-	}
-	r = send(f->socket, buf, len, 0);
-	if (r == SOCKET_ERROR)
-	{
-		log_warning("send() failed, error code: %d\n", WSAGetLastError());
-		return translate_socket_error(WSAGetLastError());
+		r = send(f->socket, buf, len, 0);
+		if (r != SOCKET_ERROR)
+			break;
+		int err = WSAGetLastError();
+		if (err != WSAEWOULDBLOCK)
+		{
+			log_warning("send() failed, error code: %d\n", err);
+			return translate_socket_error(err);
+		}
+		f->events &= ~FD_WRITE;
 	}
 	return r;
 }
@@ -440,16 +445,18 @@ DEFINE_SYSCALL(recv, int, sockfd, void *, buf, size_t, len, int, flags)
 	int r = get_sockfd(sockfd, &f);
 	if (r)
 		return r;
-	if ((f->flags & O_NONBLOCK) == 0)
+	while ((r = socket_wait_event(f, FD_READ, flags)) == 0)
 	{
-		/* TODO */
-		__debugbreak();
-	}
-	r = recv(f->socket, buf, len, 0);
-	if (r == SOCKET_ERROR)
-	{
-		log_warning("recv() faield, error code: %d\n", WSAGetLastError());
-		return translate_socket_error(WSAGetLastError());
+		f->events &= ~FD_READ;
+		r = recv(f->socket, buf, len, 0);
+		if (r != SOCKET_ERROR)
+			break;
+		int err = WSAGetLastError();
+		if (err != WSAEWOULDBLOCK)
+		{
+			log_warning("recv() failed, error code: %d\n", err);
+			return translate_socket_error(err);
+		}
 	}
 	return r;
 }
@@ -467,16 +474,18 @@ DEFINE_SYSCALL(sendto, int, sockfd, const void *, buf, size_t, len, int, flags, 
 	int r = get_sockfd(sockfd, &f);
 	if (r)
 		return r;
-	if ((f->flags & O_NONBLOCK) == 0)
+	while ((r = socket_wait_event(f, FD_WRITE, flags)) == 0)
 	{
-		/* TODO */
-		__debugbreak();
-	}
-	r = sendto(f->socket, buf, len, 0, dest_addr, addrlen);
-	if (r == SOCKET_ERROR)
-	{
-		log_warning("sendto() failed, error code: %d\n", WSAGetLastError());
-		return translate_socket_error(WSAGetLastError());
+		r = sendto(f->socket, buf, len, 0, dest_addr, addrlen);
+		if (r != SOCKET_ERROR)
+			break;
+		int err = WSAGetLastError();
+		if (err != WSAEWOULDBLOCK)
+		{
+			log_warning("sendto() failed, error code: %d\n", err);
+			return translate_socket_error(err);
+		}
+		f->events &= ~FD_WRITE;
 	}
 	return r;
 }
@@ -499,16 +508,18 @@ DEFINE_SYSCALL(recvfrom, int, sockfd, void *, buf, size_t, len, int, flags, stru
 	int r = get_sockfd(sockfd, &f);
 	if (r)
 		return r;
-	if ((f->flags & O_NONBLOCK) == 0)
+	while ((r = socket_wait_event(f, FD_READ, flags)) == 0)
 	{
-		/* TODO */
-		__debugbreak();
-	}
-	r = recvfrom(f->socket, buf, len, 0, src_addr, addrlen);
-	if (r == SOCKET_ERROR)
-	{
-		log_warning("recvfrom() faield, error code: %d\n", WSAGetLastError());
-		return translate_socket_error(WSAGetLastError());
+		f->events &= ~FD_READ;
+		r = recvfrom(f->socket, buf, len, 0, src_addr, addrlen);
+		if (r != SOCKET_ERROR)
+			break;
+		int err = WSAGetLastError();
+		if (err != WSAEWOULDBLOCK)
+		{
+			log_warning("recvfrom() failed, error code: %d\n", err);
+			return translate_socket_error(err);
+		}
 	}
 	return r;
 }
