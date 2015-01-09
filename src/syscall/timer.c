@@ -72,7 +72,7 @@ DEFINE_SYSCALL(clock_gettime, int, clk_id, struct timespec *, tp)
 		LARGE_INTEGER freq, counter;
 		QueryPerformanceFrequency(&freq);
 		QueryPerformanceCounter(&counter);
-		uint64_t ns = (double)counter.QuadPart / (double)freq.QuadPart;
+		uint64_t ns = (double)counter.QuadPart / (double)freq.QuadPart * NANOSECONDS_PER_SECOND;
 		tp->tv_sec = ns / NANOSECONDS_PER_SECOND;
 		tp->tv_nsec = ns % NANOSECONDS_PER_SECOND;
 		return 0;
