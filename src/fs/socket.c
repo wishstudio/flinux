@@ -19,6 +19,7 @@ static int translate_socket_error(int error)
 {
 	switch (error)
 	{
+	case 0: return 0;
 	case WSA_NOT_ENOUGH_MEMORY: return -ENOMEM;
 	case WSAEINTR: return -EINTR;
 	case WSAEBADF: return -EBADF;
