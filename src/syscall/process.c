@@ -326,6 +326,13 @@ DEFINE_SYSCALL(getpriority, int, which, int, who)
 	return 0;
 }
 
+DEFINE_SYSCALL(setpriority, int, which, int, who, int, prio)
+{
+	log_info("setpriority(which=%d, who=%d, prio=%d)\n", which, who, prio);
+	log_error("setpriority() not implemented. Fake returning 0.\n");
+	return 0;
+}
+
 DEFINE_SYSCALL(prctl, int, option, uintptr_t, arg2, uintptr_t, arg3, uintptr_t, arg4, uintptr_t, arg5)
 {
 	log_info("prctl(%d)\n", option);
@@ -335,7 +342,7 @@ DEFINE_SYSCALL(prctl, int, option, uintptr_t, arg2, uintptr_t, arg3, uintptr_t, 
 
 DEFINE_SYSCALL(prlimit64, pid_t, pid, int, resource, const struct rlimit64 *, new_limit, struct rlimit64 *, old_limit)
 {
-	log_info("prlimit64(pid=%d, resource=%d, new_limit=%p, old_limit=%p\n", pid, resource, new_limit, old_limit);
+	log_info("prlimit64(pid=%d, resource=%d, new_limit=%p, old_limit=%p)\n", pid, resource, new_limit, old_limit);
 	log_error("prlimit64() not implemented.\n");
 	return -ENOSYS;
 }
