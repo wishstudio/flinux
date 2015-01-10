@@ -319,6 +319,13 @@ DEFINE_SYSCALL(getrusage, int, who, struct rusage *, usage)
 	}
 }
 
+DEFINE_SYSCALL(getpriority, int, which, int, who)
+{
+	log_info("getpriority(which=%d, who=%d)\n", which, who);
+	log_error("getpriority() not implemented. Fake returning 0.\n");
+	return 0;
+}
+
 DEFINE_SYSCALL(prctl, int, option, uintptr_t, arg2, uintptr_t, arg3, uintptr_t, arg4, uintptr_t, arg5)
 {
 	log_info("prctl(%d)\n", option);
