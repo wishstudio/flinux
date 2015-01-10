@@ -1025,10 +1025,10 @@ static const struct instruction_desc two_byte_inst[256] =
 	/* 0x6F: MANDATORY */ MANDATORY(0x0F6F)
 	/* 0x70: MANDATORY */ MANDATORY(0x0F70)
 	/* [...]: 2/SRL 4/SRA 6/SLL */
-	/* 0x71: P???W ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
-	/* 0x72: P???D ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x71: P???W ?mm1, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_RM), WRITE(MODRM_RM))
+	/* 0x72: P???D ?mm1, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_RM), WRITE(MODRM_RM))
 	/* [GRP]: 2/PSRLQ 3/PSRLDQ 6/PSLLQ 7/PSLLDQ */
-	/* 0x73: [GRP] ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
+	/* 0x73: [GRP] ?mm1, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_RM), WRITE(MODRM_RM))
 	/* 0x74: PCMPEQB ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
 	/* 0x75: PCMPEQW ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
 	/* 0x76: PCMPEQD ?mm1, ?mm2/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
