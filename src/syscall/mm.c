@@ -445,10 +445,27 @@ void mm_dump_windows_memory_mappings(HANDLE process)
 		if (info.State != MEM_FREE)
 		{
 			char filename[1024];
+			char *access;
+			switch (info.Protect & 0xFF)
+			{
+			case PAGE_NOACCESS: access = "---"; break;
+			case PAGE_READONLY: access = "R--"; break;
+			case PAGE_READWRITE: access = "RW-"; break;
+			case PAGE_WRITECOPY: access = "RC-"; break;
+			case PAGE_EXECUTE: access = "--X"; break;
+			case PAGE_EXECUTE_READ: access = "R-X"; break;
+			case PAGE_EXECUTE_READWRITE: access = "RWX"; break;
+			case PAGE_EXECUTE_WRITECOPY: access = "RCX"; break;
+			default:
+				if (info.State == MEM_RESERVE)
+					access = "res";
+				else
+					access = "???";
+			}
 			if (GetMappedFileNameA(process, addr, filename, sizeof(filename)))
-				log_info("0x%p - 0x%p <--- %s\n", info.BaseAddress, (size_t)info.BaseAddress + info.RegionSize, filename);
+				log_info("0x%p - 0x%p [%s] <--- %s\n", info.BaseAddress, (size_t)info.BaseAddress + info.RegionSize, access, filename);
 			else
-				log_info("0x%p - 0x%p\n", info.BaseAddress, (size_t)info.BaseAddress + info.RegionSize);
+				log_info("0x%p - 0x%p [%s]\n", info.BaseAddress, (size_t)info.BaseAddress + info.RegionSize, access);
 		}
 		addr += info.RegionSize;
 #ifdef _WIN64
