@@ -185,9 +185,9 @@
 #define GET_BLOCK_ADDRESS(block) (void *)((block) * BLOCK_SIZE)
 #define GET_PAGE_ADDRESS(page) (void *)((page) * PAGE_SIZE)
 /* Page offset in bytes from the start of its block */
-#define GET_SIZE_OF_BLOCK_TO_PAGE(page) ((char*)GET_BLOCK_ADDRESS(GET_BLOCK_OF_PAGE(page)) - (char*)GET_PAGE_ADDRESS(page))
+#define GET_SIZE_OF_BLOCK_TO_PAGE(page) ((char*)GET_PAGE_ADDRESS(page) - (char*)GET_BLOCK_ADDRESS(GET_BLOCK_OF_PAGE(page)))
 /* Bytes from the page's location to its block's next block */
-#define GET_SIZE_OF_PAGE_TO_NEXT_BLOCK(page) ((char*)GET_PAGE_ADDRESS(page) - (char*)GET_BLOCK_ADDRESS(GET_BLOCK_OF_PAGE(page)))
+#define GET_SIZE_OF_PAGE_TO_NEXT_BLOCK(page) ((char*)GET_BLOCK_ADDRESS(GET_BLOCK_OF_PAGE(page) + 1) - (char*)GET_PAGE_ADDRESS(page))
 
 struct map_entry
 {
@@ -298,11 +298,14 @@ static void free_map_entry_blocks(struct map_entry *p, struct map_entry *e)
 	if (p != &mm->map_list && GET_BLOCK_OF_PAGE(p->end_page) == start_block)
 	{
 		/* First block is still in use, make it inaccessible */
+		size_t last_page = GET_LAST_PAGE_OF_BLOCK(GET_BLOCK_OF_PAGE(e->start_page));
+		if (n && GET_BLOCK_OF_PAGE(n->start_page) == start_block)
+			last_page = n->start_page - 1;
 		DWORD oldProtect;
-		VirtualProtect(GET_PAGE_ADDRESS(e->start_page), GET_SIZE_OF_PAGE_TO_NEXT_BLOCK(e->start_page), PAGE_NOACCESS, &oldProtect);
+		VirtualProtect(GET_PAGE_ADDRESS(e->start_page), (last_page - e->start_page + 1) * PAGE_SIZE, PAGE_NOACCESS, &oldProtect);
 		start_block++;
 	}
-	if (n != NULL && GET_BLOCK_OF_PAGE(n->start_page) == end_block)
+	if (end_block >= start_block && n && GET_BLOCK_OF_PAGE(n->start_page) == end_block)
 	{
 		/* Last block is still in use, make it inaccessible */
 		DWORD oldProtect;
@@ -928,6 +931,10 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, struct file *f, of
 
 	/* If the first or last block is already allocated, we have to set up proper content in it
 	   For other blocks we map them on demand */
+	/* FIXME: The current mechanism is actually buggy.
+	 * When the existing block is a CoW shared block, directly VirtualProtect() it to writable
+	 * will certainly fail.
+	 */
 	if (get_section_handle(start_block))
 	{
 		size_t last_page = GET_LAST_PAGE_OF_BLOCK(start_block);
@@ -979,8 +986,6 @@ int mm_munmap(void *addr, size_t length)
 			if (range_start == e->start_page && range_end == e->end_page)
 			{
 				/* That's good, the current entry is fully overlapped */
-				if (e->f)
-					vfs_release(e->f);
 				free_map_entry_blocks(p, e);
 				forward_list_remove(p, e);
 				free_map_entry(e);
