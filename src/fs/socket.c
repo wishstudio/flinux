@@ -342,6 +342,7 @@ DEFINE_SYSCALL(socket, int, domain, int, type, int, protocol)
 	case LINUX_AF_INET: win32_af = AF_INET; break;
 	case LINUX_AF_INET6: win32_af = AF_INET6; break;
 	default:
+		log_error("Unknown domain: %d\n", domain);
 		return -EAFNOSUPPORT;
 	}
 
@@ -354,16 +355,11 @@ DEFINE_SYSCALL(socket, int, domain, int, type, int, protocol)
 	case LINUX_SOCK_RDM: win32_type = SOCK_RDM; break;
 	case LINUX_SOCK_SEQPACKET: win32_type = SOCK_SEQPACKET; break;
 	default:
+		log_error("Unknown type: %d\n", type & LINUX_SOCK_TYPE_MASK);
 		return -EPROTONOSUPPORT;
 	}
 
-	int win32_protocol = protocol;
-	if (protocol != 0)
-	{
-		log_error("protocol(%d) != 0\n", protocol);
-		return -EPROTONOSUPPORT;
-	}
-	SOCKET sock = socket(win32_af, win32_type, win32_protocol);
+	SOCKET sock = socket(win32_af, win32_type, protocol);
 	if (sock == INVALID_SOCKET)
 	{
 		log_warning("socket() failed, error code: %d\n", WSAGetLastError());
@@ -522,6 +518,42 @@ DEFINE_SYSCALL(recvfrom, int, sockfd, void *, buf, size_t, len, int, flags, stru
 	return socket_recvfrom(f, buf, len, flags, src_addr, addrlen);
 }
 
+DEFINE_SYSCALL(setsockopt, int, sockfd, int, level, int, optname, const void *, optval, int, optlen)
+{
+	log_info("setsockopt(%d, %d, %d, %p, %d)\n", sockfd, level, optname, optval, optlen);
+	if (optval && !mm_check_read(optval, optlen))
+		return -EFAULT;
+	struct socket_file *f;
+	int r = get_sockfd(sockfd, &f);
+	if (r)
+		return r;
+	if (setsockopt(f->socket, level, optname, optval, optlen) == SOCKET_ERROR)
+	{
+		log_warning("setsockopt() failed, error code: %d\n", WSAGetLastError());
+		return translate_socket_error(WSAGetLastError());
+	}
+	return 0;
+}
+
+DEFINE_SYSCALL(getsockopt, int, sockfd, int, level, int, optname, void *, optval, int *, optlen)
+{
+	log_info("getsockopt(%d, %d, %d, %p, %d)\n", sockfd, level, optname, optval, optlen);
+	if (optlen && !mm_check_write(optlen, sizeof(*optlen)))
+		return -EFAULT;
+	if (optlen && !mm_check_write(optval, *optlen))
+		return -EFAULT;
+	struct socket_file *f;
+	int r = get_sockfd(sockfd, &f);
+	if (r)
+		return r;
+	if (getsockopt(f->socket, level, optname, optval, optlen) == SOCKET_ERROR)
+	{
+		log_warning("getsockopt() failed, error code: %d\n", WSAGetLastError());
+		return translate_socket_error(WSAGetLastError());
+	}
+	return 0;
+}
+
 DEFINE_SYSCALL(sendmsg, int, sockfd, const struct msghdr *, msg, int, flags)
 {
 	log_info("sendmsg(%d, %p)\n", sockfd, msg);
@@ -609,6 +641,12 @@ DEFINE_SYSCALL(socketcall, int, call, uintptr_t *, args)
 		
 	case SYS_RECVFROM:
 		return sys_recvfrom(args[0], (void *)args[1], args[2], args[3], (struct sockaddr *)args[4], (int *)args[5]);
+
+	case SYS_SETSOCKOPT:
+		return sys_setsockopt(args[0], args[1], args[2], (const void *)args[3], args[4]);
+
+	case SYS_GETSOCKOPT:
+		return sys_getsockopt(args[0], args[1], args[2], (void *)args[3], (int *)args[4]);
 
 	case SYS_SENDMSG:
 		return sys_sendmsg(args[0], (const struct msghdr *)args[1], args[2]);
