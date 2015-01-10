@@ -407,6 +407,7 @@ static void dbt_flush()
 	dbt->blocks_count = 0;
 	dbt->out = dbt_cache;
 	dbt->end = dbt_cache + DBT_CACHE_SIZE;
+	log_info("dbt code cache flushed.\n");
 }
 
 void dbt_reset()
