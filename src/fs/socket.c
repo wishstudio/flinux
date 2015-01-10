@@ -417,7 +417,7 @@ DEFINE_SYSCALL(connect, int, sockfd, const struct sockaddr *, addr, size_t, addr
 		else
 		{
 			socket_wait_event(f, FD_CONNECT, 0);
-			return WSAGetLastError();
+			return translate_socket_error(WSAGetLastError());
 		}
 	}
 	return 0;
