@@ -786,37 +786,51 @@ DEFINE_SYSCALL(pipe, int *, pipefd)
 	return sys_pipe2(pipefd, 0);
 }
 
+static int vfs_dup(int fd, int newfd, int flags)
+{
+	struct file *f = vfs_get(fd);
+	if (!f)
+		return -EBADF;
+	if (newfd == -1)
+	{
+		for (int i = 0; i < MAX_FD_COUNT; i++)
+			if (vfs->fds[i] == NULL)
+			{
+				newfd = i;
+				break;
+			}
+		if (newfd == -1)
+			return -EMFILE;
+	}
+	else
+	{
+		if (newfd == fd || newfd < 0 || newfd >= MAX_FD_COUNT)
+			return -EINVAL;
+		if (vfs->fds[newfd])
+			vfs_close(newfd);
+	}
+	vfs->fds[newfd] = f;
+	vfs->fds_cloexec[newfd] = !!(flags & O_CLOEXEC);
+	f->ref++;
+	return newfd;
+}
+
 DEFINE_SYSCALL(dup, int, fd)
 {
 	log_info("dup(%d)\n", fd);
-	struct file *f = vfs->fds[fd];
-	if (!f)
-		return -EBADF;
-	for (int i = 0; i < MAX_FD_COUNT; i++)
-		if (vfs->fds[i] == NULL)
-		{
-			vfs->fds[i] = f;
-			vfs->fds_cloexec[i] = 0;
-			f->ref++;
-			return i;
-		}
-	return -EMFILE;
+	return vfs_dup(fd, -1, 0);
 }
 
 DEFINE_SYSCALL(dup2, int, fd, int, newfd)
 {
 	log_info("dup2(%d, %d)\n", fd, newfd);
-	struct file *f = vfs->fds[fd];
-	if (!f)
-		return -EBADF;
-	if (fd == newfd)
-		return newfd;
-	if (vfs->fds[newfd])
-		vfs_close(newfd);
-	vfs->fds[newfd] = f;
-	vfs->fds_cloexec[newfd] = 0;
-	f->ref++;
-	return newfd;
+	return vfs_dup(fd, newfd, 0);
+}
+
+DEFINE_SYSCALL(dup3, int, fd, int, newfd, int, flags)
+{
+	log_info("dup3(%d, %d, 0x%x)\n", fd, newfd, flags);
+	return vfs_dup(fd, newfd, flags);
 }
 
 DEFINE_SYSCALL(rename, const char *, oldpath, const char *, newpath)
