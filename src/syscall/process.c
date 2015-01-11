@@ -228,7 +228,7 @@ DEFINE_SYSCALL(uname, struct utsname *, buf)
 #ifdef _WIN64
 	strcpy(buf->machine, "x86_64");
 #else
-	strcpy(buf->machine, "i386");
+	strcpy(buf->machine, "i686");
 #endif
 	strcpy(buf->domainname, "GNU/Linux");
 	return 0;
