@@ -40,6 +40,7 @@
     <ClInclude Include="src\common\socket.h" />
     <ClInclude Include="src\common\stat.h" />
     <ClInclude Include="src\common\statfs.h" />
+    <ClInclude Include="src\common\tcp.h" />
     <ClInclude Include="src\common\termios.h" />
     <ClInclude Include="src\common\time.h" />
     <ClInclude Include="src\common\types.h" />

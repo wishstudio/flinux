@@ -1,6 +1,7 @@
 #include <common/fcntl.h>
 #include <common/net.h>
 #include <common/socket.h>
+#include <common/tcp.h>
 #include <fs/file.h>
 #include <fs/socket.h>
 #include <syscall/mm.h>
@@ -12,8 +13,23 @@
 
 #include <malloc.h>
 #include <WinSock2.h>
+#include <mstcpip.h>
 
 #pragma comment(lib, "ws2_32.lib")
+
+static int translate_address_family(int af)
+{
+	switch (af)
+	{
+	case LINUX_AF_UNSPEC: return AF_UNSPEC;
+	case LINUX_AF_UNIX: return AF_UNIX;
+	case LINUX_AF_INET: return AF_INET;
+	case LINUX_AF_INET6: return AF_INET6;
+	default:
+		log_error("Unknown af: %d\n", af);
+		return -EAFNOSUPPORT;
+	}
+}
 
 static int translate_socket_error(int error)
 {
@@ -335,17 +351,9 @@ DEFINE_SYSCALL(socket, int, domain, int, type, int, protocol)
 	socket_ensure_initialized();
 
 	/* Translation constants to their Windows counterparts */
-	int win32_af;
-	switch (domain)
-	{
-	case LINUX_AF_UNSPEC: win32_af = AF_UNSPEC; break;
-	case LINUX_AF_UNIX: win32_af = AF_UNIX; break;
-	case LINUX_AF_INET: win32_af = AF_INET; break;
-	case LINUX_AF_INET6: win32_af = AF_INET6; break;
-	default:
-		log_error("Unknown domain: %d\n", domain);
-		return -EAFNOSUPPORT;
-	}
+	int win32_af = translate_address_family(domain);
+	if (win32_af < 0)
+		return win32_af;
 
 	int win32_type;
 	switch (type & LINUX_SOCK_TYPE_MASK)
@@ -519,6 +527,54 @@ DEFINE_SYSCALL(recvfrom, int, sockfd, void *, buf, size_t, len, int, flags, stru
 	return socket_recvfrom(f, buf, len, flags, src_addr, addrlen);
 }
 
+static int socket_get_set_sockopt(int call, struct socket_file *f, int level, int optname, const void *set_optval, int set_optlen, void *get_optval, int *get_optlen)
+{
+	int in_level = level, in_optname = optname;
+	switch (level)
+	{
+	case LINUX_SOL_SOCKET:
+	{
+		level = SOL_SOCKET;
+		switch (optname)
+		{
+		case LINUX_SO_ERROR: optname = SO_ERROR; goto get_set_sockopt;
+		case LINUX_SO_KEEPALIVE: optname = SO_KEEPALIVE; goto get_set_sockopt;
+		}
+	}
+	case LINUX_SOL_TCP:
+	{
+		level = IPPROTO_TCP;
+		switch (optname)
+		{
+		case LINUX_TCP_NODELAY: optname = TCP_NODELAY; goto get_set_sockopt;
+		}
+	}
+	}
+	log_error("Unhandled sockopt level %d, optname %d\n", in_level, in_optname);
+	return -EINVAL;
+
+get_set_sockopt:
+	/* The default case */
+	if (call == SYS_SETSOCKOPT)
+	{
+		if (setsockopt(f->socket, level, optname, set_optval, set_optlen) == SOCKET_ERROR)
+		{
+			log_warning("setsockopt() failed, error code: %d\n", WSAGetLastError());
+			return translate_socket_error(WSAGetLastError());
+		}
+		return 0;
+	}
+	else
+	{
+		if (getsockopt(f->socket, level, optname, get_optval, get_optlen) == SOCKET_ERROR)
+		{
+			log_warning("getsockopt() failed, error code: %d\n", WSAGetLastError());
+			return translate_socket_error(WSAGetLastError());
+		}
+		return 0;
+	}
+}
+
 DEFINE_SYSCALL(setsockopt, int, sockfd, int, level, int, optname, const void *, optval, int, optlen)
 {
 	log_info("setsockopt(%d, %d, %d, %p, %d)\n", sockfd, level, optname, optval, optlen);
@@ -528,17 +584,12 @@ DEFINE_SYSCALL(setsockopt, int, sockfd, int, level, int, optname, const void *, 
 	int r = get_sockfd(sockfd, &f);
 	if (r)
 		return r;
-	if (setsockopt(f->socket, level, optname, optval, optlen) == SOCKET_ERROR)
-	{
-		log_warning("setsockopt() failed, error code: %d\n", WSAGetLastError());
-		return translate_socket_error(WSAGetLastError());
-	}
-	return 0;
+	return socket_get_set_sockopt(SYS_SETSOCKOPT, f, level, optname, optval, optlen, NULL, NULL);
 }
 
 DEFINE_SYSCALL(getsockopt, int, sockfd, int, level, int, optname, void *, optval, int *, optlen)
 {
-	log_info("getsockopt(%d, %d, %d, %p, %d)\n", sockfd, level, optname, optval, optlen);
+	log_info("getsockopt(%d, %d, %d, %p, %p)\n", sockfd, level, optname, optval, optlen);
 	if (optlen && !mm_check_write(optlen, sizeof(*optlen)))
 		return -EFAULT;
 	if (optlen && !mm_check_write(optval, *optlen))
@@ -547,12 +598,7 @@ DEFINE_SYSCALL(getsockopt, int, sockfd, int, level, int, optname, void *, optval
 	int r = get_sockfd(sockfd, &f);
 	if (r)
 		return r;
-	if (getsockopt(f->socket, level, optname, optval, optlen) == SOCKET_ERROR)
-	{
-		log_warning("getsockopt() failed, error code: %d\n", WSAGetLastError());
-		return translate_socket_error(WSAGetLastError());
-	}
-	return 0;
+	return socket_get_set_sockopt(SYS_GETSOCKOPT, f, level, optname, NULL, NULL, optval, optlen);
 }
 
 DEFINE_SYSCALL(sendmsg, int, sockfd, const struct msghdr *, msg, int, flags)

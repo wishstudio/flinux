@@ -83,6 +83,104 @@
 #define LINUX_MSG_FASTOPEN			0x20000000 /* Send data in TCP SYN */
 #define LINUX_MSG_CMSG_CLOEXEC		0x40000000 /* Set close_on_exec for file descriptor received through SCM_RIGHTS */
 
+/* For setsockopt(2) */
+/* Setsockoptions(2) level. Thanks to BSD these must match IPPROTO_xxx */
+#define LINUX_SOL_IP		0
+#define LINUX_SOL_SOCKET	1 /* No-no-no! Due to Linux :-) we cannot use SOL_ICMP=1 */
+#define LINUX_SOL_TCP		6
+#define LINUX_SOL_UDP		17
+#define LINUX_SOL_IPV6		41
+#define LINUX_SOL_ICMPV6	58
+#define LINUX_SOL_SCTP		132
+#define LINUX_SOL_UDPLITE	136 /* UDP-Lite (RFC 3828) */
+#define LINUX_SOL_RAW		255
+#define LINUX_SOL_IPX		256
+#define LINUX_SOL_AX25		257
+#define LINUX_SOL_ATALK		258
+#define LINUX_SOL_NETROM	259
+#define LINUX_SOL_ROSE		260
+#define LINUX_SOL_DECNET	261
+#define	LINUX_SOL_X25		262
+#define LINUX_SOL_PACKET	263
+#define LINUX_SOL_ATM		264	/* ATM layer (cell level) */
+#define LINUX_SOL_AAL		265	/* ATM Adaption Layer (packet level) */
+#define LINUX_SOL_IRDA		266
+#define LINUX_SOL_NETBEUI	267
+#define LINUX_SOL_LLC		268
+#define LINUX_SOL_DCCP		269
+#define LINUX_SOL_NETLINK	270
+#define LINUX_SOL_TIPC		271
+#define LINUX_SOL_RXRPC		272
+#define LINUX_SOL_PPPOL2TP	273
+#define LINUX_SOL_BLUETOOTH	274
+#define LINUX_SOL_PNPIPE	275
+#define LINUX_SOL_RDS		276
+#define LINUX_SOL_IUCV		277
+#define LINUX_SOL_CAIF		278
+#define LINUX_SOL_ALG		279
+#define LINUX_SOL_NFC		280
+
+#define LINUX_SO_DEBUG				1
+#define LINUX_SO_REUSEADDR			2
+#define LINUX_SO_TYPE				3
+#define LINUX_SO_ERROR				4
+#define LINUX_SO_DONTROUTE			5
+#define LINUX_SO_BROADCAST			6
+#define LINUX_SO_SNDBUF				7
+#define LINUX_SO_RCVBUF				8
+#define LINUX_SO_SNDBUFFORCE		32
+#define LINUX_SO_RCVBUFFORCE		33
+#define LINUX_SO_KEEPALIVE			9
+#define LINUX_SO_OOBINLINE			10
+#define LINUX_SO_NO_CHECK			11
+#define LINUX_SO_PRIORITY			12
+#define LINUX_SO_LINGER				13
+#define LINUX_SO_BSDCOMPAT			14
+#define LINUX_SO_REUSEPORT			15
+#define LINUX_SO_PASSCRED			16
+#define LINUX_SO_PEERCRED			17
+#define LINUX_SO_RCVLOWAT			18
+#define LINUX_SO_SNDLOWAT			19
+#define LINUX_SO_RCVTIMEO			20
+#define LINUX_SO_SNDTIMEO			21
+
+/* Security levels - as per NRL IPv6 - don't actually do anything */
+#define LINUX_SO_SECURITY_AUTHENTICATION			22
+#define LINUX_SO_SECURITY_ENCRYPTION_TRANSPORT		23
+#define LINUX_SO_SECURITY_ENCRYPTION_NETWORK		24
+#define LINUX_SO_BINDTODEVICE		25
+
+/* Socket filtering */
+#define LINUX_SO_ATTACH_FILTER		26
+#define LINUX_SO_DETACH_FILTER		27
+#define LINUX_SO_GET_FILTER			SO_ATTACH_FILTER
+#define LINUX_SO_PEERNAME			28
+#define LINUX_SO_TIMESTAMP			29
+#define LINUX_SCM_TIMESTAMP			SO_TIMESTAMP
+#define LINUX_SO_ACCEPTCONN			30
+#define LINUX_SO_PEERSEC			31
+#define LINUX_SO_PASSSEC			34
+#define LINUX_SO_TIMESTAMPNS		35
+#define LINUX_SCM_TIMESTAMPNS		SO_TIMESTAMPNS
+#define LINUX_SO_MARK				36
+#define LINUX_SO_TIMESTAMPING		37
+#define LINUX_SCM_TIMESTAMPING		SO_TIMESTAMPING
+#define LINUX_SO_PROTOCOL			38
+#define LINUX_SO_DOMAIN				39
+#define LINUX_SO_RXQ_OVFL			40
+#define LINUX_SO_WIFI_STATUS		41
+#define LINUX_SCM_WIFI_STATUS		SO_WIFI_STATUS
+#define LINUX_SO_PEEK_OFF			42
+
+/* Instruct lower device to use last 4-bytes of skb data as FCS */
+#define LINUX_SO_NOFCS				43
+#define LINUX_SO_LOCK_FILTER		44
+#define LINUX_SO_SELECT_ERR_QUEUE	45
+#define LINUX_SO_BUSY_POLL			46
+#define LINUX_SO_MAX_PACING_RATE	47
+#define LINUX_SO_BPF_EXTENSIONS		48
+
+/* For recvmsg/sendmsg */
 struct msghdr {
 	void *msg_name;			/* ptr to socket address structure */
 	int msg_namelen;		/* size of socket address structure */
@@ -98,3 +196,4 @@ struct mmsghdr {
 	struct msghdr msg_hdr;
 	unsigned int msg_len;
 };
+

@@ -190,6 +190,9 @@
     <ClInclude Include="src\common\fadvise.h">
       <Filter>common</Filter>
     </ClInclude>
+    <ClInclude Include="src\common\tcp.h">
+      <Filter>common</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
