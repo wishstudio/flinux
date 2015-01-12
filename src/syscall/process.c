@@ -169,6 +169,13 @@ DEFINE_SYSCALL(gettid)
 	return tid;
 }
 
+DEFINE_SYSCALL(setsid)
+{
+	log_info("setsid().\n");
+	log_error("setsid() not implemented.\n");
+	return 0;
+}
+
 DEFINE_SYSCALL(getuid)
 {
 	log_info("getuid(): %d\n", 0);
