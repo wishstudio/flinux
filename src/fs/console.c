@@ -523,7 +523,7 @@ static size_t console_read(struct file *f, char *buf, size_t count)
 				{
 				case VK_RETURN:
 				{
-					line[len++] = console->termios.c_iflag & INLCR ? '\r' : '\n';
+					line[len++] = console->termios.c_iflag & INLCR ? '\n' : '\r';
 					size_t r = min(count, len);
 					memcpy(buf + bytes_read, line, r);
 					bytes_read += r;
