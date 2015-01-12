@@ -25,11 +25,56 @@ static size_t random_dev_write(struct file *f, const char *buf, size_t count)
 	return count;
 }
 
+static int random_dev_stat(struct file *f, struct newstat *buf)
+{
+	INIT_STRUCT_NEWSTAT_PADDING(buf);
+	buf->st_dev = mkdev(0, 1);
+	buf->st_ino = 0;
+	buf->st_mode = S_IFCHR + 0666;
+	buf->st_nlink = 1;
+	buf->st_uid = 0;
+	buf->st_gid = 0;
+	buf->st_rdev = mkdev(1, 8);
+	buf->st_size = 0;
+	buf->st_blksize = 4096;
+	buf->st_blocks = 0;
+	buf->st_atime = 0;
+	buf->st_atime_nsec = 0;
+	buf->st_mtime = 0;
+	buf->st_mtime_nsec = 0;
+	buf->st_ctime = 0;
+	buf->st_ctime_nsec = 0;
+	return 0;
+}
+
+static int urandom_dev_stat(struct file *f, struct newstat *buf)
+{
+	INIT_STRUCT_NEWSTAT_PADDING(buf);
+	buf->st_dev = mkdev(0, 1);
+	buf->st_ino = 0;
+	buf->st_mode = S_IFCHR + 0666;
+	buf->st_nlink = 1;
+	buf->st_uid = 0;
+	buf->st_gid = 0;
+	buf->st_rdev = mkdev(1, 9);
+	buf->st_size = 0;
+	buf->st_blksize = 4096;
+	buf->st_blocks = 0;
+	buf->st_atime = 0;
+	buf->st_atime_nsec = 0;
+	buf->st_mtime = 0;
+	buf->st_mtime_nsec = 0;
+	buf->st_ctime = 0;
+	buf->st_ctime_nsec = 0;
+	return 0;
+}
+
 static const struct file_ops random_dev_ops =
 {
 	.close = random_dev_close,
 	.read = random_dev_read,
 	.write = random_dev_write,
+	.stat = random_dev_stat,
 };
 
 static const struct file_ops urandom_dev_ops =
@@ -37,6 +82,7 @@ static const struct file_ops urandom_dev_ops =
 	.close = random_dev_close,
 	.read = random_dev_read,
 	.write = random_dev_write,
+	.stat = urandom_dev_stat,
 };
 
 struct file *random_dev_alloc()
@@ -44,7 +90,7 @@ struct file *random_dev_alloc()
 	struct file *f = kmalloc(sizeof(struct file));
 	f->op_vtable = &random_dev_ops;
 	f->ref = 1;
-	f->flags = O_RDONLY;
+	f->flags = O_RDWR;
 	return f;
 }
 
@@ -53,6 +99,6 @@ struct file *urandom_dev_alloc()
 	struct file *f = kmalloc(sizeof(struct file));
 	f->op_vtable = &urandom_dev_ops;
 	f->ref = 1;
-	f->flags = O_RDONLY;
+	f->flags = O_RDWR;
 	return f;
 }

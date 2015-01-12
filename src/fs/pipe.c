@@ -82,12 +82,35 @@ static int pipe_llseek(struct file *f, loff_t offset, loff_t *newoffset, int whe
 	return -ESPIPE;
 }
 
+static int pipe_stat(struct file *f, struct newstat *buf)
+{
+	INIT_STRUCT_NEWSTAT_PADDING(buf);
+	buf->st_dev = mkdev(0, 8);
+	buf->st_ino = 0;
+	buf->st_mode = S_IFIFO + 0600;
+	buf->st_nlink = 1;
+	buf->st_uid = 0;
+	buf->st_gid = 0;
+	buf->st_rdev = mkdev(0, 0);
+	buf->st_size = 0;
+	buf->st_blksize = 4096;
+	buf->st_blocks = 0;
+	buf->st_atime = 0;
+	buf->st_atime_nsec = 0;
+	buf->st_mtime = 0;
+	buf->st_mtime_nsec = 0;
+	buf->st_ctime = 0;
+	buf->st_ctime_nsec = 0;
+	return 0;
+}
+
 static const struct file_ops pipe_ops = {
 	.get_poll_handle = pipe_get_poll_handle,
 	.close = pipe_close,
 	.read = pipe_read,
 	.write = pipe_write,
 	.llseek = pipe_llseek,
+	.stat = pipe_stat,
 };
 
 static struct file *pipe_create_file(HANDLE handle, int is_read, int flags)
