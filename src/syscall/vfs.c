@@ -1523,6 +1523,16 @@ DEFINE_SYSCALL(openat, int, dirfd, const char *, pathname, int, flags, int, mode
 	return -ENOENT;
 }
 
+DEFINE_SYSCALL(fchmodat, int, dirfd, const char *, pathname, int, mode, int, flags)
+{
+	log_info("fchmodat(%d, \"%s\", %d, %x)\n", dirfd, pathname, mode, flags);
+	if (!mm_check_read_string(pathname))
+		return -EFAULT;
+	/* TODO */
+	log_error("fchmodat() not implemented.\n");
+	return 0;
+}
+
 DEFINE_SYSCALL(faccessat, int, dirfd, const char *, pathname, int, mode, int, flags)
 {
 	log_info("faccessat(%d, %s, 0x%x, 0x%x)\n", dirfd, pathname, mode, flags);
