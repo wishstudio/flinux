@@ -1,4 +1,5 @@
 #include <common/errno.h>
+#include <common/fcntl.h>
 #include <common/ioctls.h>
 #include <common/poll.h>
 #include <common/termios.h>
@@ -747,6 +748,7 @@ static struct file *console_alloc_file(struct console_state *console, int is_rea
 	struct console_file *f = (struct console_file *)kmalloc(sizeof(struct console_file));
 	f->base_file.op_vtable = &console_ops;
 	f->base_file.ref = 1;
+	f->base_file.flags = O_LARGEFILE | O_RDWR;
 	f->is_read = is_read;
 	f->state = console;
 	return f;

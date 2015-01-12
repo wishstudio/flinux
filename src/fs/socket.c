@@ -116,7 +116,6 @@ struct socket_file
 	struct file base_file;
 	SOCKET socket;
 	HANDLE event_handle;
-	int flags;
 	int events, connect_error;
 };
 
@@ -182,7 +181,7 @@ static int socket_wait_event(struct socket_file *f, int event, int flags)
 		int e = socket_update_events(f, event);
 		if (e & event)
 			return 0;
-		if ((f->flags & O_NONBLOCK) || (flags & LINUX_MSG_DONTWAIT))
+		if ((f->base_file.flags & O_NONBLOCK) || (flags & LINUX_MSG_DONTWAIT))
 			return -EWOULDBLOCK;
 		WaitForSingleObject(f->event_handle, INFINITE);
 	} while (1);
@@ -239,7 +238,7 @@ static int socket_sendmsg(struct socket_file *f, const struct msghdr *msg, int f
 			log_warning("WSASendMsg() failed, error code: %d\n", err);
 			return translate_socket_error(err);
 		}
-		f->flags &= ~FD_WRITE;
+		f->events &= ~FD_WRITE;
 	}
 	return r;
 }
@@ -387,11 +386,11 @@ DEFINE_SYSCALL(socket, int, domain, int, type, int, protocol)
 	f->base_file.ref = 1;
 	f->socket = sock;
 	f->event_handle = event_handle;
-	f->flags = 0;
 	f->events = 0;
 	f->connect_error = 0;
+	f->base_file.flags = O_RDWR;
 	if ((type & O_NONBLOCK))
-		f->flags |= O_NONBLOCK;
+		f->base_file.flags |= O_NONBLOCK;
 	
 	int fd = vfs_store_file((struct file *)f, (type & O_CLOEXEC) > 0);
 	if (fd < 0)
@@ -418,7 +417,7 @@ DEFINE_SYSCALL(connect, int, sockfd, const struct sockaddr *, addr, size_t, addr
 			log_warning("connect() failed, error code: %d\n", err);
 			return translate_socket_error(err);
 		}
-		if ((f->flags & O_NONBLOCK) > 0)
+		if ((f->base_file.flags & O_NONBLOCK) > 0)
 		{
 			log_info("connect() returned EINPROGRESS.\n");
 			return -EINPROGRESS;

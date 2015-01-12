@@ -1,3 +1,4 @@
+#include <common/fcntl.h>
 #include <fs/null.h>
 #include <heap.h>
 #include <log.h>
@@ -30,5 +31,6 @@ struct file *null_dev_alloc()
 	struct file *f = kmalloc(sizeof(struct file));
 	f->op_vtable = &null_dev_ops;
 	f->ref = 1;
+	f->flags = O_RDWR;
 	return f;
 }

@@ -1,3 +1,4 @@
+#include <common/fcntl.h>
 #include <fs/file.h>
 #include <heap.h>
 #include <log.h>
@@ -43,6 +44,7 @@ struct file *random_dev_alloc()
 	struct file *f = kmalloc(sizeof(struct file));
 	f->op_vtable = &random_dev_ops;
 	f->ref = 1;
+	f->flags = O_RDONLY;
 	return f;
 }
 
@@ -51,5 +53,6 @@ struct file *urandom_dev_alloc()
 	struct file *f = kmalloc(sizeof(struct file));
 	f->op_vtable = &urandom_dev_ops;
 	f->ref = 1;
+	f->flags = O_RDONLY;
 	return f;
 }

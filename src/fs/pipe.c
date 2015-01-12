@@ -1,4 +1,5 @@
 #include <common/errno.h>
+#include <common/fcntl.h>
 #include <common/poll.h>
 #include <fs/pipe.h>
 #include <syscall/mm.h>
@@ -94,6 +95,7 @@ static struct file *pipe_create_file(HANDLE handle, int is_read, int flags)
 	struct pipe_file *pipe = (struct pipe_file *)kmalloc(sizeof(struct pipe_file));
 	pipe->base_file.op_vtable = &pipe_ops;
 	pipe->base_file.ref = 1;
+	pipe->base_file.flags = is_read? O_RDONLY: O_WRONLY;
 	pipe->handle = handle;
 	pipe->is_read = is_read;
 	return pipe;

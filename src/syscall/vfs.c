@@ -1417,6 +1417,11 @@ DEFINE_SYSCALL(fcntl, int, fd, int, cmd, int, arg)
 		vfs->fds_cloexec[fd] = cloexec;
 		return 0;
 	}
+	case F_GETFL:
+	{
+		log_info("F_GETFL: %x\n", f->flags);
+		return f->flags;
+	}
 
 	default:
 		log_error("Unsupported command: %d\n", cmd);

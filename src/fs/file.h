@@ -32,6 +32,7 @@ struct file
 {
 	struct file_ops *op_vtable;
 	uint32_t ref;
+	int flags;
 };
 
 struct file_system
