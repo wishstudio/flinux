@@ -1140,15 +1140,66 @@ DEFINE_SYSCALL(msync, void *, addr, size_t, len, int, flags)
 DEFINE_SYSCALL(mlock, const void *, addr, size_t, len)
 {
 	log_info("mlock(0x%p, 0x%p)\n", addr, len);
-	log_error("mlock() not implemented.\n");
-	return -ENOSYS;
+	if (!IS_ALIGNED(addr, PAGE_SIZE))
+		return -EINVAL;
+
+	/* All on demand page must be properly loaded or the locking operation will fail */
+	size_t start_page = GET_PAGE(addr);
+	size_t end_page = GET_PAGE((size_t)addr + len);
+	struct map_entry *p, *e;
+	forward_list_iterate(&mm->map_list, p, e)
+		if (e->start_page > end_page)
+			break;
+		else
+		{
+			size_t range_start = max(start_page, e->start_page);
+			size_t range_end = min(end_page, e->end_page);
+			if (range_start > range_end)
+				continue;
+
+			size_t start_block = GET_BLOCK_OF_PAGE(range_start);
+			size_t end_block = GET_BLOCK_OF_PAGE(range_end);
+			/* TODO: Optimization: batch operation on continuous blocks */
+			for (size_t i = start_block; i <= end_block; i++)
+				if (get_section_handle(i))
+					continue;
+				else
+				{
+					if (!allocate_block(i))
+						return -ENOMEM;
+					size_t first_page = max(range_start, GET_FIRST_PAGE_OF_BLOCK(i));
+					size_t last_page = min(range_end, GET_LAST_PAGE_OF_BLOCK(i));
+					map_entry_range(e, first_page, last_page);
+					if (e->prot != PROT_READ | PROT_WRITE | PROT_EXEC)
+					{
+						DWORD oldProtect;
+						VirtualProtect(GET_PAGE_ADDRESS(first_page), (last_page - first_page + 1) * PAGE_SIZE, prot_linux2win(e->prot), &oldProtect);
+					}
+				}
+		}
+	/* TODO: Mark unused pages as NOACCESS */
+
+	/* The actual locking */
+	/* TODO: Automatically enlarge working set size for arbitrary sized mlock() call */
+	if (!VirtualLock(addr, len))
+	{
+		log_warning("VirtualLock() failed, error code: %d\n", GetLastError());
+		return -ENOMEM;
+	}
+	return 0;
 }
 
 DEFINE_SYSCALL(munlock, const void *, addr, size_t, len)
 {
 	log_info("munlock(0x%p, 0x%p)\n", addr, len);
-	log_error("munlock() not implemented.\n");
-	return -ENOSYS;
+	if (!IS_ALIGNED(addr, PAGE_SIZE))
+		return -EINVAL;
+	if (!VirtualUnlock(addr, len))
+	{
+		log_warning("VirtualUnlock() failed, error code: %d\n", GetLastError());
+		return -ENOMEM;
+	}
+	return 0;
 }
 
 DEFINE_SYSCALL(mremap, void *, old_address, size_t, old_size, size_t, new_size, int, flags, void *, new_address)
