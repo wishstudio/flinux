@@ -125,11 +125,18 @@ static size_t winfs_write(struct file *f, const char *buf, size_t count)
 {
 	struct winfs_file *winfile = (struct winfs_file *) f;
 	size_t num_written = 0;
+	OVERLAPPED overlapped;
+	overlapped.Internal = 0;
+	overlapped.InternalHigh = 0;
+	overlapped.Offset = 0xFFFFFFFF;
+	overlapped.OffsetHigh = 0xFFFFFFFF;
+	overlapped.hEvent = NULL;
+	OVERLAPPED *overlapped_pointer = (f->flags & O_APPEND)? &overlapped: NULL;
 	while (count > 0)
 	{
 		DWORD count_dword = (DWORD)min(count, (size_t)UINT_MAX);
 		DWORD num_written_dword;
-		if (!WriteFile(winfile->handle, buf, count_dword, &num_written_dword, NULL))
+		if (!WriteFile(winfile->handle, buf, count_dword, &num_written_dword, overlapped_pointer))
 		{
 			log_warning("WriteFile() failed, error code: %d\n", GetLastError());
 			return -EIO;
