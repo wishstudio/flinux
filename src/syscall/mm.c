@@ -630,6 +630,62 @@ static HANDLE duplicate_section(HANDLE source, void *source_addr)
 	return dest;
 }
 
+static int take_block_ownership(size_t block)
+{
+	HANDLE handle = get_section_handle(block);
+	if (!handle)
+	{
+		log_error("Block %p not mapped.\n", block);
+		return 0;
+	}
+	/* Query information about the section object which the page within */
+	OBJECT_BASIC_INFORMATION info;
+	NTSTATUS status;
+	status = NtQueryObject(handle, ObjectBasicInformation, &info, sizeof(OBJECT_BASIC_INFORMATION), NULL);
+	if (status != STATUS_SUCCESS)
+	{
+		log_error("NtQueryObject() on block %p failed, status: 0x%x.\n", block, status);
+		return 0;
+	}
+	if (info.HandleCount == 1)
+	{
+		log_info("We're the only owner.\n");
+		return 1;
+	}
+	
+	/* We are not the only one holding the section, duplicate it */
+	log_info("Duplicating section %p...\n", block);
+	HANDLE new_section;
+	if (!(new_section = duplicate_section(handle, GET_BLOCK_ADDRESS(block))))
+	{
+		log_error("Duplicating section failed.\n");
+		return 0;
+	}
+	log_info("Duplicating section succeeded. Remapping...\n");
+	status = NtUnmapViewOfSection(NtCurrentProcess(), GET_BLOCK_ADDRESS(block));
+	if (status != STATUS_SUCCESS)
+	{
+		log_error("Unmapping failed, status: %x\n", status);
+		return 0;
+	}
+	status = NtClose(handle);
+	if (status != STATUS_SUCCESS)
+	{
+		log_error("NtClose() failed, status: %x\n", status);
+		return 0;
+	}
+	PVOID base_addr = GET_BLOCK_ADDRESS(block);
+	SIZE_T view_size = BLOCK_SIZE;
+	status = NtMapViewOfSection(new_section, NtCurrentProcess(), &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, PAGE_EXECUTE_READWRITE);
+	if (status != STATUS_SUCCESS)
+	{
+		log_error("Remapping failed, status: %x\n", status);
+		return 0;
+	}
+	replace_section_handle(block, new_section);
+	return 1;
+}
+
 static int handle_cow_page_fault(void *addr)
 {
 	struct map_entry *entry = find_map_entry(addr);
@@ -644,56 +700,10 @@ static int handle_cow_page_fault(void *addr)
 		return 0;
 	}
 	size_t block = GET_BLOCK(addr);
-	HANDLE handle = get_section_handle(block);
-	if (!handle)
-	{
-		log_warning("Address %p (page %p) not mapped.\n", addr, GET_PAGE(addr));
+
+	if (!take_block_ownership(block))
 		return 0;
-	}
-	/* Query information about the section object which the page within */
-	OBJECT_BASIC_INFORMATION info;
-	NTSTATUS status;
-	status = NtQueryObject(handle, ObjectBasicInformation, &info, sizeof(OBJECT_BASIC_INFORMATION), NULL);
-	if (status != STATUS_SUCCESS)
-	{
-		log_error("NtQueryObject() on block %p failed, status: 0x%x.\n", block, status);
-		return 0;
-	}
-	if (info.HandleCount == 1)
-		log_info("We're the only owner, simply change protection flags.\n");
-	else
-	{
-		/* We are not the only one holding the section, duplicate it */
-		log_info("Duplicating section %p...\n", block);
-		HANDLE new_section;
-		if (!(new_section = duplicate_section(handle, GET_BLOCK_ADDRESS(block))))
-		{
-			log_error("Duplicating section failed.\n");
-			return 0;
-		}
-		log_info("Duplicating section succeeded. Remapping...\n");
-		status = NtUnmapViewOfSection(NtCurrentProcess(), GET_BLOCK_ADDRESS(block));
-		if (status != STATUS_SUCCESS)
-		{
-			log_error("Unmapping failed, status: %x\n", status);
-			return 0;
-		}
-		status = NtClose(handle);
-		if (status != STATUS_SUCCESS)
-		{
-			log_error("NtClose() failed, status: %x\n", status);
-			return 0;
-		}
-		PVOID base_addr = GET_BLOCK_ADDRESS(block);
-		SIZE_T view_size = BLOCK_SIZE;
-		status = NtMapViewOfSection(new_section, NtCurrentProcess(), &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, PAGE_EXECUTE_READWRITE);
-		if (status != STATUS_SUCCESS)
-		{
-			log_error("Remapping failed, status: %x\n", status);
-			return 0;
-		}
-		replace_section_handle(block, new_section);
-	}
+
 	/* We're the only owner of the section now, change page protection flags */
 	size_t start_page = GET_FIRST_PAGE_OF_BLOCK(block);
 	size_t end_page = GET_LAST_PAGE_OF_BLOCK(block);
@@ -931,12 +941,13 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, struct file *f, of
 
 	/* If the first or last block is already allocated, we have to set up proper content in it
 	   For other blocks we map them on demand */
-	/* FIXME: The current mechanism is actually buggy.
-	 * When the existing block is a CoW shared block, directly VirtualProtect() it to writable
-	 * will certainly fail.
-	 */
 	if (get_section_handle(start_block))
 	{
+		if (!take_block_ownership(start_block))
+		{
+			log_error("Taking ownership of block %p failed.\n", start_block);
+			return -ENOMEM;
+		}
 		size_t last_page = GET_LAST_PAGE_OF_BLOCK(start_block);
 		last_page = min(last_page, end_page);
 		DWORD oldProtect;
@@ -947,6 +958,11 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, struct file *f, of
 	}
 	if (end_block > start_block && get_section_handle(end_block))
 	{
+		if (!take_block_ownership(end_block))
+		{
+			log_error("Taking ownership of block %p failed.\n", start_block);
+			return -ENOMEM;
+		}
 		size_t first_page = GET_FIRST_PAGE_OF_BLOCK(end_block);
 		DWORD oldProtect;
 		VirtualProtect(GET_PAGE_ADDRESS(first_page), (end_page - first_page + 1) * PAGE_SIZE, prot_linux2win(prot | PROT_WRITE), &oldProtect);
