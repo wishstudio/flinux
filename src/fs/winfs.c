@@ -547,7 +547,7 @@ static int winfs_open(const char *pathname, int flags, int mode, struct file **f
 		desiredAccess = GENERIC_READ;
 	if (flags & __O_DELETE)
 		desiredAccess |= DELETE;
-	shareMode = FILE_SHARE_READ | FILE_SHARE_DELETE;
+	shareMode = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
 	creationDisposition;
 	if (flags & O_EXCL)
 		creationDisposition = CREATE_NEW;

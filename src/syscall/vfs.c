@@ -1480,7 +1480,9 @@ DEFINE_SYSCALL(openat, int, dirfd, const char *, pathname, int, flags, int, mode
 
 DEFINE_SYSCALL(faccessat, int, dirfd, const char *, pathname, int, mode, int, flags)
 {
-	log_info("faccessat(%d, %s, 0x%x, 0x%x\n", dirfd, pathname, mode, flags);
+	log_info("faccessat(%d, %s, 0x%x, 0x%x\n)", dirfd, pathname, mode, flags);
+	if (dirfd == AT_FDCWD)
+		return sys_access(pathname, mode); /* TODO */
 	if (!mm_check_read_string(pathname))
 		return -EFAULT;
 	/* TODO */
