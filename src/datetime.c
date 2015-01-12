@@ -56,3 +56,14 @@ void unix_timeval_to_filetime(const struct timeval *time, FILETIME *filetime)
 {
 	unix_time_to_filetime((uint64_t)time->tv_sec * 1000000000 + (uint64_t)time->tv_usec * 1000, filetime);
 }
+
+void unix_timespec_to_filetime(const struct timespec *time, FILETIME *filetime)
+{
+	unix_timespec_to_filetime((uint64_t)time->tv_sec * 1000000000 + (uint64_t)time->tv_nsec, filetime);
+}
+
+void unix_timeval_to_unix_timespec(const struct timeval *timeval, struct timespec *timespec)
+{
+	timespec->tv_sec = timeval->tv_sec;
+	timespec->tv_nsec = timeval->tv_usec * 1000;
+}

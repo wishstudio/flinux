@@ -9,6 +9,7 @@
 #include <syscall/mm.h>
 #include <syscall/syscall.h>
 #include <syscall/vfs.h>
+#include <datetime.h>
 #include <log.h>
 #include <str.h>
 
@@ -1325,39 +1326,78 @@ DEFINE_SYSCALL(ioctl, int, fd, unsigned int, cmd, unsigned long, arg)
 
 DEFINE_SYSCALL(utime, const char *, filename, const struct utimbuf *, times)
 {
-	log_info("sys_utime(\"%s\", %p)\n", filename, times);
-	if (!mm_check_read_string(filename) || !mm_check_write(times, sizeof(struct utimbuf)))
+	log_info("utime(\"%s\", %p)\n", filename, times);
+	if (!mm_check_read_string(filename) || (times && !mm_check_read(times, sizeof(struct utimbuf))))
 		return -EFAULT;
 	struct file *f;
 	int r = vfs_open(filename, O_WRONLY, 0, &f);
 	if (r < 0)
 		return r;
-	struct timeval t[2];
-	t[0].tv_sec = times->actime;
-	t[0].tv_usec = 0;
-	t[1].tv_sec = times->modtime;
-	t[1].tv_usec = 0;
-	r = f->op_vtable->utimes(f, t);
-	if (r < 0)
-		return r;
+	if (!times)
+		r = f->op_vtable->utimens(f, NULL);
+	else
+	{
+		struct timespec t[2];
+		t[0].tv_sec = times->actime;
+		t[0].tv_nsec = 0;
+		t[1].tv_sec = times->modtime;
+		t[1].tv_nsec = 0;
+		r = f->op_vtable->utimens(f, t);
+	}
 	vfs_release(f);
-	return 0;
+	return r;
 }
 
 DEFINE_SYSCALL(utimes, const char *, filename, const struct timeval *, times)
 {
-	log_info("sys_utimes(\"%s\", %p)\n", filename, times);
-	if (!mm_check_read_string(filename) || !mm_check_write(times, 2 * sizeof(struct timeval)))
+	log_info("utimes(\"%s\", %p)\n", filename, times);
+	if (!mm_check_read_string(filename) || (times && !mm_check_read(times, 2 * sizeof(struct timeval))))
 		return -EFAULT;
 	struct file *f;
 	int r = vfs_open(filename, O_WRONLY, 0, &f);
 	if (r < 0)
 		return r;
-	r = f->op_vtable->utimes(f, times);
+	if (!times)
+		r = f->op_vtable->utimens(f, NULL);
+	else
+	{
+		struct timespec t[2];
+		unix_timeval_to_unix_timespec(&times[0], &t[0]);
+		unix_timeval_to_unix_timespec(&times[1], &t[1]);
+		r = f->op_vtable->utimens(f, t);
+	}
+	vfs_release(f);
+	return r;
+}
+
+DEFINE_SYSCALL(utimensat, int, dirfd, const char *, pathname, const struct timespec *, times, int, flags)
+{
+	log_info("utimensat(%d, \"%s\", %p, 0x%x)\n", dirfd, pathname, times, flags);
+	if ((pathname && !mm_check_read_string(pathname)) || (times && !mm_check_read(times, 2 * sizeof(struct timespec))))
+		return -EFAULT;
+	if (!pathname)
+	{
+		/* Special case: use dirfd as file fd */
+		struct file *f = vfs_get(dirfd);
+		if (!f)
+			return -EBADF;
+		return f->op_vtable->utimens(f, times);
+	}
+	if (dirfd != AT_FDCWD)
+	{
+		/* TODO */
+		log_error("Returning -ENOENT\n");
+		return -ENOENT;
+	}
+	if (flags)
+		log_error("flags (%x) not supported.\n", flags);
+	struct file *f;
+	int r = vfs_open(pathname, O_WRONLY, 0, &f);
 	if (r < 0)
 		return r;
+	r = f->op_vtable->utimens(f, times);
 	vfs_release(f);
-	return 0;
+	return r;
 }
 
 DEFINE_SYSCALL(chdir, const char *, pathname)
@@ -1485,7 +1525,7 @@ DEFINE_SYSCALL(openat, int, dirfd, const char *, pathname, int, flags, int, mode
 
 DEFINE_SYSCALL(faccessat, int, dirfd, const char *, pathname, int, mode, int, flags)
 {
-	log_info("faccessat(%d, %s, 0x%x, 0x%x\n)", dirfd, pathname, mode, flags);
+	log_info("faccessat(%d, %s, 0x%x, 0x%x)\n", dirfd, pathname, mode, flags);
 	if (dirfd == AT_FDCWD)
 		return sys_access(pathname, mode); /* TODO */
 	if (!mm_check_read_string(pathname))

@@ -79,6 +79,8 @@ int kvsprintf(char *buffer, const char *format, va_list args)
 			{
 				format = f;
 				const char *ch = va_arg(args, const char *);
+				if (!ch)
+					continue;
 				while (*ch)
 					*buf++ = *ch++;
 				continue;

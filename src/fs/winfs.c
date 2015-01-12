@@ -271,10 +271,10 @@ static int winfs_stat(struct file *f, struct newstat *buf)
 	return 0;
 }
 
-static int winfs_utimes(struct file *f, const struct timeval times[2])
+static int winfs_utimens(struct file *f, const struct timespec *times)
 {
 	struct winfs_file *winfs = (struct winfs_file *)f;
-	if (times)
+	if (!times)
 	{
 		SYSTEMTIME time;
 		GetSystemTime(&time);
@@ -285,8 +285,8 @@ static int winfs_utimes(struct file *f, const struct timeval times[2])
 	else
 	{
 		FILETIME actime, modtime;
-		unix_timeval_to_filetime(&times[0], &actime);
-		unix_timeval_to_filetime(&times[1], &modtime);
+		unix_timespec_to_filetime(&times[0], &actime);
+		unix_timespec_to_filetime(&times[1], &modtime);
 		SetFileTime(winfs->handle, NULL, &actime, &modtime);
 	}
 	return 0;
@@ -370,7 +370,7 @@ static struct file_ops winfs_ops =
 	.pwrite = winfs_pwrite,
 	.llseek = winfs_llseek,
 	.stat = winfs_stat,
-	.utimes = winfs_utimes,
+	.utimens = winfs_utimens,
 	.getdents = winfs_getdents,
 	.statfs = winfs_statfs,
 };

@@ -13,3 +13,5 @@ uint64_t filetime_to_unix_nsec(const FILETIME *filetime);
 void filetime_to_unix_timeval(const FILETIME *filetime, struct timeval *tv);
 void filetime_to_unix_timespec(const FILETIME *filetime, struct timespec *tv);
 void unix_timeval_to_filetime(const struct timeval *time, FILETIME *filetime);
+void unix_timespec_to_filetime(const struct timespec *time, FILETIME *filetime);
+void unix_timeval_to_unix_timespec(const struct timeval *timeval, struct timespec *timespec);
