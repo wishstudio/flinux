@@ -48,18 +48,18 @@ void filetime_to_unix_timespec(const FILETIME *filetime, struct timespec *tv)
 static void unix_time_to_filetime(uint64_t nsec, FILETIME *filetime)
 {
 	uint64_t ticks = nsec / NANOSECONDS_PER_TICK + TICKS_TO_UNIX_EPOCH;
-	filetime->dwLowDateTime = (DWORD)(ticks % 32ULL);
-	filetime->dwHighDateTime = (DWORD)(ticks / 32ULL);
+	filetime->dwLowDateTime = (DWORD)(ticks % 0x100000000ULL);
+	filetime->dwHighDateTime = (DWORD)(ticks / 0x100000000ULL);
 }
 
 void unix_timeval_to_filetime(const struct timeval *time, FILETIME *filetime)
 {
-	unix_time_to_filetime((uint64_t)time->tv_sec * 1000000000 + (uint64_t)time->tv_usec * 1000, filetime);
+	unix_time_to_filetime((uint64_t)time->tv_sec * NANOSECONDS_PER_SECOND + (uint64_t)time->tv_usec * 1000ULL, filetime);
 }
 
 void unix_timespec_to_filetime(const struct timespec *time, FILETIME *filetime)
 {
-	unix_timespec_to_filetime((uint64_t)time->tv_sec * 1000000000 + (uint64_t)time->tv_nsec, filetime);
+	unix_time_to_filetime((uint64_t)time->tv_sec * NANOSECONDS_PER_SECOND + (uint64_t)time->tv_nsec, filetime);
 }
 
 void unix_timeval_to_unix_timespec(const struct timeval *timeval, struct timespec *timespec)
