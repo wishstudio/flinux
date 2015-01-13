@@ -110,7 +110,7 @@ static WORD get_text_attribute(struct console_state *console)
 	return attr;
 }
 
-static void backspace(struct console_state *console)
+static void backspace(struct console_state *console, BOOL erase)
 {
 	CONSOLE_SCREEN_BUFFER_INFO info;
 	GetConsoleScreenBufferInfo(console->out, &info);
@@ -126,8 +126,11 @@ static void backspace(struct console_state *console)
 	}
 	else
 		info.dwCursorPosition.X--;
-	DWORD bytes_written;
-	WriteConsoleOutputCharacterA(console->out, " ", 1, info.dwCursorPosition, &bytes_written);
+	if (erase)
+	{
+		DWORD bytes_written;
+		WriteConsoleOutputCharacterA(console->out, " ", 1, info.dwCursorPosition, &bytes_written);
+	}
 	SetConsoleCursorPosition(console->out, info.dwCursorPosition);
 }
 
@@ -267,22 +270,22 @@ static void control_escape_param(struct console_state *console, char ch)
 		break;
 
 	case 'A':
-		move_up(console, console->params[0]);
+		move_up(console, console->params[0]? console->params[0]: 1);
 		console->processor = NULL;
 		break;
 
 	case 'B':
-		move_down(console, console->params[0]);
+		move_down(console, console->params[0]? console->params[0]: 1);
 		console->processor = NULL;
 		break;
 
 	case 'C':
-		move_right(console, console->params[0]);
+		move_right(console, console->params[0]? console->params[0]: 1);
 		console->processor = NULL;
 		break;
 
 	case 'D':
-		move_left(console, console->params[0]);
+		move_left(console, console->params[0]? console->params[0]: 1);
 		console->processor = NULL;
 		break;
 
@@ -546,7 +549,7 @@ static size_t console_read(struct file *f, char *buf, size_t count)
 					{
 						len--;
 						if (console->termios.c_lflag & ECHO)
-							backspace(console);
+							backspace(console, TRUE);
 					}
 				}
 				default:
