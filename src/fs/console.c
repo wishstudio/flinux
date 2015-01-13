@@ -6,6 +6,7 @@
 #include <fs/console.h>
 #include <heap.h>
 #include <log.h>
+#include <str.h>
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
@@ -15,6 +16,7 @@
 #define CONSOLE_MAX_PARAMS	16
 #define MAX_INPUT			256
 #define MAX_CANON			256
+#define MAX_STRING			256
 
 struct console_state
 {
@@ -24,6 +26,8 @@ struct console_state
 	int param_count;
 	int bright, reverse, foreground, background;
 	char input_buffer[MAX_INPUT];
+	int string_len;
+	char string_buffer[MAX_STRING];
 	size_t input_buffer_head, input_buffer_tail;
 	struct termios termios;
 	void (*processor)(struct console_file *console, char ch);
@@ -245,7 +249,8 @@ static void erase_line(struct console_state *console, int mode)
 	FillConsoleOutputCharacterW(console->out, L' ', count, start, &num_written);
 }
 
-static void control_escape_param(struct console_state *console, char ch)
+/* Handler for control sequencie introducer, "ESC [" */
+static void control_escape_csi(struct console_state *console, char ch)
 {
 	switch (ch)
 	{
@@ -379,9 +384,51 @@ static void control_escape_param(struct console_state *console, char ch)
 		break;
 
 	default:
-		log_error("control_escape_param(): Unhandled character %c\n", ch);
+		log_error("control_escape_csi(): Unhandled character %c\n", ch);
 		console->processor = NULL;
 	}
+}
+
+/* Handler for operating system commands, "ESC ]" */
+static void control_escape_osc(struct console_state *console, char ch)
+{
+	if (console->string_len == -1)
+	{
+		if (ch == ';')
+		{
+			console->string_len = 0;
+			return;
+		}
+		else if (ch >= '0' && ch <= '9')
+		{
+			console->params[0] = console->params[0] * 10 + (ch - '0');
+			return;
+		}
+	}
+	else if (ch == 7) /* BEL, marks the end */
+	{
+		if (console->params[0] == 0 || console->params[0] == 2) /* Change window title (and icon name) */
+		{
+			WCHAR title[MAX_STRING + 1];
+			int r = utf8_to_utf16(console->string_buffer, console->string_len, title, MAX_STRING + 1);
+			if (r < 0)
+			{
+				log_error("Invalid UTF-8 sequence.\n");
+				return;
+			}
+			title[r] = 0;
+			SetConsoleTitleW(title);
+			console->processor = NULL;
+			return;
+		}
+	}
+	else
+	{
+		console->string_buffer[console->string_len++] = ch;
+		return;
+	}
+	log_error("control_escape_osc(): Unhandled character %c\n", ch);
+	console->processor = NULL;
 }
 
 static void control_escape_set_default_character_set(struct console_state *console, char ch)
@@ -404,7 +451,13 @@ static void control_escape(struct console_state *console, char ch)
 		for (int i = 0; i < CONSOLE_MAX_PARAMS; i++)
 			console->params[i] = 0;
 		console->param_count = 0;
-		console->processor = control_escape_param;
+		console->processor = control_escape_csi;
+		break;
+
+	case ']':
+		console->params[0] = 0;
+		console->string_len = -1;
+		console->processor = control_escape_osc;
 		break;
 
 	case '(':
@@ -653,9 +706,17 @@ static size_t console_write(struct file *f, const char *buf, size_t count)
 			last = i;
 	}
 	OUTPUT();
+	/* This will make the caret immediately visible */
 	CONSOLE_SCREEN_BUFFER_INFO info;
 	GetConsoleScreenBufferInfo(console->out, &info);
 	SetConsoleCursorPosition(console->out, info.dwCursorPosition);
+#if 0
+	char str[1024];
+	memcpy(str, buf, count);
+	str[count] = '\n';
+	str[count + 1] = 0;
+	log_debug(str);
+#endif
 	return count;
 }
 

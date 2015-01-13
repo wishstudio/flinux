@@ -58,11 +58,11 @@ void main()
 	envbuf[2] = 'R';
 	envbuf[3] = 'M';
 	envbuf[4] = '=';
-	envbuf[5] = 'v';
+	envbuf[5] = 'x';
 	envbuf[6] = 't';
-	envbuf[7] = '1';
-	envbuf[8] = '0';
-	envbuf[9] = '0';
+	envbuf[7] = 'e';
+	envbuf[8] = 'r';
+	envbuf[9] = 'm';
 	envbuf[10] = 0;
 	int argc = 0;
 	const char **argv = (const char **)(envbuf + 16);
