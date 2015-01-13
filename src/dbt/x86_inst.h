@@ -927,8 +927,8 @@ static const struct instruction_desc two_byte_inst[256] =
 	/* 0x11: MANDATORY */ MANDATORY(0x0F11)
 	/* 0x12: MANDATORY */ MANDATORY(0x0F12)
 	/* 0x13: MANDATORY */ MANDATORY(0x0F13)
-	/* 0x14: ??? */ UNKNOWN()
-	/* 0x15: ??? */ UNKNOWN()
+	/* 0x14: MANDATORY */ MANDATORY(0x0F14)
+	/* 0x15: MANDATORY */ MANDATORY(0x0F15)
 	/* 0x16: MANDATORY */ MANDATORY(0x0F16)
 	/* 0x17: MANDATORY */ MANDATORY(0x0F17)
 	/* 0x18:
