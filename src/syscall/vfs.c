@@ -1503,6 +1503,13 @@ DEFINE_SYSCALL(umask, int, mask)
 	return old;
 }
 
+DEFINE_SYSCALL(fchown, int, fd, uid_t, owner, gid_t, group)
+{
+	log_info("fchown(%d, %d, %d)\n", fd, owner, group);
+	log_error("fchown() not implemented.\n");
+	return 0;
+}
+
 DEFINE_SYSCALL(chown, const char *, pathname, uid_t, owner, gid_t, group)
 {
 	log_info("chown(\"%s\", %d, %d)\n", pathname, owner, group);
@@ -1512,10 +1519,12 @@ DEFINE_SYSCALL(chown, const char *, pathname, uid_t, owner, gid_t, group)
 	return 0;
 }
 
-DEFINE_SYSCALL(fchown, int, fd, uid_t, owner, gid_t, group)
+DEFINE_SYSCALL(lchown, const char *, pathname, uid_t, owner, gid_t, group)
 {
-	log_info("fchown(%d, %d, %d)\n", fd, owner, group);
-	log_error("fchown() not implemented.\n");
+	log_info("lchown(\"%s\", %d, %d)\n", pathname, owner, group);
+	if (!mm_check_read_string(pathname))
+		return -EFAULT;
+	log_error("lchown() not implemented.\n");
 	return 0;
 }
 
