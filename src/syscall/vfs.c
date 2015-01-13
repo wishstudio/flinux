@@ -1523,6 +1523,30 @@ DEFINE_SYSCALL(openat, int, dirfd, const char *, pathname, int, flags, int, mode
 	return -ENOENT;
 }
 
+DEFINE_SYSCALL(fstatat64, int, dirfd, const char *, pathname, struct stat64 *, buf, int, flags)
+{
+	log_info("fstatat64(%d, \"%s\", %p, %x)\n", dirfd, pathname, buf, flags);
+	if (dirfd == AT_FDCWD)
+		return sys_stat64(pathname, buf);
+	if (!mm_check_read_string(pathname))
+		return -EFAULT;
+	/* TODO */
+	log_error("fstatat64() not implemented.\n");
+	return -ENOENT;
+}
+
+DEFINE_SYSCALL(unlinkat, int, dirfd, const char *, pathname, int, flags)
+{
+	log_info("unlinkat(%d, \"%s\", %x)\n", dirfd, pathname, flags);
+	if (dirfd == AT_FDCWD)
+		return sys_unlink(pathname);
+	if (!mm_check_read_string(pathname))
+		return -EFAULT;
+	/* TODO */
+	log_error("unlinkat() not implemented.\n");
+	return -ENOENT;
+}
+
 DEFINE_SYSCALL(fchmodat, int, dirfd, const char *, pathname, int, mode, int, flags)
 {
 	log_info("fchmodat(%d, \"%s\", %d, %x)\n", dirfd, pathname, mode, flags);
