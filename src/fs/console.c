@@ -650,6 +650,9 @@ static size_t console_write(struct file *f, const char *buf, size_t count)
 			last = i;
 	}
 	OUTPUT();
+	CONSOLE_SCREEN_BUFFER_INFO info;
+	GetConsoleScreenBufferInfo(console->out, &info);
+	SetConsoleCursorPosition(console->out, info.dwCursorPosition);
 	return count;
 }
 
