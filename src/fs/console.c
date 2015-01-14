@@ -19,8 +19,8 @@
  * must be shared across all processes in the same console. We then use mutexes
  * to ensure the shared region is modifiable to only one process at one time.
  *
- * The basic assumption is that no other Win32 console applications are running
- * in the same console simultaneously. The only thing we need to take care of is
+ * The basic assumption is that no other Win32 console applications are writing
+ * to the same console simultaneously. The only thing we need to take care of is
  * when user changes the size of the window during application operation.
  */
 /* TODO: UTF-8 support */
@@ -37,12 +37,23 @@ struct console_data
 	int params[CONSOLE_MAX_PARAMS];
 	int param_count;
 	int bright, reverse, foreground, background;
-	char input_buffer[MAX_INPUT];
 	int string_len;
 	char string_buffer[MAX_STRING];
+	char input_buffer[MAX_INPUT];
 	size_t input_buffer_head, input_buffer_tail;
 	struct termios termios;
 	void (*processor)(char ch);
+
+	/* Based on our assumption, these values are not modifiable by other processes
+	 * during a console operation.
+	 * We'll need only read these values once in one operation
+	 */
+	int x, y; /* current position, in window coordinate */
+	int width, height; /* current size of the console window */
+	int buffer_height; /* current height of the screen buffer */
+	int top; /* the row number of current emulated top line in buffer coordinate */
+	int scroll_top, scroll_bottom; /* the row numbers of the margins of the scroll region */
+	int at_right_margin; /* whether we are at the right margin, i.e. the invisible column after the rightmost */
 };
 
 static struct console_data *const console = (struct console_data *)CONSOLE_DATA_BASE;
@@ -120,8 +131,10 @@ void console_init()
 	console->termios.c_cc[VEOF] = 4;
 	console->termios.c_cc[VSUSP] = 26;
 	console->processor = NULL;
+	console->top = 0;
+	console->at_right_margin = 0;
 	SetConsoleMode(in, 0);
-	SetConsoleMode(out, ENABLE_PROCESSED_OUTPUT | ENABLE_WRAP_AT_EOL_OUTPUT);
+	SetConsoleMode(out, ENABLE_PROCESSED_OUTPUT);
 
 	log_info("Console shared memory region successfully initialized.\n");
 }
@@ -225,101 +238,180 @@ static WORD get_text_attribute()
 		break;
 
 	case 7: /* White */
+
 		attr |= BACKGROUND_RED | BACKGROUND_GREEN | BACKGROUND_BLUE;
 		break;
 	}
 	return attr;
 }
 
-static void backspace(BOOL erase)
+static void console_retrieve_state()
 {
 	CONSOLE_SCREEN_BUFFER_INFO info;
 	GetConsoleScreenBufferInfo(console->out, &info);
-	if (info.dwCursorPosition.X == 0)
+	console->width = info.dwSize.X;
+	console->height = info.srWindow.Bottom - info.srWindow.Top + 1;
+	console->buffer_height = info.dwSize.Y;
+	int top_min = max(0, info.dwCursorPosition.Y - console->height + 1);
+	int top_max = min(info.dwCursorPosition.Y, console->buffer_height - console->height);
+	if (console->top < top_min)
+		console->top = top_min;
+	if (console->top > top_max)
+		console->top = top_max;
+	if (console->x != info.dwCursorPosition.X || console->y + console->top != info.dwCursorPosition.Y)
 	{
-		if (info.dwCursorPosition.Y > 0)
-		{
-			info.dwCursorPosition.X = info.dwSize.X - 1;
-			info.dwCursorPosition.Y--;
-		}
+		/* The cursor position is changed by another unknown process
+		 * Just re-retrieve the position, clear at margin flag,
+		 * and bless it won't get in our way
+		 */
+		console->x = info.dwCursorPosition.X;
+		console->y = info.dwCursorPosition.Y - console->top;
+		console->at_right_margin = 0;
+	}
+	/* TODO */
+	console->scroll_top = 0;
+	console->scroll_bottom = console->height - 1;
+}
+
+static void backspace(BOOL erase)
+{
+	if (console->x > 0)
+	{
+		if (console->at_right_margin)
+			console->at_right_margin = 0;
 		else
-			return;
+			console->x--;
+		COORD pos;
+		pos.X = console->x;
+		pos.Y = console->y + console->top;
+		if (erase && console->x)
+		{
+			DWORD bytes_written;
+			WriteConsoleOutputCharacterA(console->out, " ", 1, pos, &bytes_written);
+		}
+		SetConsoleCursorPosition(console->out, pos);
 	}
-	else
-		info.dwCursorPosition.X--;
-	if (erase)
-	{
-		DWORD bytes_written;
-		WriteConsoleOutputCharacterA(console->out, " ", 1, info.dwCursorPosition, &bytes_written);
-	}
-	SetConsoleCursorPosition(console->out, info.dwCursorPosition);
+}
+
+static void set_pos(int x, int y)
+{
+	COORD pos;
+	pos.X = x;
+	pos.Y = y + console->top;
+	SetConsoleCursorPosition(console->out, pos);
+	console->x = x;
+	console->y = y;
+	console->at_right_margin = 0;
 }
 
 static void move_left(int count)
 {
-	CONSOLE_SCREEN_BUFFER_INFO info;
-	GetConsoleScreenBufferInfo(console->out, &info);
-	info.dwCursorPosition.X = max(info.dwCursorPosition.X - count, 0);
-	SetConsoleCursorPosition(console->out, info.dwCursorPosition);
+	set_pos(max(console->x - count, 0), console->y);
 }
 
 static void move_right(int count)
 {
-	CONSOLE_SCREEN_BUFFER_INFO info;
-	GetConsoleScreenBufferInfo(console->out, &info);
-	info.dwCursorPosition.X = min(info.dwCursorPosition.X + count, info.dwSize.X - 1);
-	SetConsoleCursorPosition(console->out, info.dwCursorPosition);
+	set_pos(min(console->x + count, console->width - 1), console->y);
 }
 
 static void move_up(int count)
 {
-	CONSOLE_SCREEN_BUFFER_INFO info;
-	GetConsoleScreenBufferInfo(console->out, &info);
-	info.dwCursorPosition.Y = max(info.dwCursorPosition.Y - count, 0);
-	SetConsoleCursorPosition(console->out, info.dwCursorPosition);
+	set_pos(console->x, max(console->y - count, 0));
 }
 
 static void move_down(int count)
 {
-	CONSOLE_SCREEN_BUFFER_INFO info;
-	GetConsoleScreenBufferInfo(console->out, &info);
-	info.dwCursorPosition.Y = min(info.dwCursorPosition.Y + count, info.dwSize.Y - 1);
-	SetConsoleCursorPosition(console->out, info.dwCursorPosition);
+	set_pos(console->x, min(console->y + count, console->height - 1));
 }
 
-static void set_cursor_pos(int row, int column)
+static void crnl()
 {
-	COORD pos;
-	pos.X = column;
-	pos.Y = row;
-	SetConsoleCursorPosition(console->out, pos);
+	DWORD bytes_written;
+	WriteConsoleA(console->out, "\r\n", 2, &bytes_written, NULL);
+	if (console->y == console->height - 1)
+	{
+		/* The screen buffer is scrolled */
+		console->top = min(console->top + 1, console->buffer_height - console->height);
+	}
+	else
+		console->y++;
+	console->x = 0;
+	console->at_right_margin = 0;
+}
+
+static void cr()
+{
+	DWORD bytes_written;
+	WriteConsoleA(console->out, "\r", 1, &bytes_written, NULL);
+	console->x = 0;
+	console->at_right_margin = 0;
+}
+
+static void nl()
+{
+	DWORD bytes_written;
+	WriteConsoleA(console->out, "\n", 1, &bytes_written, NULL);
+	if (console->y == console->height - 1)
+	{
+		/* The screen buffer is scrolled */
+		console->top = min(console->top + 1, console->buffer_height - console->height);
+	}
+	else
+		console->y++;
+	console->at_right_margin = 0;
+}
+
+static void write_normal(const char *buf, int size)
+{
+	if (size == 0)
+		return;
+
+	while (size > 0)
+	{
+		if (console->at_right_margin)
+		{
+			crnl();
+			console->at_right_margin = 0;
+		}
+		/* Write to line end at most */
+		int line_remain = min(size, console->width - console->x);
+		DWORD bytes_written;
+		WriteConsoleA(console->out, buf, line_remain, &bytes_written, NULL);
+		console->x += line_remain;
+		if (console->x == console->width)
+		{
+			console->x--;
+			console->at_right_margin = 1;
+		}
+		buf += line_remain;
+		size -= line_remain;
+	}
 }
 
 static void erase_screen(int mode)
 {
-	CONSOLE_SCREEN_BUFFER_INFO info;
-	GetConsoleScreenBufferInfo(console->out, &info);
 	COORD start;
 	int count;
 	if (mode == 0)
 	{
 		/* Erase current line to bottom */
-		start = info.dwCursorPosition;
-		count = (info.dwSize.X - info.dwCursorPosition.X) + (info.srWindow.Bottom - info.dwCursorPosition.Y) * info.dwSize.X;
+		start.X = console->x;
+		start.Y = console->y + console->top;
+		count = (console->width - console->x + 1) + (console->height - console->y - 1) * console->width;
 	}
 	else if (mode == 1)
 	{
 		/* Erase top to current line */
 		start.X = 0;
-		start.Y = 0;
-		count = (info.dwCursorPosition.Y - info.srWindow.Top) * info.dwSize.X + info.dwCursorPosition.X;
+		start.Y = console->top;
+		count = console->y * console->width + console->x + 1;
 	}
 	else if (mode == 2)
 	{
 		/* Erase entire screen */
 		start.X = 0;
-		start.Y = 0;
-		count = (info.srWindow.Bottom - info.srWindow.Top + 1) * info.dwSize.X;
+		start.Y = console->top;
+		count = console->width * console->height;
 	}
 	else
 	{
@@ -333,28 +425,26 @@ static void erase_screen(int mode)
 
 static void erase_line(int mode)
 {
-	CONSOLE_SCREEN_BUFFER_INFO info;
-	GetConsoleScreenBufferInfo(console->out, &info);
 	COORD start;
-	start.Y = info.dwCursorPosition.Y;
+	start.Y = console->y + console->top;
 	int count;
 	if (mode == 0)
 	{
 		/* Erase to end */
-		start.X = info.dwCursorPosition.X;
-		count = info.dwSize.X - start.X;
+		start.X = console->x;
+		count = console->width - console->x + 1;
 	}
 	else if (mode == 1)
 	{
 		/* Erase to begin */
 		start.X = 0;
-		count = info.dwCursorPosition.X;
+		count = console->x + 1;
 	}
 	else if (mode == 2)
 	{
 		/* Erase whole line */
 		start.X = 0;
-		count = info.dwSize.X;
+		count = console->width;
 	}
 	else
 	{
@@ -417,7 +507,7 @@ static void control_escape_csi(char ch)
 			console->params[0]--;
 		if (console->params[1] > 0)
 			console->params[1]--;
-		set_cursor_pos(console->params[0], console->params[1]);
+		set_pos(console->params[0], console->params[1]);
 		console->processor = NULL;
 		break;
 
@@ -593,7 +683,7 @@ static void control_escape(char ch)
 
 static void console_add_input(char *str, size_t size)
 {
-	/* TODO: Detect input buffer wrapping */
+	/* TODO: Detect input buffer overflow */
 	for (size_t i = 0; i < size; i++)
 	{
 		console->input_buffer[console->input_buffer_head] = str[i];
@@ -671,6 +761,7 @@ static size_t console_read(struct file *f, char *buf, size_t count)
 		return -EBADF;
 
 	console_lock();
+	console_retrieve_state();
 
 	size_t bytes_read = 0;
 	while (console->input_buffer_head != console->input_buffer_tail && count > 0)
@@ -705,9 +796,8 @@ static size_t console_read(struct file *f, char *buf, size_t count)
 						/* Some bytes not fit, add to input buffer */
 						console_add_input(line + r, len - r);
 					}
-					/* TODO: Do we need to write CRLF in non-echo mode? */
-					DWORD bytes_written;
-					WriteConsoleA(console->out, "\r\n", 2, &bytes_written, NULL);
+					/* TODO: Do we need to write CRNL in non-echo mode? */
+					crnl();
 					goto read_done;
 				}
 
@@ -727,7 +817,7 @@ static size_t console_read(struct file *f, char *buf, size_t count)
 						{
 							line[len++] = ch;
 							if (console->termios.c_lflag & ECHO)
-								WriteConsoleA(console->out, &ch, 1, NULL, NULL);
+								write_normal(&ch, 1);
 						}
 					}
 				}
@@ -764,7 +854,7 @@ static size_t console_read(struct file *f, char *buf, size_t count)
 						count--;
 						buf[bytes_read++] = ch;
 						if (console->termios.c_lflag & ECHO)
-							WriteConsoleA(console->out, &ch, 1, NULL, NULL);
+							write_normal(&ch, 1);
 					}
 				}
 			}
@@ -775,6 +865,8 @@ static size_t console_read(struct file *f, char *buf, size_t count)
 		}
 	}
 read_done:
+	/* This will make the caret immediately visible */
+	set_pos(console->x, console->y);
 	console_unlock();
 	return bytes_read;
 }
@@ -786,11 +878,11 @@ static size_t console_write(struct file *f, const char *buf, size_t count)
 		return -EBADF;
 
 	console_lock();
+	console_retrieve_state();
 	#define OUTPUT() \
 		if (last != -1) \
 		{ \
-			DWORD bytes_written; \
-			WriteConsoleA(console->out, buf + last, i - last, &bytes_written, NULL); \
+			write_normal(buf + last, i - last); \
 			last = -1; \
 		}
 	size_t last = -1;
@@ -805,28 +897,50 @@ static size_t console_write(struct file *f, const char *buf, size_t count)
 			OUTPUT();
 			console->processor = control_escape;
 		}
-		/* TODO: Untested
 		else if (ch == '\t')
 		{
 			OUTPUT();
-			CONSOLE_SCREEN_BUFFER_INFO info;
-			GetConsoleScreenBufferInfo(console->out, &info);
-			info.dwCursorPosition.X = (info.dwCursorPosition.X + 8) & -8;
-			SetConsoleCursorPosition(console->out, info.dwCursorPosition);
-		}*/
+			int x = (console->x + 8) & ~7;
+			if (x < console->width)
+				set_pos(x, console->y);
+		}
+		else if (ch == '\b')
+		{
+			OUTPUT();
+			backspace(FALSE);
+		}
+		else if (ch == '\r')
+		{
+			OUTPUT();
+			if (console->termios.c_oflag & OCRNL)
+				nl();
+			else
+				cr();
+		}
+		else if (ch == '\n')
+		{
+			OUTPUT();
+			if (console->termios.c_oflag & ONLCR)
+				crnl();
+			else
+				cr();
+		}
 		else if (ch == 0x0E || ch == 0x0F)
 		{
 			/* Shift In and Shift Out */
 			OUTPUT();
+		}
+		else if (ch < 0x20)
+		{
+			OUTPUT();
+			log_error("Unhandled control character '\\x%x'\n", ch);
 		}
 		else if (last == -1)
 			last = i;
 	}
 	OUTPUT();
 	/* This will make the caret immediately visible */
-	CONSOLE_SCREEN_BUFFER_INFO info;
-	GetConsoleScreenBufferInfo(console->out, &info);
-	SetConsoleCursorPosition(console->out, info.dwCursorPosition);
+	set_pos(console->x, console->y);
 	console_unlock();
 #if 0
 	char str[1024];
