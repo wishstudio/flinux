@@ -890,9 +890,7 @@ static size_t console_write(struct file *f, const char *buf, size_t count)
 	for (i = 0; i < count; i++)
 	{
 		char ch = buf[i];
-		if (console->processor)
-			console->processor(ch);
-		else if (ch == 0x1B) /* Escape */
+		if (ch == 0x1B) /* Escape */
 		{
 			OUTPUT();
 			console->processor = control_escape;
@@ -930,6 +928,8 @@ static size_t console_write(struct file *f, const char *buf, size_t count)
 			/* Shift In and Shift Out */
 			OUTPUT();
 		}
+		else if (console->processor)
+			console->processor(ch);
 		else if (ch < 0x20)
 		{
 			OUTPUT();
