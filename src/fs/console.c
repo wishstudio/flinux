@@ -35,6 +35,8 @@ struct console_data
 {
 	HANDLE section, mutex;
 	HANDLE in, out;
+	struct termios termios;
+
 	int params[CONSOLE_MAX_PARAMS];
 	int param_count;
 	int bright, reverse, foreground, background;
@@ -42,7 +44,7 @@ struct console_data
 	char string_buffer[MAX_STRING];
 	char input_buffer[MAX_INPUT];
 	size_t input_buffer_head, input_buffer_tail;
-	struct termios termios;
+	int private_mode; /* mode starts with "CSI ?" */
 	void (*processor)(char ch);
 
 	/* Based on our assumption, these values are not modifiable by other processes
@@ -305,6 +307,24 @@ static void set_pos(int x, int y)
 	console->at_right_margin = 0;
 }
 
+static void console_set_size(int width, int height)
+{
+	COORD size;
+	size.X = width;
+	size.Y = console->buffer_height;
+	SetConsoleScreenBufferSize(console->out, size);
+	console->top = min(console->top, console->buffer_height - height);
+	console->width = width;
+	console->height = height;
+	SMALL_RECT rect;
+	rect.Left = 0;
+	rect.Right = console->width - 1;
+	rect.Top = console->top;
+	rect.Bottom = console->top + console->height - 1;
+	SetConsoleWindowInfo(console->out, TRUE, &rect);
+	set_pos(console->x, console->y);
+}
+
 static void move_left(int count)
 {
 	set_pos(max(console->x - count, 0), console->y);
@@ -457,6 +477,31 @@ static void erase_line(int mode)
 	FillConsoleOutputCharacterW(console->out, L' ', count, start, &num_written);
 }
 
+static void change_mode(int mode, int set)
+{
+	switch (mode)
+	{
+	default:
+		log_error("change_mode(): mode %d not supported.\n", mode);
+	}
+}
+
+static void change_private_mode(int mode, int set)
+{
+	switch (mode)
+	{
+	case 3:
+		if (set) /* 132 column mode */
+			console_set_size(132, 24);
+		else /* 80 column mode */
+			console_set_size(80, 24);
+		break;
+
+	default:
+		log_error("change_private_mode(): private mode %d not supported.\n", mode);
+	}
+}
+
 /* Handler for control sequencie introducer, "ESC [" */
 static void control_escape_csi(char ch)
 {
@@ -514,7 +559,10 @@ static void control_escape_csi(char ch)
 		break;
 
 	case 'h':
-		log_warning("console: fake disabling mode %d\n", console->params[0]);
+		if (console->private_mode)
+			change_private_mode(console->params[0], 1);
+		else
+			change_mode(console->params[0], 1);
 		console->processor = NULL;
 		break;
 
@@ -529,7 +577,10 @@ static void control_escape_csi(char ch)
 		break;
 
 	case 'l':
-		log_warning("console: fake disabling mode %d\n", console->params[0]);
+		if (console->private_mode)
+			change_private_mode(console->params[0], 0);
+		else
+			change_mode(console->params[0], 0);
 		console->processor = NULL;
 		break;
 
@@ -589,7 +640,7 @@ static void control_escape_csi(char ch)
 		break;
 
 	case '?':
-		log_error("warning: ignored '?'.\n");
+		console->private_mode = 1;
 		break;
 
 	default:
@@ -698,6 +749,7 @@ static void control_escape(char ch)
 		for (int i = 0; i < CONSOLE_MAX_PARAMS; i++)
 			console->params[i] = 0;
 		console->param_count = 0;
+		console->private_mode = 0;
 		console->processor = control_escape_csi;
 		break;
 
@@ -1090,6 +1142,14 @@ static int console_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 		win->ws_row = info.srWindow.Bottom - info.srWindow.Top + 1;
 		win->ws_xpixel = 0;
 		win->ws_ypixel = 0;
+		r = 0;
+		break;
+	}
+
+	case TIOCSWINSZ:
+	{
+		const struct winsize *win = (const struct winsize *)arg;
+		console_set_size(win->ws_col, win->ws_row);
 		r = 0;
 		break;
 	}
