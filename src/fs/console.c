@@ -12,6 +12,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <ntdll.h>
+#include <malloc.h>
 
 /* xterm like VT terminal emulation on Win32 console
  *
@@ -502,12 +503,13 @@ static void control_escape_csi(char ch)
 		break;
 
 	case 'H':
+	case 'f':
 		/* Zero or one both represents the first row/column */
 		if (console->params[0] > 0)
 			console->params[0]--;
 		if (console->params[1] > 0)
 			console->params[1]--;
-		set_pos(console->params[0], console->params[1]);
+		set_pos(console->params[1], console->params[0]);
 		console->processor = NULL;
 		break;
 
@@ -638,6 +640,44 @@ static void control_escape_osc(char ch)
 	console->processor = NULL;
 }
 
+static void control_escape_sharp(char ch)
+{
+	switch (ch)
+	{
+	case '8':
+	{
+		/* DECALN: DEC screen alignment test */
+		/* Fill screen with 'E' */
+		CHAR_INFO *chars = (CHAR_INFO *)alloca(sizeof(CHAR_INFO) * console->width);
+		WORD attr = get_text_attribute();
+		for (int i = 0; i < console->width; i++)
+		{
+			chars[i].Char.UnicodeChar = L'E';
+			chars[i].Attributes = attr;
+		}
+		COORD size;
+		size.X = console->width;
+		size.Y = 1;
+		COORD coord;
+		coord.X = 0;
+		coord.Y = 0;
+		for (int i = 0; i < console->height; i++)
+		{
+			SMALL_RECT region;
+			region.Top = region.Bottom = i + console->top;
+			region.Left = 0;
+			region.Right = console->width - 1;
+			WriteConsoleOutputW(console->out, chars, size, coord, &region);
+		}
+		console->processor = NULL;
+	}
+
+	default:
+		log_error("control_escape_sharp(): Unhandled character %c\n", ch);
+		console->processor = NULL;
+	}
+}
+
 static void control_escape_set_default_character_set(char ch)
 {
 	log_warning("console: set default character set: %c, ignored.\n", ch);
@@ -667,12 +707,33 @@ static void control_escape(char ch)
 		console->processor = control_escape_osc;
 		break;
 
+	case 'D':
+		/* TODO: Scroll display */
+		move_down(1);
+		console->processor = NULL;
+		break;
+
+	case 'E':
+		nl();
+		console->processor = NULL;
+		break;
+
+	case 'M':
+		/* TODO: Scroll display */
+		move_up(1);
+		console->processor = NULL;
+		break;
+
 	case '(':
 		console->processor = control_escape_set_default_character_set;
 		break;
 
 	case ')':
 		console->processor = control_escape_set_alternate_character_set;
+		break;
+
+	case '#':
+		console->processor = control_escape_sharp;
 		break;
 
 	default:
