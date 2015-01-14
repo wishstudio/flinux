@@ -229,7 +229,7 @@ static __forceinline void gen_modrm_sib(uint8_t **out, int r, struct modrm_rm_t 
 		log_error("gen_modrm(): rsp or r12 cannot be used as an index register.\n");
 		return;
 	}
-	/* TODO: Use shorter codes when the offset is small */
+	int is_disp8 = (((int8_t)rm.disp) == rm.disp);
 	if (rm.base == -1 && rm.index == -1) /* disp32 */
 	{
 		gen_modrm(out, 0, r, 5);
@@ -243,15 +243,25 @@ static __forceinline void gen_modrm_sib(uint8_t **out, int r, struct modrm_rm_t 
 	}
 	else if (rm.base == 4 || rm.index != -1) /* SIB required */
 	{
-		gen_modrm(out, 2, r, 4);
+		gen_modrm(out, is_disp8? 1: 2, r, 4);
 		gen_sib(out, rm.base, rm.index == -1? 4: rm.index, rm.scale);
-		gen_dword(out, rm.disp);
+		if (is_disp8)
+			gen_byte(out, (int8_t)rm.disp);
+		else
+			gen_dword(out, rm.disp);
 	}
-	else
+	else /* [base] + disp */
 	{
-		/* SIB not needed */
-		gen_modrm(out, 2, r, rm.base);
-		gen_dword(out, rm.disp);
+		if (is_disp8)
+		{
+			gen_modrm(out, 1, r, rm.base);
+			gen_byte(out, (int8_t)rm.disp);
+		}
+		else
+		{
+			gen_modrm(out, 2, r, rm.base);
+			gen_dword(out, rm.disp);
+		}
 	}
 }
 
