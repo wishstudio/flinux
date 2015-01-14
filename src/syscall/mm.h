@@ -58,6 +58,8 @@
 #define DBT_DATA_BASE			0x70800000U
 /* Base address of vfs_data structure */
 #define VFS_DATA_BASE			0x70900000U
+/* Base address of console_data structure */
+#define CONSOLE_DATA_BASE		0x70FB0000U
 /* Base address of mm_heap structure */
 #define MM_HEAP_BASE			0x70FC0000U
 /* Base address of tls_data structure */

@@ -162,6 +162,9 @@ static pid_t fork_process(struct syscall_context *context, unsigned long flags, 
 	if (!mm_fork(info.hProcess))
 		goto fail;
 
+	if (!vfs_fork(info.hProcess))
+		goto fail;
+
 	/* Set up fork_info in child process */
 	void *stack_base = process_get_stack_base();
 	VirtualAllocEx(info.hProcess, FORK_INFO_BASE, BLOCK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);

@@ -7,6 +7,8 @@
 #include <common/uio.h>
 #include <fs/file.h>
 
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
 #include <stdint.h>
 
 #define PATH_MAX			4096
@@ -16,6 +18,7 @@
 void vfs_init();
 void vfs_reset();
 void vfs_shutdown();
+int vfs_fork(HANDLE process);
 int vfs_store_file(struct file *f, int cloexec);
 
 int vfs_open(const char *pathname, int flags, int mode, struct file **f);

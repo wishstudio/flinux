@@ -80,9 +80,10 @@ void vfs_close(int fd)
 
 void vfs_init()
 {
-	log_info("vfs subsystem initializating...\n");
+	log_info("vfs subsystem initializing...\n");
 	mm_mmap(VFS_DATA_BASE, sizeof(struct vfs_data), PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, NULL, 0);
 	struct file *console_in, *console_out;
+	console_init();
 	console_alloc(&console_in, &console_out);
 	console_out->ref++;
 	vfs->fds[0] = console_in;
@@ -120,6 +121,13 @@ void vfs_shutdown()
 	}
 	socket_shutdown();
 	mm_munmap(VFS_DATA_BASE, sizeof(struct vfs_data));
+}
+
+int vfs_fork(HANDLE process)
+{
+	if (!console_fork(process))
+		return 0;
+	return 1;
 }
 
 int vfs_store_file(struct file *f, int cloexec)

@@ -64,6 +64,8 @@
  * 70FD0000 ------------------------------
  *              mm_heap_data structure
  * 70FC0000 ------------------------------
+ *              console_data structure
+ * 70FB0000 ------------------------------
  *                vfs_data structure
  * 70900000 ------------------------------
  *               dbt_data structure (u)
@@ -77,6 +79,8 @@
  */
 
 /* Overall memory layout (x64)
+ * TODO: This hasn't been updated for a long time since the introduction of DBT.
+ * Need redesign once we want to support x64 again.
  *
  * FFFFFFFF FFFFFFFF ------------------------------
  * ...                 Win32 kernel address space

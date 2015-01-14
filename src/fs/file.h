@@ -30,7 +30,7 @@ struct file_ops
 
 struct file
 {
-	struct file_ops *op_vtable;
+	const struct file_ops *op_vtable;
 	uint32_t ref;
 	int flags;
 };

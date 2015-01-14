@@ -4,13 +4,25 @@
 #include <common/poll.h>
 #include <common/termios.h>
 #include <fs/console.h>
+#include <syscall/mm.h>
 #include <heap.h>
 #include <log.h>
 #include <str.h>
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
+#include <ntdll.h>
 
+/* xterm like VT terminal emulation on Win32 console
+ *
+ * Because things like scrolling region information is completely emulated, data
+ * must be shared across all processes in the same console. We then use mutexes
+ * to ensure the shared region is modifiable to only one process at one time.
+ *
+ * The basic assumption is that no other Win32 console applications are running
+ * in the same console simultaneously. The only thing we need to take care of is
+ * when user changes the size of the window during application operation.
+ */
 /* TODO: UTF-8 support */
 
 #define CONSOLE_MAX_PARAMS	16
@@ -18,9 +30,9 @@
 #define MAX_CANON			256
 #define MAX_STRING			256
 
-struct console_state
+struct console_data
 {
-	int ref;
+	HANDLE section, mutex;
 	HANDLE in, out;
 	int params[CONSOLE_MAX_PARAMS];
 	int param_count;
@@ -30,17 +42,122 @@ struct console_state
 	char string_buffer[MAX_STRING];
 	size_t input_buffer_head, input_buffer_tail;
 	struct termios termios;
-	void (*processor)(struct console_file *console, char ch);
+	void (*processor)(char ch);
 };
+
+static struct console_data *const console = (struct console_data *)CONSOLE_DATA_BASE;
+
+void console_init()
+{
+	log_info("Initializing console shared memory region.\n");
+	/* TODO: mm_mmap() does not support MAP_SHARED yet */
+	HANDLE section;
+	LARGE_INTEGER section_size;
+	section_size.QuadPart = sizeof(struct console_data);
+	OBJECT_ATTRIBUTES obj_attr;
+	obj_attr.Length = sizeof(OBJECT_ATTRIBUTES);
+	obj_attr.RootDirectory = NULL;
+	obj_attr.ObjectName = NULL;
+	obj_attr.Attributes = OBJ_INHERIT;
+	obj_attr.SecurityDescriptor = NULL;
+	obj_attr.SecurityQualityOfService = NULL;
+	NTSTATUS status;
+	status = NtCreateSection(&section, SECTION_MAP_READ | SECTION_MAP_WRITE, &obj_attr, &section_size, PAGE_READWRITE, SEC_COMMIT, NULL);
+	if (status != STATUS_SUCCESS)
+	{
+		log_error("NtCreateSection() failed, status: %x\n", status);
+		return;
+	}
+	PVOID base_addr = console;
+	SIZE_T view_size = sizeof(struct console_data);
+	status = NtMapViewOfSection(section, NtCurrentProcess(), &base_addr, 0, sizeof(struct console_data), NULL, &view_size, ViewUnmap, 0, PAGE_READWRITE);
+	if (status != STATUS_SUCCESS)
+	{
+		log_error("NtMapViewOfSection() failed, status: %x\n", status);
+		return;
+	}
+
+	SECURITY_ATTRIBUTES attr;
+	attr.nLength = sizeof(SECURITY_ATTRIBUTES);
+	attr.lpSecurityDescriptor = NULL;
+	attr.bInheritHandle = TRUE;
+
+	HANDLE mutex = CreateMutexW(&attr, FALSE, NULL);
+	if (mutex == NULL)
+	{
+		log_error("CreateMutexW() failed, error code: %d\n", GetLastError());
+		return;
+	}
+
+	HANDLE in = CreateFileA("CONIN$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &attr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (in == INVALID_HANDLE_VALUE)
+	{
+		log_error("CreateFile(\"CONIN$\") failed, error code: %d\n", GetLastError());
+		return;
+	}
+	HANDLE out = CreateFileA("CONOUT$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &attr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (out == INVALID_HANDLE_VALUE)
+	{
+		log_error("CreateFile(\"CONOUT$\") failed, error code: %d\n", GetLastError());
+		return;
+	}
+	console->section = section;
+	console->mutex = mutex;
+	console->in = in;
+	console->out = out;
+	console->bright = 0;
+	console->reverse = 0;
+	console->foreground = 7;
+	console->background = 0;
+	console->input_buffer_head = console->input_buffer_tail = 0;
+	console->termios.c_iflag = INLCR;
+	console->termios.c_oflag = ONLCR | OPOST;
+	console->termios.c_cflag = 0;
+	console->termios.c_lflag = ICANON | ECHO | ECHOCTL;
+	memset(console->termios.c_cc, 0, sizeof(console->termios.c_cc));
+	console->termios.c_cc[VINTR] = 3;
+	console->termios.c_cc[VERASE] = 8;
+	console->termios.c_cc[VEOF] = 4;
+	console->termios.c_cc[VSUSP] = 26;
+	console->processor = NULL;
+	SetConsoleMode(in, 0);
+	SetConsoleMode(out, ENABLE_PROCESSED_OUTPUT | ENABLE_WRAP_AT_EOL_OUTPUT);
+
+	log_info("Console shared memory region successfully initialized.\n");
+}
+
+int console_fork(HANDLE process)
+{
+	log_info("Mapping console shared memory region to child process...\n");
+	PVOID base_addr = console;
+	SIZE_T view_size = sizeof(struct console_data);
+	NTSTATUS status;
+	status = NtMapViewOfSection(console->section, process, &base_addr, 0, sizeof(struct console_data), NULL, &view_size, ViewUnmap, 0, PAGE_READWRITE);
+	if (status != STATUS_SUCCESS)
+	{
+		log_error("NtMapViewOfSection() failed, status: %x\n", status);
+		return 0;
+	}
+	return 1;
+}
+
+static void console_lock()
+{
+	WaitForSingleObject(console->mutex, INFINITE);
+}
+
+static void console_unlock()
+{
+	ReleaseMutex(console->mutex);
+}
 
 struct console_file
 {
 	struct file base_file;
-	struct console_state *state;
 	int is_read;
 };
 
-static WORD get_text_attribute(struct console_state *console)
+static WORD get_text_attribute()
 {
 	WORD attr = 0;
 	if (console->bright)
@@ -114,7 +231,7 @@ static WORD get_text_attribute(struct console_state *console)
 	return attr;
 }
 
-static void backspace(struct console_state *console, BOOL erase)
+static void backspace(BOOL erase)
 {
 	CONSOLE_SCREEN_BUFFER_INFO info;
 	GetConsoleScreenBufferInfo(console->out, &info);
@@ -138,7 +255,7 @@ static void backspace(struct console_state *console, BOOL erase)
 	SetConsoleCursorPosition(console->out, info.dwCursorPosition);
 }
 
-static void move_left(struct console_state *console, int count)
+static void move_left(int count)
 {
 	CONSOLE_SCREEN_BUFFER_INFO info;
 	GetConsoleScreenBufferInfo(console->out, &info);
@@ -146,7 +263,7 @@ static void move_left(struct console_state *console, int count)
 	SetConsoleCursorPosition(console->out, info.dwCursorPosition);
 }
 
-static void move_right(struct console_state *console, int count)
+static void move_right(int count)
 {
 	CONSOLE_SCREEN_BUFFER_INFO info;
 	GetConsoleScreenBufferInfo(console->out, &info);
@@ -154,7 +271,7 @@ static void move_right(struct console_state *console, int count)
 	SetConsoleCursorPosition(console->out, info.dwCursorPosition);
 }
 
-static void move_up(struct console_state *console, int count)
+static void move_up(int count)
 {
 	CONSOLE_SCREEN_BUFFER_INFO info;
 	GetConsoleScreenBufferInfo(console->out, &info);
@@ -162,7 +279,7 @@ static void move_up(struct console_state *console, int count)
 	SetConsoleCursorPosition(console->out, info.dwCursorPosition);
 }
 
-static void move_down(struct console_state *console, int count)
+static void move_down(int count)
 {
 	CONSOLE_SCREEN_BUFFER_INFO info;
 	GetConsoleScreenBufferInfo(console->out, &info);
@@ -170,7 +287,7 @@ static void move_down(struct console_state *console, int count)
 	SetConsoleCursorPosition(console->out, info.dwCursorPosition);
 }
 
-static void set_cursor_pos(struct console_state *console, int row, int column)
+static void set_cursor_pos(int row, int column)
 {
 	COORD pos;
 	pos.X = column;
@@ -178,7 +295,7 @@ static void set_cursor_pos(struct console_state *console, int row, int column)
 	SetConsoleCursorPosition(console->out, pos);
 }
 
-static void erase_screen(struct console_state *console, int mode)
+static void erase_screen(int mode)
 {
 	CONSOLE_SCREEN_BUFFER_INFO info;
 	GetConsoleScreenBufferInfo(console->out, &info);
@@ -214,7 +331,7 @@ static void erase_screen(struct console_state *console, int mode)
 	FillConsoleOutputCharacterW(console->out, L' ', count, start, &num_written);
 }
 
-static void erase_line(struct console_state *console, int mode)
+static void erase_line(int mode)
 {
 	CONSOLE_SCREEN_BUFFER_INFO info;
 	GetConsoleScreenBufferInfo(console->out, &info);
@@ -250,7 +367,7 @@ static void erase_line(struct console_state *console, int mode)
 }
 
 /* Handler for control sequencie introducer, "ESC [" */
-static void control_escape_csi(struct console_state *console, char ch)
+static void control_escape_csi(char ch)
 {
 	switch (ch)
 	{
@@ -275,22 +392,22 @@ static void control_escape_csi(struct console_state *console, char ch)
 		break;
 
 	case 'A':
-		move_up(console, console->params[0]? console->params[0]: 1);
+		move_up(console->params[0]? console->params[0]: 1);
 		console->processor = NULL;
 		break;
 
 	case 'B':
-		move_down(console, console->params[0]? console->params[0]: 1);
+		move_down(console->params[0]? console->params[0]: 1);
 		console->processor = NULL;
 		break;
 
 	case 'C':
-		move_right(console, console->params[0]? console->params[0]: 1);
+		move_right(console->params[0]? console->params[0]: 1);
 		console->processor = NULL;
 		break;
 
 	case 'D':
-		move_left(console, console->params[0]? console->params[0]: 1);
+		move_left(console->params[0]? console->params[0]: 1);
 		console->processor = NULL;
 		break;
 
@@ -300,7 +417,7 @@ static void control_escape_csi(struct console_state *console, char ch)
 			console->params[0]--;
 		if (console->params[1] > 0)
 			console->params[1]--;
-		set_cursor_pos(console, console->params[0], console->params[1]);
+		set_cursor_pos(console->params[0], console->params[1]);
 		console->processor = NULL;
 		break;
 
@@ -310,12 +427,12 @@ static void control_escape_csi(struct console_state *console, char ch)
 		break;
 
 	case 'J':
-		erase_screen(console, console->params[0]);
+		erase_screen(console->params[0]);
 		console->processor = NULL;
 		break;
 
 	case 'K':
-		erase_line(console, console->params[0]);
+		erase_line(console->params[0]);
 		console->processor = NULL;
 		break;
 
@@ -390,7 +507,7 @@ static void control_escape_csi(struct console_state *console, char ch)
 }
 
 /* Handler for operating system commands, "ESC ]" */
-static void control_escape_osc(struct console_state *console, char ch)
+static void control_escape_osc(char ch)
 {
 	if (console->string_len == -1)
 	{
@@ -431,19 +548,19 @@ static void control_escape_osc(struct console_state *console, char ch)
 	console->processor = NULL;
 }
 
-static void control_escape_set_default_character_set(struct console_state *console, char ch)
+static void control_escape_set_default_character_set(char ch)
 {
 	log_warning("console: set default character set: %c, ignored.\n", ch);
 	console->processor = NULL;
 }
 
-static void control_escape_set_alternate_character_set(struct console_state *console, char ch)
+static void control_escape_set_alternate_character_set(char ch)
 {
 	log_warning("console: set alternate character set: %c, ignored.\n", ch);
 	console->processor = NULL;
 }
 
-static void control_escape(struct console_state *console, char ch)
+static void control_escape(char ch)
 {
 	switch (ch)
 	{
@@ -474,7 +591,7 @@ static void control_escape(struct console_state *console, char ch)
 	}
 }
 
-static void console_add_input(struct console_state *console, char *str, size_t size)
+static void console_add_input(char *str, size_t size)
 {
 	/* TODO: Detect input buffer wrapping */
 	for (size_t i = 0; i < size; i++)
@@ -484,7 +601,7 @@ static void console_add_input(struct console_state *console, char *str, size_t s
 	}
 }
 
-static void console_buffer_add_string(struct console_state *console, char *buf, size_t *bytes_read, size_t *count, char *str, size_t size)
+static void console_buffer_add_string(char *buf, size_t *bytes_read, size_t *count, char *str, size_t size)
 {
 	while (*count > 0 && size > 0)
 	{
@@ -494,7 +611,7 @@ static void console_buffer_add_string(struct console_state *console, char *buf, 
 		size--;
 	}
 	if (size > 0)
-		console_add_input(console, str, size);
+		console_add_input(str, size);
 }
 
 static int console_get_poll_status(struct file *f)
@@ -504,49 +621,46 @@ static int console_get_poll_status(struct file *f)
 	if (!console_file->is_read)
 		return LINUX_POLLOUT;
 
-	struct console_state *console = console_file->state;
 	if (console->input_buffer_head != console->input_buffer_tail)
 		return LINUX_POLLIN;
 
+	console_lock();
 	INPUT_RECORD ir;
 	DWORD num_read;
 	while (PeekConsoleInputW(console->in, &ir, 1, &num_read) && num_read > 0)
 	{
 		/* Test if the event will be discarded */
 		if (ir.EventType == KEY_EVENT && ir.Event.KeyEvent.bKeyDown)
+		{
+			console_unlock();
 			return LINUX_POLLIN;
+		}
 		/* Discard the event */
 		ReadConsoleInputW(console->in, &ir, 1, &num_read);
 	}
 	/* We don't find any readable events */
+	console_unlock();
 	return 0;
 }
 
-static HANDLE console_get_poll_handle(struct file *f, int **poll_events)
+static HANDLE console_get_poll_handle(struct file *f, int *poll_events)
 {
-	struct console_file *console = (struct console_file *)f;
-	if (console->is_read)
+	struct console_file *console_file = (struct console_file *)f;
+	if (console_file->is_read)
 	{
 		*poll_events = LINUX_POLLIN;
-		return console->state->in;
+		return console->in;
 	}
 	else
 	{
 		*poll_events = LINUX_POLLOUT;
-		return console->state->out;
+		return console->out;
 	}
 }
 
 static int console_close(struct file *f)
 {
-	struct console_file *console = (struct console_file *)f;
-	if (--console->state->ref == 0)
-	{
-		CloseHandle(console->state->in);
-		CloseHandle(console->state->out);
-		kfree(console->state, sizeof(struct console_state));
-	}
-	kfree(console, sizeof(struct console_file));
+	kfree(f, sizeof(struct console_file));
 	return 0;
 }
 
@@ -556,7 +670,8 @@ static size_t console_read(struct file *f, char *buf, size_t count)
 	if (!console_file->is_read)
 		return -EBADF;
 
-	struct console_state *console = (struct console_state *) console_file->state;
+	console_lock();
+
 	size_t bytes_read = 0;
 	while (console->input_buffer_head != console->input_buffer_tail && count > 0)
 	{
@@ -588,12 +703,12 @@ static size_t console_read(struct file *f, char *buf, size_t count)
 					if (r < len)
 					{
 						/* Some bytes not fit, add to input buffer */
-						console_add_input(console, line + r, len - r);
+						console_add_input(line + r, len - r);
 					}
 					/* TODO: Do we need to write CRLF in non-echo mode? */
 					DWORD bytes_written;
 					WriteConsoleA(console->out, "\r\n", 2, &bytes_written, NULL);
-					return bytes_read;
+					goto read_done;
 				}
 
 				case VK_BACK:
@@ -602,7 +717,7 @@ static size_t console_read(struct file *f, char *buf, size_t count)
 					{
 						len--;
 						if (console->termios.c_lflag & ECHO)
-							backspace(console, TRUE);
+							backspace(TRUE);
 					}
 				}
 				default:
@@ -622,19 +737,19 @@ static size_t console_read(struct file *f, char *buf, size_t count)
 				switch (ir.Event.KeyEvent.wVirtualKeyCode)
 				{
 				case VK_UP:
-					console_buffer_add_string(console, buf, &bytes_read, &count, "\x1B[A", 3);
+					console_buffer_add_string(buf, &bytes_read, &count, "\x1B[A", 3);
 					break;
 
 				case VK_DOWN:
-					console_buffer_add_string(console, buf, &bytes_read, &count, "\x1B[B", 3);
+					console_buffer_add_string(buf, &bytes_read, &count, "\x1B[B", 3);
 					break;
 
 				case VK_RIGHT:
-					console_buffer_add_string(console, buf, &bytes_read, &count, "\x1B[C", 3);
+					console_buffer_add_string(buf, &bytes_read, &count, "\x1B[C", 3);
 					break;
 
 				case VK_LEFT:
-					console_buffer_add_string(console, buf, &bytes_read, &count, "\x1B[D", 3);
+					console_buffer_add_string(buf, &bytes_read, &count, "\x1B[D", 3);
 					break;
 					
 				default:
@@ -659,6 +774,8 @@ static size_t console_read(struct file *f, char *buf, size_t count)
 			/* TODO */
 		}
 	}
+read_done:
+	console_unlock();
 	return bytes_read;
 }
 
@@ -668,6 +785,7 @@ static size_t console_write(struct file *f, const char *buf, size_t count)
 	if (console_file->is_read)
 		return -EBADF;
 
+	console_lock();
 	#define OUTPUT() \
 		if (last != -1) \
 		{ \
@@ -675,14 +793,13 @@ static size_t console_write(struct file *f, const char *buf, size_t count)
 			WriteConsoleA(console->out, buf + last, i - last, &bytes_written, NULL); \
 			last = -1; \
 		}
-	struct console_state *console = (struct console_state *) console_file->state;
 	size_t last = -1;
 	size_t i;
 	for (i = 0; i < count; i++)
 	{
 		char ch = buf[i];
 		if (console->processor)
-			console->processor(console, ch);
+			console->processor(ch);
 		else if (ch == 0x1B) /* Escape */
 		{
 			OUTPUT();
@@ -710,6 +827,7 @@ static size_t console_write(struct file *f, const char *buf, size_t count)
 	CONSOLE_SCREEN_BUFFER_INFO info;
 	GetConsoleScreenBufferInfo(console->out, &info);
 	SetConsoleCursorPosition(console->out, info.dwCursorPosition);
+	console_unlock();
 #if 0
 	char str[1024];
 	memcpy(str, buf, count);
@@ -742,21 +860,24 @@ static int console_stat(struct file *f, struct newstat *buf)
 	return 0;
 }
 
-static void console_update_termios(struct console_file *console)
+static void console_update_termios()
 {
 	/* Nothing to do for now */
 }
 
 static int console_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 {
-	struct console_state *console = ((struct console_file *) f)->state;
+	console_lock();
+
+	int r;
 	switch (cmd)
 	{
 	case TCGETS:
 	{
 		struct termios *t = (struct termios *)arg;
 		memcpy(t, &console->termios, sizeof(struct termios));
-		return 0;
+		r = 0;
+		break;
 	}
 
 	case TCSETS:
@@ -764,21 +885,24 @@ static int console_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 	{
 		struct termios *t = (struct termios *)arg;
 		memcpy(&console->termios, t, sizeof(struct termios));
-		console_update_termios(console);
-		return 0;
+		console_update_termios();
+		r = 0;
+		break;
 	}
 
 	case TIOCGPGRP:
 	{
 		log_warning("Unsupported TIOCGPGRP: Return fake result.\n");
 		*(pid_t *)arg = GetCurrentProcessId();
-		return 0;
+		r = 0;
+		break;
 	}
 
 	case TIOCSPGRP:
 	{
 		log_warning("Unsupported TIOCSPGRP: Do nothing.\n");
-		return 0;
+		r = 0;
+		break;
 	}
 
 	case TIOCGWINSZ:
@@ -791,13 +915,17 @@ static int console_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 		win->ws_row = info.srWindow.Bottom - info.srWindow.Top + 1;
 		win->ws_xpixel = 0;
 		win->ws_ypixel = 0;
-		return 0;
+		r = 0;
+		break;
 	}
 
 	default:
 		log_error("console: unknown ioctl command: %x\n", cmd);
-		return -EINVAL;
+		r = -EINVAL;
+		break;
 	}
+	console_unlock();
+	return r;
 }
 
 static const struct file_ops console_ops = {
@@ -810,57 +938,19 @@ static const struct file_ops console_ops = {
 	.ioctl = console_ioctl,
 };
 
-static struct file *console_alloc_file(struct console_state *console, int is_read)
+static struct file *console_alloc_file(int is_read)
 {
 	struct console_file *f = (struct console_file *)kmalloc(sizeof(struct console_file));
 	f->base_file.op_vtable = &console_ops;
 	f->base_file.ref = 1;
 	f->base_file.flags = O_LARGEFILE | O_RDWR;
 	f->is_read = is_read;
-	f->state = console;
-	return f;
+	return (struct file*)f;
 }
 
 int console_alloc(struct file **in_file, struct file **out_file)
 {
-	SECURITY_ATTRIBUTES attr;
-	attr.nLength = sizeof(SECURITY_ATTRIBUTES);
-	attr.lpSecurityDescriptor = NULL;
-	attr.bInheritHandle = TRUE;
-	HANDLE in = CreateFileA("CONIN$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &attr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	if (in == INVALID_HANDLE_VALUE)
-	{
-		log_error("CreateFile(\"CONIN$\") failed, error code: %d\n", GetLastError());
-		return -EIO;
-	}
-	HANDLE out = CreateFileA("CONOUT$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &attr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	if (out == INVALID_HANDLE_VALUE)
-	{
-		CloseHandle(in);
-		log_error("CreateFile(\"CONOUT$\") failed, error code: %d\n", GetLastError());
-		return -EIO;
-	}
-	struct console_state *console = (struct console_state *)kmalloc(sizeof(struct console_state));
-	console->ref = 2;
-	console->in = in;
-	console->out = out;
-	console->bright = 0;
-	console->reverse = 0;
-	console->foreground = 7;
-	console->background = 0;
-	console->termios.c_iflag = INLCR;
-	console->termios.c_oflag = ONLCR | OPOST;
-	console->termios.c_cflag = 0;
-	console->termios.c_lflag = ICANON | ECHO | ECHOCTL;
-	memset(console->termios.c_cc, 0, sizeof(console->termios.c_cc));
-	console->termios.c_cc[VINTR] = 3;
-	console->termios.c_cc[VERASE] = 8;
-	console->termios.c_cc[VEOF] = 4;
-	console->termios.c_cc[VSUSP] = 26;
-	SetConsoleMode(in, 0);
-	SetConsoleMode(out, ENABLE_PROCESSED_OUTPUT | ENABLE_WRAP_AT_EOL_OUTPUT);
-
-	*in_file = console_alloc_file(console, 1);
-	*out_file = console_alloc_file(console, 0);
+	*in_file = console_alloc_file(1);
+	*out_file = console_alloc_file(0);
 	return 0;
 }
