@@ -513,6 +513,16 @@ static void change_mode(int mode, int set)
 {
 	switch (mode)
 	{
+	case 20: /* LNM */
+		/* TODO: When LNM is set, CR should be translated to CR LF on input
+		 * But there isn't a corresponding termios flag for this
+		 */
+		if (set)
+			console->termios.c_oflag |= ONLCR;
+		else
+			console->termios.c_oflag &= ~ONLCR;
+		break;
+
 	default:
 		log_error("change_mode(): mode %d not supported.\n", mode);
 	}
@@ -1072,13 +1082,13 @@ static size_t console_write(struct file *f, const char *buf, size_t count)
 			else
 				cr();
 		}
-		else if (ch == '\n')
+		else if (ch == '\n' || ch == '\v' || ch == '\f')
 		{
 			OUTPUT();
 			if (console->termios.c_oflag & ONLCR)
 				crnl();
 			else
-				cr();
+				nl();
 		}
 		else if (ch == 0x0E || ch == 0x0F)
 		{
