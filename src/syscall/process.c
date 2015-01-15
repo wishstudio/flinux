@@ -364,6 +364,36 @@ DEFINE_SYSCALL(getcpu, unsigned int *, cpu, unsigned int *, node, void *, tcache
 	return 0;
 }
 
+DEFINE_SYSCALL(sched_getaffinity, pid_t, pid, size_t, cpusetsize, uint8_t *, mask)
+{
+	log_info("sched_getaffinity(%d, %d, %p)\n", pid, cpusetsize, mask);
+	if (pid != 0)
+	{
+		log_error("pid != 0.\n");
+		return -ESRCH;
+	}
+	int bytes = (cpusetsize + 7) & ~7;
+	if (!mm_check_write(mask, bytes))
+		return -EFAULT;
+	for (int i = 0; i < bytes; i++)
+		mask[i] = 0;
+	/* TODO: Applications (i.e. ffmpeg) use this to detect the number of cpus and enable multithreading
+	 * on cpu with multiple cores.
+	 * Since we does not support multithreading at the time, we just report back one bit to let them
+	 * think we only have one core and give up multithreading.
+	 */
+	mask[0] = 1;
+#if 0
+	GROUP_AFFINITY affinity;
+	GetThreadGroupAffinity(GetCurrentThread(), &affinity);
+	int size = min(sizeof(uintptr_t), cpusetsize) * 8;
+	for (int i = 0; i < size; i++)
+		if (affinity.Mask & (1 << i))
+			mask[i / 8] |= 1 << i;
+#endif
+	return sizeof(uintptr_t);
+}
+
 DEFINE_SYSCALL(set_tid_address, int *, tidptr)
 {
 	log_info("set_tid_address(tidptr=%p)\n", tidptr);
