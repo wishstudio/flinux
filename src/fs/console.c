@@ -329,20 +329,31 @@ static void set_pos(int x, int y)
 
 static void console_set_size(int width, int height)
 {
+	console->top = min(console->top, console->buffer_height - height);
 	COORD size;
 	size.X = width;
 	size.Y = console->buffer_height;
-	SetConsoleScreenBufferSize(console->out, size);
-	console->top = min(console->top, console->buffer_height - height);
-	console->width = width;
-	console->height = height;
 	SMALL_RECT rect;
 	rect.Left = 0;
-	rect.Right = console->width - 1;
+	rect.Right = width - 1;
 	rect.Top = console->top;
-	rect.Bottom = console->top + console->height - 1;
-	SetConsoleWindowInfo(console->out, TRUE, &rect);
+	rect.Bottom = console->top + height - 1;
+
+	if (width > console->width)
+	{
+		/* Enlarge buffer then window */
+		SetConsoleScreenBufferSize(console->out, size);
+		SetConsoleWindowInfo(console->out, TRUE, &rect);
+	}
+	else
+	{
+		/* Reduce window then buffer */
+		SetConsoleWindowInfo(console->out, TRUE, &rect);
+		SetConsoleScreenBufferSize(console->out, size);
+	}
 	set_pos(console->x, console->y);
+	console->width = width;
+	console->height = height;
 }
 
 static void move_left(int count)
