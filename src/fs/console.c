@@ -124,7 +124,7 @@ void console_init()
 	console->mutex = mutex;
 	console->in = in;
 	console->out = out;
-	console->termios.c_iflag = INLCR;
+	console->termios.c_iflag = INLCR | ICRNL;
 	console->termios.c_oflag = ONLCR | OPOST;
 	console->termios.c_cflag = 0;
 	console->termios.c_lflag = ICANON | ECHO | ECHOCTL;
@@ -962,7 +962,8 @@ static size_t console_read(struct file *f, char *buf, size_t count)
 				{
 				case VK_RETURN:
 				{
-					line[len++] = console->termios.c_iflag & INLCR ? '\n' : '\r';
+					if (!(console->termios.c_iflag & IGNCR))
+						line[len++] = console->termios.c_iflag & ICRNL ? '\n' : '\r';
 					size_t r = min(count, len);
 					memcpy(buf + bytes_read, line, r);
 					bytes_read += r;
@@ -972,8 +973,8 @@ static size_t console_read(struct file *f, char *buf, size_t count)
 						/* Some bytes not fit, add to input buffer */
 						console_add_input(line + r, len - r);
 					}
-					/* TODO: Do we need to write CRNL in non-echo mode? */
-					crnl();
+					if (console->termios.c_lflag & ECHO)
+						crnl();
 					goto read_done;
 				}
 
@@ -1021,7 +1022,7 @@ static size_t console_read(struct file *f, char *buf, size_t count)
 				default:
 					if (ch == '\r' && console->termios.c_iflag & IGNCR)
 						break;
-					if (ch == '\r' && console->termios.c_iflag & INLCR)
+					if (ch == '\r' && console->termios.c_iflag & ICRNL)
 						ch = '\n';
 					else if (ch == '\n' && console->termios.c_iflag & ICRNL)
 						ch = '\r';
@@ -1162,6 +1163,7 @@ static int console_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 	console_lock();
 
 	int r;
+	/* TODO: What is the different between S/SW/SF variants? */
 	switch (cmd)
 	{
 	case TCGETS:
@@ -1174,6 +1176,7 @@ static int console_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 
 	case TCSETS:
 	case TCSETSW:
+	case TCSETSF:
 	{
 		struct termios *t = (struct termios *)arg;
 		memcpy(&console->termios, t, sizeof(struct termios));
