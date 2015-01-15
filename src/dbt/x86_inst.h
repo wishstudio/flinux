@@ -815,6 +815,21 @@ static const struct instruction_desc mandatory_0x0F7F[4] =
 	/* F2: ??? */ UNKNOWN()
 };
 
+static const struct instruction_desc extension_0xAE[8] =
+{
+	/* 0: ??? */ UNKNOWN()
+	/* 1: ??? */ UNKNOWN()
+	/* 2: LDMXCSR m32 */ INST(MODRM(), READ(MODRM_RM_M))
+	/* 3: STMXCSR m32 */ INST(MODRM(), WRITE(MODRM_RM_M))
+	/* 4: mem: XSAVE mem */ INST(MODRM(), WRITE(MODRM_RM_M))
+	/* 5: r: LFENCE (0F AE E8)
+	      mem: XRSTOR mem*/ INST(MODRM(), READ(MODRM_RM_M))
+	/* 6: r: MFENCE (0F AE F0)
+	      mem: XSAVEOPT mem */ INST(MODRM(), WRITE(MODRM_RM_M))
+	/* 7: r: SFENCE (0F AE F8)
+	      mem: CLFLUSH m8 */ INST(MODRM(), READ(MODRM_RM_M))
+};
+
 static const struct instruction_desc mandatory_0x0FB8[4] =
 {
 	/* 00: ??? */ UNKNOWN()
@@ -1091,16 +1106,7 @@ static const struct instruction_desc two_byte_inst[256] =
 	/* 0xAB: BTS r/m?, r? */ INST(MODRM(), READ(MODRM_R | MODRM_RM))
 	/* 0xAC: SHRD r/m?, r?, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_RM | MODRM_R), WRITE(MODRM_RM))
 	/* 0xAD: SHRD r/m?, r?, CL */ INST(MODRM(), READ(MODRM_RM | MODRM_R | REG_CX), WRITE(MODRM_RM))
-	/* 0xAE:
-	2: LDMXCSR m32
-	3: STMXCSR m32
-	3/5: LFENCE
-	3/6: MFENCE
-	3/7: SFENCE
-	mem/4: XSAVE mem
-	mem/5: XRSTOR mem
-	mem/6: XSAVEOPT mem
-	mem/7: CLFLUSH m8 */ UNSUPPORTED()
+	/* 0xAE: EXTENSION */ EXTENSION(0xAE)
 	/* 0xAF: IMUL r?, r/m? */ INST(MODRM(), READ(MODRM_R | MODRM_RM), WRITE(MODRM_R))
 	/* 0xB0: CMPXCHG r/m8, r8 */ INST(MODRM(), READ(MODRM_R | MODRM_RM | REG_AX), WRITE(MODRM_RM | REG_AX))
 	/* 0xB1: CMPXCHG r/m?, r? */ INST(MODRM(), READ(MODRM_R | MODRM_RM | REG_AX), WRITE(MODRM_RM | REG_AX))
