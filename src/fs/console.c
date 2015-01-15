@@ -35,28 +35,33 @@ struct console_data
 {
 	HANDLE section, mutex;
 	HANDLE in, out;
+	/* console mode settings */
 	struct termios termios;
-
-	int params[CONSOLE_MAX_PARAMS];
-	int param_count;
 	int bright, reverse, foreground, background;
-	int string_len;
-	char string_buffer[MAX_STRING];
-	char input_buffer[MAX_INPUT];
-	size_t input_buffer_head, input_buffer_tail;
-	int private_mode; /* mode starts with "CSI ?" */
-	void (*processor)(char ch);
+	int origin_mode;
+	int wraparound_mode;
 
 	/* Based on our assumption, these values are not modifiable by other processes
 	 * during a console operation.
 	 * We'll need only read these values once in one operation
 	 */
 	int x, y; /* current position, in window coordinate */
+	int at_right_margin; /* whether we are at the right margin, i.e. the invisible column after the rightmost */
 	int width, height; /* current size of the console window */
 	int buffer_height; /* current height of the screen buffer */
 	int top; /* the row number of current emulated top line in buffer coordinate */
 	int scroll_top, scroll_bottom; /* the row numbers of the margins of the scroll region */
-	int at_right_margin; /* whether we are at the right margin, i.e. the invisible column after the rightmost */
+	int scroll_full_screen; /* whether the scrolling region is the full screen */
+	
+	/* escape sequence processor */
+	int params[CONSOLE_MAX_PARAMS];
+	int param_count;
+	int string_len;
+	char string_buffer[MAX_STRING];
+	char input_buffer[MAX_INPUT];
+	size_t input_buffer_head, input_buffer_tail;
+	int private_mode; /* mode starts with "CSI ?" */
+	void (*processor)(char ch);
 };
 
 static struct console_data *const console = (struct console_data *)CONSOLE_DATA_BASE;
@@ -119,11 +124,6 @@ void console_init()
 	console->mutex = mutex;
 	console->in = in;
 	console->out = out;
-	console->bright = 0;
-	console->reverse = 0;
-	console->foreground = 7;
-	console->background = 0;
-	console->input_buffer_head = console->input_buffer_tail = 0;
 	console->termios.c_iflag = INLCR;
 	console->termios.c_oflag = ONLCR | OPOST;
 	console->termios.c_cflag = 0;
@@ -133,9 +133,22 @@ void console_init()
 	console->termios.c_cc[VERASE] = 8;
 	console->termios.c_cc[VEOF] = 4;
 	console->termios.c_cc[VSUSP] = 26;
-	console->processor = NULL;
-	console->top = 0;
+
+	console->bright = 0;
+	console->reverse = 0;
+	console->foreground = 7;
+	console->background = 0;
+	console->origin_mode = 0;
+	console->wraparound_mode = 1;
+
+	/* Only essential values are initialized here, others are automatically set to the correct value in console_retrieve_state() */
 	console->at_right_margin = 0;
+	console->top = 0;
+	console->scroll_full_screen = 1;
+
+	console->input_buffer_head = console->input_buffer_tail = 0;
+	console->processor = NULL;
+
 	SetConsoleMode(in, 0);
 	SetConsoleMode(out, ENABLE_PROCESSED_OUTPUT);
 
@@ -271,19 +284,26 @@ static void console_retrieve_state()
 		console->y = info.dwCursorPosition.Y - console->top;
 		console->at_right_margin = 0;
 	}
-	/* TODO */
-	console->scroll_top = 0;
-	console->scroll_bottom = console->height - 1;
+	if (console->height <= console->scroll_bottom)
+	{
+		/* The current window height is smaller than the scrolling region,
+		 * Change to full screen scrolling mode
+		 */
+		console->scroll_full_screen = 1;
+	}
+	if (console->scroll_full_screen)
+	{
+		console->scroll_top = 0;
+		console->scroll_bottom = console->height - 1;
+	}
 }
 
 static void backspace(BOOL erase)
 {
 	if (console->x > 0)
 	{
-		if (console->at_right_margin)
-			console->at_right_margin = 0;
-		else
-			console->x--;
+		console->at_right_margin = 0;
+		console->x--;
 		COORD pos;
 		pos.X = console->x;
 		pos.Y = console->y + console->top;
@@ -345,21 +365,6 @@ static void move_down(int count)
 	set_pos(console->x, min(console->y + count, console->height - 1));
 }
 
-static void crnl()
-{
-	DWORD bytes_written;
-	WriteConsoleA(console->out, "\r\n", 2, &bytes_written, NULL);
-	if (console->y == console->height - 1)
-	{
-		/* The screen buffer is scrolled */
-		console->top = min(console->top + 1, console->buffer_height - console->height);
-	}
-	else
-		console->y++;
-	console->x = 0;
-	console->at_right_margin = 0;
-}
-
 static void cr()
 {
 	DWORD bytes_written;
@@ -370,16 +375,46 @@ static void cr()
 
 static void nl()
 {
-	DWORD bytes_written;
-	WriteConsoleA(console->out, "\n", 1, &bytes_written, NULL);
-	if (console->y == console->height - 1)
+	if (console->scroll_full_screen || console->y < console->scroll_bottom)
 	{
-		/* The screen buffer is scrolled */
-		console->top = min(console->top + 1, console->buffer_height - console->height);
+		DWORD bytes_written;
+		WriteConsoleA(console->out, "\n", 1, &bytes_written, NULL);
+		if (console->y == console->height - 1)
+		{
+			/* The entire screen is scrolled */
+			console->top = min(console->top + 1, console->buffer_height - console->height);
+		}
+		else
+			console->y++;
 	}
 	else
-		console->y++;
+	{
+		/* A partial region needs to be scrolled */
+		CHAR_INFO fill_char;
+		fill_char.Attributes = get_text_attribute();
+		fill_char.Char.UnicodeChar = L' ';
+		SMALL_RECT scroll_rect;
+		scroll_rect.Left = 0;
+		scroll_rect.Right = console->width - 1;
+		scroll_rect.Top = console->top + console->scroll_top + 1;
+		scroll_rect.Bottom = console->top + console->scroll_bottom;
+		SMALL_RECT clip_rect;
+		clip_rect.Left = 0;
+		clip_rect.Right = console->width - 1;
+		clip_rect.Top = console->top + console->scroll_top;
+		clip_rect.Bottom = console->top + console->scroll_bottom;
+		COORD origin;
+		origin.X = 0;
+		origin.Y = console->top + console->scroll_top;
+		ScrollConsoleScreenBufferW(console->out, &scroll_rect, &clip_rect, origin, &fill_char);
+	}
 	console->at_right_margin = 0;
+}
+
+static void crnl()
+{
+	cr();
+	nl();
 }
 
 static void write_normal(const char *buf, int size)
@@ -389,11 +424,8 @@ static void write_normal(const char *buf, int size)
 
 	while (size > 0)
 	{
-		if (console->at_right_margin)
-		{
+		if (console->at_right_margin && console->wraparound_mode)
 			crnl();
-			console->at_right_margin = 0;
-		}
 		/* Write to line end at most */
 		int line_remain = min(size, console->width - console->x);
 		DWORD bytes_written;
@@ -495,6 +527,17 @@ static void change_private_mode(int mode, int set)
 			console_set_size(132, 24);
 		else /* 80 column mode */
 			console_set_size(80, 24);
+		/* Clear window content and reset scrolling regions */
+		erase_screen(2);
+		set_pos(0, 0);
+		break;
+		
+	case 6:
+		console->origin_mode = set;
+		break;
+
+	case 7:
+		console->wraparound_mode = set;
 		break;
 
 	default:
@@ -554,7 +597,10 @@ static void control_escape_csi(char ch)
 			console->params[0]--;
 		if (console->params[1] > 0)
 			console->params[1]--;
-		set_pos(console->params[1], console->params[0]);
+		if (console->origin_mode)
+			set_pos(console->params[1], console->scroll_top + console->params[0]);
+		else
+			set_pos(console->params[1], console->params[0]);
 		console->processor = NULL;
 		break;
 
@@ -639,6 +685,17 @@ static void control_escape_csi(char ch)
 		console->processor = NULL;
 		break;
 
+	case 'r':
+		if (console->params[0] == 0)
+			console->params[0] = 1;
+		if (console->params[1] == 0)
+			console->params[1] = console->height;
+		console->scroll_full_screen = (console->params[0] == 1 && console->params[1] == console->height);
+		console->scroll_top = console->params[0] - 1;
+		console->scroll_bottom = console->params[1] - 1;
+		set_pos(0, 0);
+		break;
+
 	case '?':
 		console->private_mode = 1;
 		break;
@@ -699,27 +756,12 @@ static void control_escape_sharp(char ch)
 	{
 		/* DECALN: DEC screen alignment test */
 		/* Fill screen with 'E' */
-		CHAR_INFO *chars = (CHAR_INFO *)alloca(sizeof(CHAR_INFO) * console->width);
-		WORD attr = get_text_attribute();
-		for (int i = 0; i < console->width; i++)
-		{
-			chars[i].Char.UnicodeChar = L'E';
-			chars[i].Attributes = attr;
-		}
-		COORD size;
-		size.X = console->width;
-		size.Y = 1;
-		COORD coord;
-		coord.X = 0;
-		coord.Y = 0;
-		for (int i = 0; i < console->height; i++)
-		{
-			SMALL_RECT region;
-			region.Top = region.Bottom = i + console->top;
-			region.Left = 0;
-			region.Right = console->width - 1;
-			WriteConsoleOutputW(console->out, chars, size, coord, &region);
-		}
+		COORD start;
+		start.X = 0;
+		start.Y = 0;
+		DWORD bytes_written;
+		FillConsoleOutputAttribute(console->out, get_text_attribute(), console->width * console->height, start, &bytes_written);
+		FillConsoleOutputCharacterW(console->out, L'E', console->width * console->height, start, &bytes_written);
 		console->processor = NULL;
 	}
 
@@ -1014,6 +1056,8 @@ static size_t console_write(struct file *f, const char *buf, size_t count)
 			int x = (console->x + 8) & ~7;
 			if (x < console->width)
 				set_pos(x, console->y);
+			else
+				set_pos(console->width - 1, console->y);
 		}
 		else if (ch == '\b')
 		{
