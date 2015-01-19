@@ -52,6 +52,29 @@ static int filename_to_nt_pathname(const char *filename, WCHAR *buf, int buf_siz
 	return out_size + fl;
 }
 
+/* Test if a handle is a symlink, does not read the target
+ * The current file pointer will be changed
+ */
+static int winfs_is_symlink(HANDLE hFile)
+{
+	char header[WINFS_SYMLINK_HEADER_LEN];
+	DWORD num_read;
+	OVERLAPPED overlapped;
+	overlapped.Internal = 0;
+	overlapped.InternalHigh = 0;
+	overlapped.Offset = 0;
+	overlapped.OffsetHigh = 0;
+	overlapped.hEvent = 0;
+	if (!ReadFile(hFile, header, WINFS_SYMLINK_HEADER_LEN, &num_read, &overlapped) || num_read < WINFS_SYMLINK_HEADER_LEN)
+	{
+		log_error("ReadFile(): %d\n", GetLastError());
+		return 0;
+	}
+	if (memcmp(header, WINFS_SYMLINK_HEADER, WINFS_SYMLINK_HEADER_LEN))
+		return 0;
+	return 1;
+}
+
 /*
 Test if a handle is a symlink, also return its target if requested.
 For optimal performance, caller should ensure the handle is a regular file with system attribute.
@@ -341,7 +364,6 @@ static int winfs_getdents(struct file *f, void *dirent, size_t count, getdents_c
 		do
 		{
 			info = (FILE_ID_FULL_DIR_INFORMATION *) &buffer[offset];
-			info->FileId.QuadPart;
 			offset += info->NextEntryOffset;
 			void *p = (char *)dirent + size;
 			//uint64_t inode = info->FileId.QuadPart;
@@ -349,7 +371,39 @@ static int winfs_getdents(struct file *f, void *dirent, size_t count, getdents_c
 			 * We may later add an option for changing this behaviour
 			 */
 			uint64_t inode = info->FileId.HighPart ^ info->FileId.LowPart;
-			char type = (info->FileAttributes & FILE_ATTRIBUTE_DIRECTORY) ? DT_DIR : DT_REG;
+			char type = DT_REG;
+			if (info->FileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+				type = DT_DIR;
+			else if (info->FileAttributes & FILE_ATTRIBUTE_SYSTEM)
+			{
+				/* Test if it is a symlink */
+				UNICODE_STRING pathname;
+				pathname.Length = info->FileNameLength;
+				pathname.MaximumLength = info->FileNameLength;
+				pathname.Buffer = info->FileName;
+
+				NTSTATUS status;
+				IO_STATUS_BLOCK status_block;
+				OBJECT_ATTRIBUTES attr;
+				attr.Length = sizeof(OBJECT_ATTRIBUTES);
+				attr.RootDirectory = winfile->handle;
+				attr.ObjectName = &pathname;
+				attr.Attributes = 0;
+				attr.SecurityDescriptor = NULL;
+				attr.SecurityQualityOfService = NULL;
+				HANDLE handle;
+				status = NtCreateFile(&handle, SYNCHRONIZE | FILE_READ_DATA, &attr, &status_block, NULL,
+					FILE_ATTRIBUTE_NORMAL, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, FILE_OPEN,
+					FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT, NULL, 0);
+				if (status == STATUS_SUCCESS)
+				{
+					if (winfs_is_symlink(handle))
+						type = DT_LNK;
+					CloseHandle(handle);
+				}
+				else
+					log_warning("NtCreateFile() failed, status: %x\n", status);
+			}
 			intptr_t reclen = fill_callback(p, inode, info->FileName, info->FileNameLength / 2, type, count - size);
 			if (reclen < 0)
 				return reclen;

@@ -4,6 +4,7 @@ EXPORTS
 	NtQueryEaFile@36
 	NtSetEaFile@16
 	NtClose@4
+	NtCreateFile@44
 	NtSetInformationFile@20
 	NtQueryDirectoryFile@44
 	NtQueryVolumeInformationFile@20
