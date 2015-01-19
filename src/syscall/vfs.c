@@ -1495,6 +1495,25 @@ DEFINE_SYSCALL(umask, int, mask)
 	return old;
 }
 
+DEFINE_SYSCALL(chroot, const char *, pathname)
+{
+	log_info("chroot(\"%s\")\n", pathname);
+	if (!mm_check_read_string(pathname))
+		return -EFAULT;
+	char realpath[PATH_MAX];
+	int symlink_remain = MAX_SYMLINK_LEVEL;
+	int r = resolve_pathat(AT_FDCWD, pathname, realpath, &symlink_remain);
+	if (r < 0)
+		return r;
+	log_info("resolved path: \"%s\"\n", realpath);
+	WCHAR wpath[PATH_MAX];
+	utf8_to_utf16_filename(realpath, r + 1, wpath, PATH_MAX);
+	/* TODO */
+	if (!SetCurrentDirectoryW(wpath + 1)) /* ignore the heading slash */
+		log_error("SetCurrentDirectoryW() failed, error code: %d\n", GetLastError());
+	return 0;
+}
+
 DEFINE_SYSCALL(fchownat, int, dirfd, const char *, pathname, uid_t, owner, gid_t, group, int, flags)
 {
 	log_info("fchownat(%d, \"%s\", %d, %d, %x)\n", dirfd, pathname, owner, group, flags);
