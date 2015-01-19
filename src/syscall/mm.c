@@ -866,17 +866,19 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, struct file *f, of
 		return -EINVAL;
 	if (flags & MAP_SHARED)
 	{
-		log_warning("MAP_SHARED is not supported yet.\n");
-		return -EINVAL;
+		log_error("MAP_SHARED is not supported yet.\n");
+		if (prot & PROT_WRITE)
+			return -EINVAL;
+		log_info("No write permission requested, ignoring MAP_SHARED.\n");
 	}
 	if ((flags & MAP_ANONYMOUS) && f != NULL)
 	{
-		log_warning("MAP_ANONYMOUS with file descriptor.\n");
+		log_error("MAP_ANONYMOUS with file descriptor.\n");
 		return -EINVAL;
 	}
 	if (!(flags & MAP_ANONYMOUS) && f == NULL)
 	{
-		log_warning("MAP_FILE with bad file descriptor.\n");
+		log_error("MAP_FILE with bad file descriptor.\n");
 		return -EBADF;
 	}
 	if (!(flags & MAP_FIXED))
