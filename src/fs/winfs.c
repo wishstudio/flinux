@@ -344,7 +344,11 @@ static int winfs_getdents(struct file *f, void *dirent, size_t count, getdents_c
 			info->FileId.QuadPart;
 			offset += info->NextEntryOffset;
 			void *p = (char *)dirent + size;
-			uint64_t inode = info->FileId.QuadPart;
+			//uint64_t inode = info->FileId.QuadPart;
+			/* Hash 64 bit inode to 32 bit to fix legacy applications
+			 * We may later add an option for changing this behaviour
+			 */
+			uint64_t inode = info->FileId.HighPart ^ info->FileId.LowPart;
 			char type = (info->FileAttributes & FILE_ATTRIBUTE_DIRECTORY) ? DT_DIR : DT_REG;
 			intptr_t reclen = fill_callback(p, inode, info->FileName, info->FileNameLength / 2, type, count - size);
 			if (reclen < 0)
