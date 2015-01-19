@@ -495,6 +495,7 @@ static int resolve_path(const char *dirpath, const char *pathname, char *realpat
 			pathname += 2;
 		else if (pathname[0] == '.' && pathname[1] == '.' && pathname[2] == '/')
 		{
+			pathname += 3;
 			/* Remove last component if exists */
 			if (realpath > realpath_start)
 				for (realpath--; *realpath != '/'; realpath--);
