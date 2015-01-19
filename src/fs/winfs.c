@@ -21,6 +21,7 @@ struct winfs_file
 {
 	struct file base_file;
 	HANDLE handle;
+	int restart_scan; /* for getdents() */
 	int pathlen;
 	char pathname[]; /* Not necessary null-terminated */
 };
@@ -260,6 +261,11 @@ static int winfs_llseek(struct file *f, loff_t offset, loff_t *newoffset, int wh
 	liDistanceToMove.QuadPart = offset;
 	SetFilePointerEx(winfile->handle, liDistanceToMove, &liNewFilePointer, dwMoveMethod);
 	*newoffset = liNewFilePointer.QuadPart;
+	if (whence == SEEK_SET && offset == 0)
+	{
+		/* TODO: Currently we don't know if it is a directory, pretend it is */
+		winfile->restart_scan = 1;
+	}
 	return 0;
 }
 
@@ -354,7 +360,8 @@ static int winfs_getdents(struct file *f, void *dirent, size_t count, getdents_c
 		int buffer_size = (count - size) / 2; /* In worst case, a UTF-16 character (2 bytes) requires 4 bytes to store */
 		if (buffer_size >= BUFFER_SIZE)
 			buffer_size = BUFFER_SIZE;
-		status = NtQueryDirectoryFile(winfile->handle, NULL, NULL, NULL, &status_block, buffer, buffer_size, FileIdFullDirectoryInformation, FALSE, NULL, FALSE);
+		status = NtQueryDirectoryFile(winfile->handle, NULL, NULL, NULL, &status_block, buffer, buffer_size, FileIdFullDirectoryInformation, FALSE, NULL, winfile->restart_scan);
+		winfile->restart_scan = 0;
 		if (status != STATUS_SUCCESS)
 			break;
 		if (status_block.Information == 0)
@@ -705,6 +712,7 @@ after_symlink_test:
 		file->base_file.ref = 1;
 		file->base_file.flags = flags;
 		file->handle = handle;
+		file->restart_scan = 1;
 		file->pathlen = pathlen;
 		memcpy(file->pathname, pathname, pathlen);
 		*fp = (struct file *)file;
