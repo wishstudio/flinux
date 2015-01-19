@@ -203,6 +203,13 @@ static size_t winfs_pwrite(struct file *f, const char *buf, size_t count, loff_t
 	return num_written;
 }
 
+static size_t winfs_readlink(struct file *f, char *target, size_t buflen)
+{
+	struct winfs_file *winfile = (struct winfs_file *) f;
+	/* TODO: Correct errno */
+	return winfs_read_symlink(winfile->handle, target, (int)buflen);
+}
+
 static int winfs_llseek(struct file *f, loff_t offset, loff_t *newoffset, int whence)
 {
 	struct winfs_file *winfile = (struct winfs_file *) f;
@@ -375,6 +382,7 @@ static struct file_ops winfs_ops =
 	.write = winfs_write,
 	.pread = winfs_pread,
 	.pwrite = winfs_pwrite,
+	.readlink = winfs_readlink,
 	.llseek = winfs_llseek,
 	.stat = winfs_stat,
 	.utimens = winfs_utimens,
@@ -419,28 +427,6 @@ static int winfs_symlink(const char *target, const char *linkpath)
 	}
 	CloseHandle(handle);
 	return 0;
-}
-
-static size_t winfs_readlink(const char *pathname, char *target, size_t buflen)
-{
-	WCHAR wpathname[PATH_MAX];
-	DWORD attr;
-	HANDLE hFile;
-
-	if (utf8_to_utf16_filename(pathname, strlen(pathname) + 1, wpathname, PATH_MAX) <= 0)
-		return -ENOENT;
-	/* TODO: This is not concurrency safe */
-	attr = GetFileAttributesW(wpathname);
-	if (attr == INVALID_FILE_ATTRIBUTES)
-		return -ENOENT;
-	if ((attr & FILE_ATTRIBUTE_DIRECTORY) || !(attr & FILE_ATTRIBUTE_SYSTEM))
-		return -EINVAL;
-	hFile = CreateFileW(wpathname, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	if (hFile == INVALID_HANDLE_VALUE)
-		return -EIO;
-	int ret = winfs_read_symlink(hFile, target, (int)buflen);
-	CloseHandle(hFile);
-	return ret;
 }
 
 static int winfs_link(struct file *f, const char *newpath)
@@ -543,7 +529,13 @@ static int winfs_open(const char *pathname, int flags, int mode, struct file **f
 
 	if (utf8_to_utf16_filename(pathname, strlen(pathname) + 1, wpathname, PATH_MAX) <= 0)
 		return -ENOENT;
-
+	if (wpathname[0] == 0)
+	{
+		/* CreateFile() does not accept empty filename. */
+		wpathname[0] = '.';
+		wpathname[1] = 0;
+	}
+	
 	if (flags & O_PATH)
 		desiredAccess = 0;
 	else if (flags & O_RDWR)
@@ -573,7 +565,7 @@ static int winfs_open(const char *pathname, int flags, int mode, struct file **f
 	SECURITY_ATTRIBUTES attr;
 	attr.nLength = sizeof(SECURITY_ATTRIBUTES);
 	attr.lpSecurityDescriptor = NULL;
-	attr.bInheritHandle = TRUE;
+	attr.bInheritHandle = (fp != NULL);
 	handle = CreateFileW(wpathname, desiredAccess, shareMode, &attr, creationDisposition, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_BACKUP_SEMANTICS, NULL);
 	if (handle == INVALID_HANDLE_VALUE)
 	{
@@ -635,12 +627,17 @@ static int winfs_open(const char *pathname, int flags, int mode, struct file **f
 	}
 
 after_symlink_test:
-	file = (struct winfs_file *)kmalloc(sizeof(struct winfs_file));
-	file->base_file.op_vtable = &winfs_ops;
-	file->base_file.ref = 1;
-	file->base_file.flags = flags;
-	file->handle = handle;
-	*fp = (struct file *)file;
+	if (fp)
+	{
+		file = (struct winfs_file *)kmalloc(sizeof(struct winfs_file));
+		file->base_file.op_vtable = &winfs_ops;
+		file->base_file.ref = 1;
+		file->base_file.flags = flags;
+		file->handle = handle;
+		*fp = (struct file *)file;
+	}
+	else
+		CloseHandle(handle);
 	return 0;
 }
 
@@ -655,7 +652,6 @@ struct file_system *winfs_alloc()
 	fs->base_fs.mountpoint = "/";
 	fs->base_fs.open = winfs_open;
 	fs->base_fs.symlink = winfs_symlink;
-	fs->base_fs.readlink = winfs_readlink;
 	fs->base_fs.link = winfs_link;
 	fs->base_fs.unlink = winfs_unlink;
 	fs->base_fs.rename = winfs_rename;

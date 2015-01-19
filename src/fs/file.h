@@ -20,6 +20,7 @@ struct file_ops
 	size_t (*write)(struct file *f, const char *buf, size_t count);
 	size_t (*pread)(struct file *f, char *buf, size_t count, loff_t offset);
 	size_t (*pwrite)(struct file *f, const char *buf, size_t count, loff_t offset);
+	size_t (*readlink)(struct file *f, char *buf, size_t bufsize);
 	int (*llseek)(struct file *f, loff_t offset, loff_t *newoffset, int whence);
 	int (*stat)(struct file *f, struct newstat *buf);
 	int (*utimens)(struct file *f, const struct timespec *times);
@@ -41,8 +42,6 @@ struct file_system
 	char *mountpoint;
 	int (*open)(const char *path, int flags, int mode, struct file **fp, char *target, int buflen);
 	int (*symlink)(const char *target, const char *linkpath);
-	size_t (*readlink)(const char *pathname, char *buf, size_t bufsize);
-	int (*is_symlink)(const char *pathname, char *target, int buflen);
 	int (*link)(struct file *f, const char *newpath);
 	int (*unlink)(const char *pathname);
 	int (*rename)(struct file *f, const char *newpath);

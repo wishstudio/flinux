@@ -142,6 +142,100 @@ int vfs_store_file(struct file *f, int cloexec)
 	return -EMFILE;
 }
 
+DEFINE_SYSCALL(pipe2, int *, pipefd, int, flags)
+{
+	/*
+	Supported flags:
+	* O_CLOEXEC
+	o O_DIRECT
+	o O_NONBLOCK
+	*/
+	log_info("pipe2(%p, %d)\n", pipefd, flags);
+	if ((flags & O_DIRECT) || (flags & O_NONBLOCK))
+	{
+		log_error("Unsupported flags combination: %x\n", flags);
+		return -EINVAL;
+	}
+	if (!mm_check_write(pipefd, 2 * sizeof(int)))
+		return -EFAULT;
+	struct file *fread, *fwrite;
+	int r = pipe_alloc(&fread, &fwrite, flags);
+	if (r < 0)
+		return r;
+	/* TODO: Deal with EMFILE error */
+	int rfd = vfs_store_file(fread, (flags & O_CLOEXEC) > 0);
+	if (rfd < 0)
+	{
+		vfs_release(fread);
+		vfs_release(fwrite);
+		return rfd;
+	}
+	int wfd = vfs_store_file(fwrite, (flags & O_CLOEXEC) > 0);
+	if (wfd < 0)
+	{
+		vfs_close(rfd);
+		vfs_release(fwrite);
+		return wfd;
+	}
+	pipefd[0] = rfd;
+	pipefd[1] = wfd;
+	log_info("read fd: %d\n", rfd);
+	log_info("write fd: %d\n", wfd);
+	return 0;
+}
+
+DEFINE_SYSCALL(pipe, int *, pipefd)
+{
+	return sys_pipe2(pipefd, 0);
+}
+
+static int vfs_dup(int fd, int newfd, int flags)
+{
+	struct file *f = vfs_get(fd);
+	if (!f)
+		return -EBADF;
+	if (newfd == -1)
+	{
+		for (int i = 0; i < MAX_FD_COUNT; i++)
+			if (vfs->fds[i] == NULL)
+			{
+				newfd = i;
+				break;
+			}
+		if (newfd == -1)
+			return -EMFILE;
+	}
+	else
+	{
+		if (newfd == fd || newfd < 0 || newfd >= MAX_FD_COUNT)
+			return -EINVAL;
+		if (vfs->fds[newfd])
+			vfs_close(newfd);
+	}
+	vfs->fds[newfd] = f;
+	vfs->fds_cloexec[newfd] = !!(flags & O_CLOEXEC);
+	f->ref++;
+	return newfd;
+}
+
+DEFINE_SYSCALL(dup, int, fd)
+{
+	log_info("dup(%d)\n", fd);
+	return vfs_dup(fd, -1, 0);
+}
+
+DEFINE_SYSCALL(dup2, int, fd, int, newfd)
+{
+	log_info("dup2(%d, %d)\n", fd, newfd);
+	return vfs_dup(fd, newfd, 0);
+}
+
+DEFINE_SYSCALL(dup3, int, fd, int, newfd, int, flags)
+{
+	log_info("dup3(%d, %d, 0x%x)\n", fd, newfd, flags);
+	return vfs_dup(fd, newfd, flags);
+}
+
 DEFINE_SYSCALL(read, int, fd, char *, buf, size_t, count)
 {
 	log_info("read(%d, %p, %p)\n", fd, buf, count);
@@ -357,121 +451,120 @@ static int find_filesystem(const char *path, struct file_system **out_fs, char *
 	return 0;
 }
 
-/* Normalize a unix path: remove redundant "/", "." and ".."
-   We allow aliasing `current` and `out` */
-static int normalize_path(const char *current, const char *pathname, char *out)
+/* Resolve a given path (except the last component), output the real path
+ * dirpath must be an absolute path without a tailing slash
+ * Returns the length of realpath, or errno
+ */
+static int resolve_path(const char *dirpath, const char *pathname, char *realpath, int *symlink_remain)
 {
-	/* TODO: Avoid overflow */
-	char *p = out;
+	char target[PATH_MAX];
+	char *realpath_start = realpath;
+	/* ENOENT when pathname is empty (according to Linux) */
+	if (*pathname == 0)
+		return -ENOENT;
+	/* CAUTION: dirpath can be aliased with realpath */
 	if (*pathname == '/')
 	{
-		*p++ = '/';
+		/* Absolute */
 		pathname++;
 	}
 	else
 	{
-		if (current == out)
-			p += strlen(current);
+		/* Relative: Copy dirpath */
+		if (realpath == dirpath)
+		{
+			/* Whoa, not even need to copy anything */
+			realpath += strlen(dirpath);
+		}
 		else
 		{
-			while (*current)
-				*p++ = *current++;
+			while (*dirpath)
+				*realpath++ = *dirpath++;
 		}
-		if (p[-1] != '/')
-			*p++ = '/';
+		if (realpath > realpath_start && realpath[-1] == '/')
+			realpath--;
 	}
-	while (pathname[0])
+	while (*pathname)
 	{
 		if (pathname[0] == '/')
 			pathname++;
 		else if (pathname[0] == '.' && pathname[1] == '/')
 			pathname += 2;
-		else if (pathname[0] == '.' && pathname[1] == 0)
-			/* Do not omit the tailing dot, as e.g. "/blah/" is not equivalent for "/blah/." for O_NOFOLLOW
-			 * when "/blah" is a symlink to some other directory.
-			 */
-			*p++ = *pathname++;
-		else if (pathname[0] == '.' && pathname[1] == '.' && (pathname[2] == '/' || pathname[2] == 0))
+		else if (pathname[0] == '.' && pathname[1] == '.' && pathname[2] == '/')
 		{
-			if (pathname[2] == 0)
-				pathname += 2;
-			else
-				pathname += 3;
-			p--;
-			while (p > out && p[-1] != '/')
-				p--;
+			/* Remove last component if exists */
+			if (realpath > realpath_start)
+				for (realpath--; *realpath != '/'; realpath--);
 		}
 		else
 		{
+			*realpath++ = '/';
+			/* Append current component */
 			while (*pathname && *pathname != '/')
-				*p++ = *pathname++;
+				*realpath++ = *pathname++;
 			if (*pathname == '/')
-				*p++ = *pathname++;
-		}
-	}
-	/* Remove redundant "/" mark at tail, unless the whole path is just "/" */
-	if (p - 1 > out && p[-1] == '/')
-		p[-1] = 0;
-	else
-		*p = 0;
-	return 1;
-}
-
-/*
-Test if a component of the given path is a symlink
-Return 0 for success, errno for error
-*/
-static int resolve_symlink(struct file_system *fs, char *path, char *subpath, char *target)
-{
-	if (!fs->readlink)
-	{
-		log_warning("The underlying filesystem does not support symlink.\n");
-		return -ENOENT;
-	}
-	/* Test from right to left */
-	/* Note: Currently we assume the symlink only appears in subpath */
-	int found = 0;
-	log_info("PATH: %s\n", path);
-	for (char *p = subpath + strlen(subpath) - 1; p > subpath; p--)
-	{
-		if (*p == '/')
-		{
-			*p = 0;
-			log_info("Testing %s\n", path);
-			int r = fs->readlink(subpath, target, MAX_PATH);
-			if (r >= 0)
 			{
-				log_info("It is a symlink, target: %s\n", target);
-				found = 1;
-				/* Combine symlink target with remaining path */
-				char *q = p + 1;
-				char *t = target + r;
-				if (*t != '/')
-					*t++ = '/';
-				while (*q)
-					*t++ = *q++;
-				*t++ = 0;
-				/* Remove symlink basename from path */
-				while (p[-1] != '/')
-					p--;
-				p[0] = 0;
-				/* Combine heading file path with remaining path */
-				if (!normalize_path(path, target, path))
-					return -ENOENT;
-				break;
+				pathname++;
+				/* Resolve component */
+				for (;;)
+				{
+					struct file_system *fs;
+					char *subpath;
+					*realpath = 0;
+					if (!find_filesystem(realpath_start, &fs, &subpath))
+						return -ENOTDIR;
+					if (!fs->open)
+						return -ENOTDIR;
+					int r = fs->open(subpath, O_PATH | O_DIRECTORY, 0, NULL, target, PATH_MAX);
+					if (r < 0)
+						return r;
+					else if (r == 0) /* It is a regular file, go forward */
+						break;
+					else if (r == 1)
+					{
+						/* It is a symlink */
+						if ((*symlink_remain)-- == 0)
+							return -ELOOP;
+						/* We resolve the symlink target using a recursive call */
+						/* Remove basename */
+						for (realpath--; *realpath != '/'; realpath--);
+						*realpath = 0;
+						r = resolve_path(realpath_start, target, realpath_start, symlink_remain);
+						if (r < 0)
+							return r;
+						realpath = realpath_start + r;
+						if (realpath > realpath_start && realpath[-1] == '/')
+							realpath--;
+						/* The last component is not resolved by the recursive call, solve it now */
+					}
+				}
 			}
-			else if (r != -ENOENT)
-				/* A component exists, or i/o failed, returning failure */
-				return r;
-			*p = '/';
+			else
+			{
+				/* Done */
+				/* Normalize last component if it is "." or ".." */
+				if (realpath[-1] == '.' && realpath[-2] == '/')
+				{
+					realpath -= 2;
+					break;
+				}
+				else if (realpath[-1] == '.' && realpath[-2] == '.' && realpath[-3] == '/')
+				{
+					/* Remove last component if exists */
+					realpath -= 3;
+					if (realpath - 1 > realpath_start)
+						for (realpath--; *realpath != '/'; realpath--);
+					break;
+				}
+				else
+					break;
+			}
 		}
 	}
-	if (!found)
-	{
-		log_warning("No component is a symlink.\n");
-		return -ENOENT;
-	}
-	return 0;
+	if (realpath == realpath_start)
+		*realpath++ = '/'; /* Return "/" instead of empty string */
+	*realpath = 0;
+	return realpath - realpath_start;
 }
 
 int vfs_open(const char *pathname, int flags, int mode, struct file **f)
@@ -512,54 +605,35 @@ int vfs_open(const char *pathname, int flags, int mode, struct file **f)
 		log_error("mode != 0\n");
 		//return -EINVAL;
 	}
-	/* Resolve path */
-	char path[MAX_PATH], target[MAX_PATH];
-	if (!normalize_path(vfs->cwd, pathname, path))
-		return -ENOENT;
-	for (int symlink_level = 0;; symlink_level++)
+	char realpath[PATH_MAX], target[PATH_MAX];
+	target[0] = 0;
+	int symlink_remain = MAX_SYMLINK_LEVEL;
+	int r = resolve_path(vfs->cwd, pathname, realpath, &symlink_remain);
+	for (;;)
 	{
-		if (symlink_level == MAX_SYMLINK_LEVEL)
-			return -ELOOP;
-		/* Find filesystem */
+		if (r < 0)
+			return r;
 		struct file_system *fs;
 		char *subpath;
-		if (!find_filesystem(path, &fs, &subpath))
+		if (!find_filesystem(realpath, &fs, &subpath))
 			return -ENOENT;
-		if (!fs->open)
-			return -ENOENT;
-		/* Try opening the file directly */
-		log_info("Try opening %s\n", path);
-		int ret = fs->open(*subpath ? subpath : ".", flags, mode, f, target, MAX_PATH);
-		if (ret == 0)
-		{
-			/* We're done opening the file */
-			log_info("Open file succeeded.\n");
-			return 0;
-		}
+		int ret = fs->open(subpath, flags, mode, f, target, PATH_MAX);
+		if (ret <= 0)
+			return ret;
 		else if (ret == 1)
 		{
-			/* The file is a symlink, continue symlink resolving */
-			log_info("It is a symlink, target: %s\n", target);
+			/* Note: O_NOFOLLOW is handled in fs.open() */
+			/* It is a symlink, continue resolving */
+			if (symlink_remain-- == 0)
+				return -ELOOP;
 			/* Remove basename */
-			char *p = path + strlen(path) - 1;
-			while (*p != '/')
-				p--;
-			p[1] = 0;
-			/* Combine file path with symlink target */
-			if (!normalize_path(path, target, path))
-				return -ENOENT;
-		}
-		else if (ret == -ENOENT)
-		{
-			log_info("Open file failed, testing whether a component is a symlink...\n");
-			if (resolve_symlink(fs, path, subpath, target) < 0)
-				return ret;
+			char *p = realpath + r;
+			for (p--; *p != '/'; p--);
+			*p = 0;
+			r = resolve_path(realpath, target, realpath, &symlink_remain);
 		}
 		else
-		{
-			log_warning("Open file error.\n");
-			return ret;
-		}
+			return r;
 	}
 }
 
@@ -603,52 +677,26 @@ DEFINE_SYSCALL(link, const char *, oldpath, const char *, newpath)
 	if (!mm_check_read_string(oldpath) || !mm_check_read_string(newpath))
 		return -EFAULT;
 	struct file *f;
-	char path[MAX_PATH], target[MAX_PATH];
-	if (!normalize_path(vfs->cwd, newpath, path))
-		return -ENOENT;
 	int r = vfs_open(oldpath, O_PATH | O_NOFOLLOW, 0, &f);
 	if (r < 0)
 		return r;
 	if (!winfs_is_winfile(f))
 		return -EPERM;
-	for (int symlink_level = 0;; symlink_level++)
-	{
-		if (symlink_level == MAX_SYMLINK_LEVEL)
-			return -ELOOP;
-		struct file_system *fs;
-		char *subpath;
-		if (!find_filesystem(path, &fs, &subpath))
-		{
-			vfs_release(f);
-			return -ENOENT;
-		}
-		log_info("Try linking file...\n");
-		int ret;
-		if (!fs->link)
-			ret = -ENOENT;
-		else
-			ret = fs->link(f, subpath);
-		if (ret == 0)
-		{
-			log_info("Link succeeded.\n");
-			vfs_release(f);
-			return 0;
-		}
-		else if (ret == -ENOENT)
-		{
-			log_info("Link failed, testing whether a component is a symlink...\n");
-			if (resolve_symlink(fs, path, subpath, target) < 0)
-			{
-				vfs_release(f);
-				return -ENOENT;
-			}
-		}
-		else
-		{
-			vfs_release(f);
-			return ret;
-		}
-	}
+	char realpath[PATH_MAX];
+	int symlink_remain = MAX_SYMLINK_LEVEL;
+	r = resolve_path(vfs->cwd, newpath, realpath, &symlink_remain);
+	if (r < 0)
+		return r;
+	struct file_system *fs;
+	char *subpath;
+	if (!find_filesystem(realpath, &fs, &subpath))
+		r = -ENOENT;
+	else if (!fs->link)
+		r = -EXDEV;
+	else
+		r = fs->link(f, subpath);
+	vfs_release(f);
+	return r;
 }
 
 DEFINE_SYSCALL(unlink, const char *, pathname)
@@ -656,33 +704,19 @@ DEFINE_SYSCALL(unlink, const char *, pathname)
 	log_info("unlink(\"%s\")\n", pathname);
 	if (!mm_check_read_string(pathname))
 		return -EFAULT;
-	char path[MAX_PATH], target[MAX_PATH];
-	if (!normalize_path(vfs->cwd, pathname, path))
+	char realpath[PATH_MAX];
+	int symlink_remain = MAX_SYMLINK_LEVEL;
+	int r = resolve_path(vfs->cwd, pathname, realpath, &symlink_remain);
+	if (r < 0)
+		return r;
+	struct file_system *fs;
+	char *subpath;
+	if (!find_filesystem(realpath, &fs, &subpath))
 		return -ENOENT;
-	for (int symlink_level = 0;; symlink_level++)
-	{
-		if (symlink_level == MAX_SYMLINK_LEVEL)
-			return -ELOOP;
-		struct file_system *fs;
-		char *subpath;
-		if (!find_filesystem(path, &fs, &subpath))
-			return -ENOENT;
-		log_info("Try unlinking file...\n");
-		int ret = fs->unlink(subpath);
-		if (ret == 0)
-		{
-			log_info("Unlink succeeded.\n");
-			return 0;
-		}
-		else if (ret == -ENOENT)
-		{
-			log_info("Unlink failed, testing whether a component is a symlink...\n");
-			if (resolve_symlink(fs, path, subpath, target) < 0)
-				return -ENOENT;
-		}
-		else
-			return ret;
-	}
+	else if (!fs->unlink)
+		return -EPERM;
+	else
+		return fs->unlink(subpath);
 }
 
 DEFINE_SYSCALL(symlink, const char *, symlink_target, const char *, linkpath)
@@ -690,33 +724,19 @@ DEFINE_SYSCALL(symlink, const char *, symlink_target, const char *, linkpath)
 	log_info("symlink(\"%s\", \"%s\")\n", symlink_target, linkpath);
 	if (!mm_check_read_string(symlink_target) || !mm_check_read_string(linkpath))
 		return -EFAULT;
-	char path[MAX_PATH], target[MAX_PATH];
-	if (!normalize_path(vfs->cwd, linkpath, path))
-		return -ENOENT;
-	for (int symlink_level = 0;; symlink_level++)
-	{
-		if (symlink_level == MAX_SYMLINK_LEVEL)
-			return -ELOOP;
-		struct file_system *fs;
-		char *subpath;
-		if (!find_filesystem(path, &fs, &subpath))
-			return -ENOENT;
-		log_info("Try creating symlink...\n");
-		int ret = fs->symlink(symlink_target, subpath);
-		if (ret == 0)
-		{
-			log_info("Symlink succeeded.\n");
-			return 0;
-		}
-		else if (ret == -ENOENT)
-		{
-			log_info("Create symlink failed, testing whether a component is a symlink...\n");
-			if (resolve_symlink(fs, path, subpath, target) < 0)
-				return -ENOENT;
-		}
-		else
-			return ret;
-	}
+	char realpath[PATH_MAX];
+	int symlink_remain = MAX_SYMLINK_LEVEL;
+	int r = resolve_path(vfs->cwd, linkpath, realpath, &symlink_remain);
+	if (r < 0)
+		return r;
+	struct file_system *fs;
+	char *subpath;
+	if (!find_filesystem(realpath, &fs, &subpath))
+		return -ENOTDIR;
+	else if (!fs->symlink)
+		return -EPERM;
+	else
+		return fs->symlink(symlink_target, subpath);
 }
 
 DEFINE_SYSCALL(readlink, const char *, pathname, char *, buf, int, bufsize)
@@ -724,122 +744,13 @@ DEFINE_SYSCALL(readlink, const char *, pathname, char *, buf, int, bufsize)
 	log_info("readlink(\"%s\", %p, %d)\n", pathname, buf, bufsize);
 	if (!mm_check_read_string(pathname) || !mm_check_write(buf, bufsize))
 		return -EFAULT;
-	char path[MAX_PATH], target[MAX_PATH];
-	if (!normalize_path(vfs->cwd, pathname, path))
-		return -ENOENT;
-	for (int symlink_level = 0;; symlink_level++)
-	{
-		if (symlink_level == MAX_SYMLINK_LEVEL)
-			return -ELOOP;
-		struct file_system *fs;
-		char *subpath;
-		if (!find_filesystem(path, &fs, &subpath))
-			return -ENOENT;
-		log_info("Try reading symlink...\n");
-		int ret = fs->readlink(subpath, buf, bufsize);
-		if (ret == -ENOENT)
-		{
-			log_info("Symlink not found, testing whether a component is a symlink...\n");
-			if (resolve_symlink(fs, path, subpath, target) < 0)
-				return -ENOENT;
-		}
-		else
-			return ret;
-	}
-}
-
-DEFINE_SYSCALL(pipe2, int *, pipefd, int, flags)
-{
-	/*
-	Supported flags:
-	* O_CLOEXEC
-	o O_DIRECT
-	o O_NONBLOCK
-	*/
-	log_info("pipe2(%p, %d)\n", pipefd, flags);
-	if ((flags & O_DIRECT) || (flags & O_NONBLOCK))
-	{
-		log_error("Unsupported flags combination: %x\n", flags);
-		return -EINVAL;
-	}
-	if (!mm_check_write(pipefd, 2 * sizeof(int)))
-		return -EFAULT;
-	struct file *fread, *fwrite;
-	int r = pipe_alloc(&fread, &fwrite, flags);
+	struct file *f;
+	int r = vfs_open(pathname, O_PATH | O_NOFOLLOW, 0, &f);
 	if (r < 0)
 		return r;
-	/* TODO: Deal with EMFILE error */
-	int rfd = vfs_store_file(fread, (flags & O_CLOEXEC) > 0);
-	if (rfd < 0)
-	{
-		vfs_release(fread);
-		vfs_release(fwrite);
-		return rfd;
-	}
-	int wfd = vfs_store_file(fwrite, (flags & O_CLOEXEC) > 0);
-	if (wfd < 0)
-	{
-		vfs_close(rfd);
-		vfs_release(fwrite);
-		return wfd;
-	}
-	pipefd[0] = rfd;
-	pipefd[1] = wfd;
-	log_info("read fd: %d\n", rfd);
-	log_info("write fd: %d\n", wfd);
-	return 0;
-}
-
-DEFINE_SYSCALL(pipe, int *, pipefd)
-{
-	return sys_pipe2(pipefd, 0);
-}
-
-static int vfs_dup(int fd, int newfd, int flags)
-{
-	struct file *f = vfs_get(fd);
-	if (!f)
-		return -EBADF;
-	if (newfd == -1)
-	{
-		for (int i = 0; i < MAX_FD_COUNT; i++)
-			if (vfs->fds[i] == NULL)
-			{
-				newfd = i;
-				break;
-			}
-		if (newfd == -1)
-			return -EMFILE;
-	}
-	else
-	{
-		if (newfd == fd || newfd < 0 || newfd >= MAX_FD_COUNT)
-			return -EINVAL;
-		if (vfs->fds[newfd])
-			vfs_close(newfd);
-	}
-	vfs->fds[newfd] = f;
-	vfs->fds_cloexec[newfd] = !!(flags & O_CLOEXEC);
-	f->ref++;
-	return newfd;
-}
-
-DEFINE_SYSCALL(dup, int, fd)
-{
-	log_info("dup(%d)\n", fd);
-	return vfs_dup(fd, -1, 0);
-}
-
-DEFINE_SYSCALL(dup2, int, fd, int, newfd)
-{
-	log_info("dup2(%d, %d)\n", fd, newfd);
-	return vfs_dup(fd, newfd, 0);
-}
-
-DEFINE_SYSCALL(dup3, int, fd, int, newfd, int, flags)
-{
-	log_info("dup3(%d, %d, 0x%x)\n", fd, newfd, flags);
-	return vfs_dup(fd, newfd, flags);
+	if (!f->op_vtable->readlink)
+		return -EINVAL;
+	return f->op_vtable->readlink(f, buf, bufsize);
 }
 
 DEFINE_SYSCALL(rename, const char *, oldpath, const char *, newpath)
@@ -848,52 +759,26 @@ DEFINE_SYSCALL(rename, const char *, oldpath, const char *, newpath)
 	if (!mm_check_read_string(oldpath) || !mm_check_read_string(newpath))
 		return -EFAULT;
 	struct file *f;
-	char path[MAX_PATH], target[MAX_PATH];
-	if (!normalize_path(vfs->cwd, newpath, path))
-		return -ENOENT;
-	int r = vfs_open(oldpath, O_PATH | __O_DELETE | O_NOFOLLOW, 0, &f);
+	int r = vfs_open(oldpath, O_PATH | O_NOFOLLOW | __O_DELETE, 0, &f);
 	if (r < 0)
 		return r;
 	if (!winfs_is_winfile(f))
 		return -EPERM;
-	for (int symlink_level = 0;; symlink_level++)
-	{
-		if (symlink_level == MAX_SYMLINK_LEVEL)
-			return -ELOOP;
-		struct file_system *fs;
-		char *subpath;
-		if (!find_filesystem(path, &fs, &subpath))
-		{
-			vfs_release(f);
-			return -ENOENT;
-		}
-		log_info("Try renaming file...\n");
-		int ret;
-		if (!fs->rename)
-			ret = -ENOENT;
-		else
-			ret = fs->rename(f, subpath);
-		if (ret == 0)
-		{
-			log_info("Rename succeeded.\n");
-			vfs_release(f);
-			return 0;
-		}
-		else if (ret == -ENOENT)
-		{
-			log_info("Rename failed, testing whether a component is a symlink...\n");
-			if (resolve_symlink(fs, path, subpath, target) < 0)
-			{
-				vfs_release(f);
-				return -ENOENT;
-			}
-		}
-		else
-		{
-			vfs_release(f);
-			return ret;
-		}
-	}
+	char realpath[PATH_MAX];
+	int symlink_remain = MAX_SYMLINK_LEVEL;
+	r = resolve_path(vfs->cwd, newpath, realpath, &symlink_remain);
+	if (r < 0)
+		return r;
+	struct file_system *fs;
+	char *subpath;
+	if (!find_filesystem(realpath, &fs, &subpath))
+		r = -EXDEV;
+	else if (!fs->rename)
+		r = -EXDEV;
+	else
+		r = fs->rename(f, subpath);
+	vfs_release(f);
+	return r;
 }
 
 DEFINE_SYSCALL(mkdir, const char *, pathname, int, mode)
@@ -903,32 +788,19 @@ DEFINE_SYSCALL(mkdir, const char *, pathname, int, mode)
 		log_error("mode != 0\n");
 	if (!mm_check_read_string(pathname))
 		return -EFAULT;
-	char path[MAX_PATH], target[MAX_PATH];
-	if (!normalize_path(vfs->cwd, pathname, path))
-		return -ENOENT;
-	for (int symlink_level = 0;; symlink_level++)
-	{
-		if (symlink_level == MAX_SYMLINK_LEVEL)
-			return -ELOOP;
-		struct file_system *fs;
-		char *subpath;
-		if (!find_filesystem(path, &fs, &subpath))
-			return -ENOENT;
-		log_info("Try creating directory...\n");
-		int ret;
-		if (!fs->mkdir)
-			ret = -ENOENT;
-		else
-			ret = fs->mkdir(subpath, mode);
-		if (ret == -ENOENT)
-		{
-			log_info("Creating directory failed, testing whether a component is a symlink...\n");
-			if (resolve_symlink(fs, path, subpath, target) < 0)
-				return -ENOENT;
-		}
-		else
-			return ret;
-	}
+	char realpath[PATH_MAX];
+	int symlink_remain = MAX_SYMLINK_LEVEL;
+	int r = resolve_path(vfs->cwd, pathname, realpath, &symlink_remain);
+	if (r < 0)
+		return r;
+	struct file_system *fs;
+	char *subpath;
+	if (!find_filesystem(realpath, &fs, &subpath))
+		return -ENOTDIR;
+	else if (!fs->mkdir)
+		return -EPERM;
+	else
+		return fs->mkdir(subpath, mode);
 }
 
 DEFINE_SYSCALL(rmdir, const char *, pathname)
@@ -936,32 +808,19 @@ DEFINE_SYSCALL(rmdir, const char *, pathname)
 	log_info("rmdir(\"%s\")\n", pathname);
 	if (!mm_check_read_string(pathname))
 		return -EFAULT;
-	char path[MAX_PATH], target[MAX_PATH];
-	if (!normalize_path(vfs->cwd, pathname, path))
-		return -ENOENT;
-	for (int symlink_level = 0;; symlink_level++)
-	{
-		if (symlink_level == MAX_SYMLINK_LEVEL)
-			return -ELOOP;
-		struct file_system *fs;
-		char *subpath;
-		if (!find_filesystem(path, &fs, &subpath))
-			return -ENOENT;
-		log_info("Try removing directory...\n");
-		int ret;
-		if (!fs->rmdir)
-			ret = -ENOENT;
-		else
-			ret = fs->rmdir(subpath);
-		if (ret == -ENOENT)
-		{
-			log_info("Removing directory failed, testing whether a component is a symlink...\n");
-			if (resolve_symlink(fs, path, subpath, target) < 0)
-				return -ENOENT;
-		}
-		else
-			return ret;
-	}
+	char realpath[PATH_MAX];
+	int symlink_remain = MAX_SYMLINK_LEVEL;
+	int r = resolve_path(vfs->cwd, pathname, realpath, &symlink_remain);
+	if (r < 0)
+		return r;
+	struct file_system *fs;
+	char *subpath;
+	if (!find_filesystem(realpath, &fs, &subpath))
+		return -ENOTDIR;
+	else if (!fs->rmdir)
+		return -EPERM;
+	else
+		return fs->rmdir(subpath);
 }
 
 static intptr_t getdents_fill(void *buffer, uint64_t inode, const wchar_t *name, int namelen, char type, size_t size)
@@ -1413,21 +1272,16 @@ DEFINE_SYSCALL(chdir, const char *, pathname)
 	log_info("chdir(%s)\n", pathname);
 	if (!mm_check_read_string(pathname))
 		return -EFAULT;
-	/* TODO: Check whether pathname is a directory */
-	int fd = sys_open(pathname, O_PATH, 0);
+	int fd = sys_open(pathname, O_PATH | O_DIRECTORY, 0);
 	if (fd < 0)
 		return fd;
 	sys_close(fd);
-	normalize_path(vfs->cwd, pathname, vfs->cwd);
-	/* Remove tailing "/." */
-	int l = strlen(vfs->cwd);
-	if (l >= 2 && vfs->cwd[l - 2] == '/' && vfs->cwd[l - 1] == '.')
-	{
-		if (l == 2)
-			vfs->cwd[l - 1] = 0;
-		else
-			vfs->cwd[l - 2] = 0;
-	}
+	char target[PATH_MAX];
+	int symlink_remain = MAX_SYMLINK_LEVEL;
+	int r = resolve_path(vfs->cwd, pathname, target, &symlink_remain);
+	if (r < 0)
+		return r;
+	strcpy(vfs->cwd, target);
 	return 0;
 }
 
