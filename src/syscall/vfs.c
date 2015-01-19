@@ -878,7 +878,18 @@ DEFINE_SYSCALL(mkdirat, int, dirfd, const char *, pathname, int, mode)
 		return -EFAULT;
 	char realpath[PATH_MAX];
 	int symlink_remain = MAX_SYMLINK_LEVEL;
-	int r = resolve_pathat(dirfd, pathname, realpath, &symlink_remain);
+	/* Very special case: mkdir with a tailing slash is equivalent to no tailing slash */
+	int l = strlen(pathname);
+	int r;
+	if (pathname[l - 1] == '/')
+	{
+		char path[PATH_MAX];
+		strcpy(path, pathname);
+		path[l - 1] = 0;
+		r = resolve_pathat(dirfd, path, realpath, &symlink_remain);
+	}
+	else
+		r = resolve_pathat(dirfd, pathname, realpath, &symlink_remain);
 	if (r < 0)
 		return r;
 	struct file_system *fs;
@@ -1364,6 +1375,18 @@ DEFINE_SYSCALL(chdir, const char *, pathname)
 	int r = vfs_openat(AT_FDCWD, pathname, O_PATH | O_DIRECTORY, 0, &f);
 	if (r < 0)
 		return r;
+	vfs_release(vfs->cwd);
+	vfs->cwd = f;
+	return 0;
+}
+
+DEFINE_SYSCALL(fchdir, int, fd)
+{
+	log_info("fchdir(%d)\n", fd);
+	struct file *f = vfs_get(fd);
+	if (!f)
+		return -EBADF;
+	vfs_ref(f);
 	vfs_release(vfs->cwd);
 	vfs->cwd = f;
 	return 0;
