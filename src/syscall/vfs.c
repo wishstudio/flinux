@@ -36,7 +36,7 @@ struct vfs_data
 	struct file *fds[MAX_FD_COUNT];
 	int fds_cloexec[MAX_FD_COUNT];
 	struct file_system *fs_first;
-	char cwd[PATH_MAX];
+	struct file *cwd;
 	int umask;
 };
 
@@ -92,8 +92,11 @@ void vfs_init()
 	vfs_add(winfs_alloc());
 	vfs_add(devfs_alloc());
 	/* Initialize CWD */
-	vfs->cwd[0] = '/';
-	vfs->cwd[1] = 0;
+	if (vfs_openat(AT_FDCWD, "/", O_DIRECTORY | O_PATH, 0, &vfs->cwd) < 0)
+	{
+		log_error("Opening initial current directory \"/\" failed.\n");
+		__debugbreak();
+	}
 	vfs->umask = S_IWGRP | S_IWOTH;
 	socket_init();
 	log_info("vfs subsystem initialized.\n");
@@ -567,7 +570,21 @@ static int resolve_path(const char *dirpath, const char *pathname, char *realpat
 	return realpath - realpath_start;
 }
 
-int vfs_open(const char *pathname, int flags, int mode, struct file **f)
+/* resolve_path(), *at() version */
+int resolve_pathat(int dirfd, const char *pathname, char *realpath, int *symlink_remain)
+{
+	char dirpath[PATH_MAX];
+	if (pathname[0] != '/')
+	{
+		struct file *f = dirfd == AT_FDCWD? vfs->cwd: vfs_get(dirfd);
+		if (!f)
+			return -EBADF;
+		f->op_vtable->getpath(f, dirpath);
+	}
+	return resolve_path(dirpath, pathname, realpath, symlink_remain);
+}
+
+int vfs_openat(int dirfd, const char *pathname, int flags, int mode, struct file **f)
 {
 	/*
 	Supported flags:
@@ -606,9 +623,8 @@ int vfs_open(const char *pathname, int flags, int mode, struct file **f)
 		//return -EINVAL;
 	}
 	char realpath[PATH_MAX], target[PATH_MAX];
-	target[0] = 0;
 	int symlink_remain = MAX_SYMLINK_LEVEL;
-	int r = resolve_path(vfs->cwd, pathname, realpath, &symlink_remain);
+	int r = resolve_pathat(dirfd, pathname, realpath, &symlink_remain);
 	for (;;)
 	{
 		if (r < 0)
@@ -637,19 +653,25 @@ int vfs_open(const char *pathname, int flags, int mode, struct file **f)
 	}
 }
 
-DEFINE_SYSCALL(open, const char *, pathname, int, flags, int, mode)
+DEFINE_SYSCALL(openat, int, dirfd, const char *, pathname, int, flags, int, mode)
 {
-	log_info("open(%p: \"%s\", %x, %x)\n", pathname, pathname, flags, mode);
+	log_info("openat(%d, \"%s\", %x, %x)\n", dirfd, pathname, flags, mode);
 	if (!mm_check_read_string(pathname))
 		return -EFAULT;
 	struct file *f;
-	int r = vfs_open(pathname, flags, mode, &f);
+	int r = vfs_openat(dirfd, pathname, flags, mode, &f);
 	if (r < 0)
 		return r;
 	int fd = vfs_store_file(f, (flags & O_CLOEXEC) > 0);
 	if (fd < 0)
 		vfs_release(f);
 	return fd;
+}
+
+DEFINE_SYSCALL(open, const char *, pathname, int, flags, int, mode)
+{
+	log_info("open(%p: \"%s\", %x, %x)\n", pathname, pathname, flags, mode);
+	return sys_openat(AT_FDCWD, pathname, flags, mode);
 }
 
 DEFINE_SYSCALL(close, int, fd)
@@ -662,29 +684,43 @@ DEFINE_SYSCALL(close, int, fd)
 	return 0;
 }
 
-DEFINE_SYSCALL(mknod, const char *, pathname, int, mode, unsigned int, dev)
+DEFINE_SYSCALL(mknodat, int, dirfd, const char *, pathname, int, mode, unsigned int, dev)
 {
-	log_info("mknod(\"%s\", %x, (%d:%d))", pathname, mode, major(dev), minor(dev));
+	log_info("mknodat(%d, \"%s\", %x, (%d:%d))", dirfd, pathname, mode, major(dev), minor(dev));
 	if (!mm_check_read_string(pathname))
 		return -EFAULT;
 	/* TODO: Touch that file */
 	return 0;
 }
 
-DEFINE_SYSCALL(link, const char *, oldpath, const char *, newpath)
+DEFINE_SYSCALL(mknod, const char *, pathname, int, mode, unsigned int, dev)
 {
-	log_info("link(\"%s\", \"%s\")\n", oldpath, newpath);
+	log_info("mknod(\"%s\", %x, (%d:%d))", pathname, mode, major(dev), minor(dev));
+	return sys_mknodat(AT_FDCWD, pathname, mode, dev);
+}
+
+DEFINE_SYSCALL(linkat, int, olddirfd, const char *, oldpath, int, newdirfd, const char *, newpath, int, flags)
+{
+	log_info("linkat(%d, \"%s\", %d, \"%x\", %x)\n", olddirfd, oldpath, newdirfd, newpath, flags);
 	if (!mm_check_read_string(oldpath) || !mm_check_read_string(newpath))
 		return -EFAULT;
+	if (flags & AT_EMPTY_PATH)
+	{
+		log_error("AT_EMPTY_PATH not supported.\n");
+		return -EINVAL;
+	}
 	struct file *f;
-	int r = vfs_open(oldpath, O_PATH | O_NOFOLLOW, 0, &f);
+	int openflags = O_PATH;
+	if (!(openflags & AT_SYMLINK_FOLLOW))
+		openflags |= O_NOFOLLOW;
+	int r = vfs_openat(olddirfd, oldpath, openflags, 0, &f);
 	if (r < 0)
 		return r;
 	if (!winfs_is_winfile(f))
 		return -EPERM;
 	char realpath[PATH_MAX];
 	int symlink_remain = MAX_SYMLINK_LEVEL;
-	r = resolve_path(vfs->cwd, newpath, realpath, &symlink_remain);
+	r = resolve_pathat(newdirfd, newpath, realpath, &symlink_remain);
 	if (r < 0)
 		return r;
 	struct file_system *fs;
@@ -699,34 +735,57 @@ DEFINE_SYSCALL(link, const char *, oldpath, const char *, newpath)
 	return r;
 }
 
-DEFINE_SYSCALL(unlink, const char *, pathname)
+DEFINE_SYSCALL(link, const char *, oldpath, const char *, newpath)
 {
-	log_info("unlink(\"%s\")\n", pathname);
+	log_info("link(\"%s\", \"%s\")\n", oldpath, newpath);
+	return sys_linkat(AT_FDCWD, oldpath, AT_FDCWD, newpath, 0);
+}
+
+DEFINE_SYSCALL(unlinkat, int, dirfd, const char *, pathname, int, flags)
+{
+	log_info("unlinkat(%d, \"%s\", %x)\n", dirfd, pathname, flags);
 	if (!mm_check_read_string(pathname))
 		return -EFAULT;
+
 	char realpath[PATH_MAX];
 	int symlink_remain = MAX_SYMLINK_LEVEL;
-	int r = resolve_path(vfs->cwd, pathname, realpath, &symlink_remain);
+	int r = resolve_pathat(dirfd, pathname, realpath, &symlink_remain);
 	if (r < 0)
 		return r;
 	struct file_system *fs;
 	char *subpath;
 	if (!find_filesystem(realpath, &fs, &subpath))
 		return -ENOENT;
-	else if (!fs->unlink)
-		return -EPERM;
+	else if (flags & AT_REMOVEDIR)
+	{
+		if (!fs->rmdir)
+			return -EPERM;
+		else
+			return fs->rmdir(subpath);
+	}
 	else
-		return fs->unlink(subpath);
+	{
+		if (!fs->unlink)
+			return -EPERM;
+		else
+			return fs->unlink(subpath);
+	}
 }
 
-DEFINE_SYSCALL(symlink, const char *, symlink_target, const char *, linkpath)
+DEFINE_SYSCALL(unlink, const char *, pathname)
 {
-	log_info("symlink(\"%s\", \"%s\")\n", symlink_target, linkpath);
-	if (!mm_check_read_string(symlink_target) || !mm_check_read_string(linkpath))
+	log_info("unlink(\"%s\")\n", pathname);
+	return sys_unlinkat(AT_FDCWD, pathname, 0);
+}
+
+DEFINE_SYSCALL(symlinkat, const char *, target, int, newdirfd, const char *, linkpath)
+{
+	log_info("symlinkat(\"%s\", %d, \"%s\")\n", target, newdirfd, linkpath);
+	if (!mm_check_read_string(target) || !mm_check_read_string(linkpath))
 		return -EFAULT;
 	char realpath[PATH_MAX];
 	int symlink_remain = MAX_SYMLINK_LEVEL;
-	int r = resolve_path(vfs->cwd, linkpath, realpath, &symlink_remain);
+	int r = resolve_pathat(newdirfd, linkpath, realpath, &symlink_remain);
 	if (r < 0)
 		return r;
 	struct file_system *fs;
@@ -736,16 +795,22 @@ DEFINE_SYSCALL(symlink, const char *, symlink_target, const char *, linkpath)
 	else if (!fs->symlink)
 		return -EPERM;
 	else
-		return fs->symlink(symlink_target, subpath);
+		return fs->symlink(target, subpath);
 }
 
-DEFINE_SYSCALL(readlink, const char *, pathname, char *, buf, int, bufsize)
+DEFINE_SYSCALL(symlink, const char *, target, const char *, linkpath)
 {
-	log_info("readlink(\"%s\", %p, %d)\n", pathname, buf, bufsize);
+	log_info("symlink(\"%s\", \"%s\")\n", target, linkpath);
+	return sys_symlinkat(target, AT_FDCWD, linkpath);
+}
+
+DEFINE_SYSCALL(readlinkat, int, dirfd, const char *, pathname, char *, buf, int, bufsize)
+{
+	log_info("readlinkat(%d, \"%s\", %p, %d)\n", dirfd, pathname, buf, bufsize);
 	if (!mm_check_read_string(pathname) || !mm_check_write(buf, bufsize))
 		return -EFAULT;
 	struct file *f;
-	int r = vfs_open(pathname, O_PATH | O_NOFOLLOW, 0, &f);
+	int r = vfs_openat(dirfd, pathname, O_PATH | O_NOFOLLOW, 0, &f);
 	if (r < 0)
 		return r;
 	if (!f->op_vtable->readlink)
@@ -753,20 +818,31 @@ DEFINE_SYSCALL(readlink, const char *, pathname, char *, buf, int, bufsize)
 	return f->op_vtable->readlink(f, buf, bufsize);
 }
 
-DEFINE_SYSCALL(rename, const char *, oldpath, const char *, newpath)
+DEFINE_SYSCALL(readlink, const char *, pathname, char *, buf, int, bufsize)
 {
-	log_info("rename(\"%s\", \"%s\")\n", oldpath, newpath);
+	log_info("readlink(\"%s\", %p, %d)\n", pathname, buf, bufsize);
+	return sys_readlinkat(AT_FDCWD, pathname, buf, bufsize);
+}
+
+DEFINE_SYSCALL(renameat2, int, olddirfd, const char *, oldpath, int, newdirfd, const char *, newpath, unsigned int, flags)
+{
+	log_info("renameat2(%d, \"%s\", %d, \"%s\", %x)\n", olddirfd, oldpath, newdirfd, newpath, flags);
+	if (flags)
+	{
+		log_error("flags not supported.\n");
+		return -EINVAL;
+	}
 	if (!mm_check_read_string(oldpath) || !mm_check_read_string(newpath))
 		return -EFAULT;
 	struct file *f;
-	int r = vfs_open(oldpath, O_PATH | O_NOFOLLOW | __O_DELETE, 0, &f);
+	int r = vfs_openat(olddirfd, oldpath, O_PATH | O_NOFOLLOW | __O_DELETE, 0, &f);
 	if (r < 0)
 		return r;
 	if (!winfs_is_winfile(f))
 		return -EPERM;
 	char realpath[PATH_MAX];
 	int symlink_remain = MAX_SYMLINK_LEVEL;
-	r = resolve_path(vfs->cwd, newpath, realpath, &symlink_remain);
+	r = resolve_pathat(newdirfd, newpath, realpath, &symlink_remain);
 	if (r < 0)
 		return r;
 	struct file_system *fs;
@@ -781,16 +857,28 @@ DEFINE_SYSCALL(rename, const char *, oldpath, const char *, newpath)
 	return r;
 }
 
-DEFINE_SYSCALL(mkdir, const char *, pathname, int, mode)
+DEFINE_SYSCALL(renameat, int, olddirfd, const char *, oldpath, int, newdirfd, const char *, newpath)
 {
-	log_info("mkdir(\"%s\", %x)\n", pathname, mode);
+	log_info("renameat(%d, \"%s\", %d, \"%s\")\n", olddirfd, oldpath, newdirfd, newpath);
+	return sys_renameat(olddirfd, oldpath, newdirfd, newpath, 0);
+}
+
+DEFINE_SYSCALL(rename, const char *, oldpath, const char *, newpath)
+{
+	log_info("rename(\"%s\", \"%s\")\n", oldpath, newpath);
+	return sys_renameat2(AT_FDCWD, oldpath, AT_FDCWD, newpath, 0);
+}
+
+DEFINE_SYSCALL(mkdirat, int, dirfd, const char *, pathname, int, mode)
+{
+	log_info("mkdirat(%d, \"%s\", %d)\n", dirfd, pathname, mode);
 	if (mode != 0)
 		log_error("mode != 0\n");
 	if (!mm_check_read_string(pathname))
 		return -EFAULT;
 	char realpath[PATH_MAX];
 	int symlink_remain = MAX_SYMLINK_LEVEL;
-	int r = resolve_path(vfs->cwd, pathname, realpath, &symlink_remain);
+	int r = resolve_pathat(dirfd, pathname, realpath, &symlink_remain);
 	if (r < 0)
 		return r;
 	struct file_system *fs;
@@ -803,24 +891,16 @@ DEFINE_SYSCALL(mkdir, const char *, pathname, int, mode)
 		return fs->mkdir(subpath, mode);
 }
 
+DEFINE_SYSCALL(mkdir, const char *, pathname, int, mode)
+{
+	log_info("mkdir(\"%s\", %x)\n", pathname, mode);
+	return sys_mkdirat(AT_FDCWD, pathname, mode);
+}
+
 DEFINE_SYSCALL(rmdir, const char *, pathname)
 {
 	log_info("rmdir(\"%s\")\n", pathname);
-	if (!mm_check_read_string(pathname))
-		return -EFAULT;
-	char realpath[PATH_MAX];
-	int symlink_remain = MAX_SYMLINK_LEVEL;
-	int r = resolve_path(vfs->cwd, pathname, realpath, &symlink_remain);
-	if (r < 0)
-		return r;
-	struct file_system *fs;
-	char *subpath;
-	if (!find_filesystem(realpath, &fs, &subpath))
-		return -ENOTDIR;
-	else if (!fs->rmdir)
-		return -EPERM;
-	else
-		return fs->rmdir(subpath);
+	return sys_unlinkat(AT_FDCWD, pathname, AT_REMOVEDIR);
 }
 
 static intptr_t getdents_fill(void *buffer, uint64_t inode, const wchar_t *name, int namelen, char type, size_t size)
@@ -925,41 +1005,41 @@ static int stat64_from_newstat(struct stat64 *stat, const struct newstat *newsta
 	return 0;
 }
 
-static int vfs_fstat(int fd, struct newstat *stat)
+static int vfs_statat(int dirfd, const char *pathname, struct newstat *stat, int flags)
 {
-	struct file *f = vfs->fds[fd];
-	if (f && f->op_vtable->stat)
-		return f->op_vtable->stat(f, stat);
-	else
-		return -EBADF;
-}
-
-static int vfs_stat(const char *pathname, struct newstat *stat)
-{
+	if (flags & AT_NO_AUTOMOUNT)
+	{
+		log_error("AT_NO_AUTOMOUNT not supported.\n");
+		return -EINVAL;
+	}
 	struct file *f;
-	int r = vfs_open(pathname, O_PATH, 0, &f);
-	if (r)
-		return r;
-	if (f->op_vtable->stat)
-		r = f->op_vtable->stat(f, stat);
+	if (flags & AT_EMPTY_PATH)
+	{
+		f = vfs_get(dirfd);
+		if (!f)
+			return -EBADF;
+		vfs_ref(f);
+	}
 	else
-		r = -EBADF;
+	{
+		int openflags = O_PATH;
+		if (flags & AT_SYMLINK_NOFOLLOW)
+			openflags |= O_NOFOLLOW;
+		int r = vfs_openat(pathname, pathname, openflags, 0, &f);
+		if (r < 0)
+			return r;
+	}
+	int r = f->op_vtable->stat(f, stat);
 	vfs_release(f);
 	return r;
 }
 
-static int vfs_lstat(const char *pathname, struct newstat *stat)
+DEFINE_SYSCALL(newstatat, int, dirfd, const char *, pathname, struct newstat *, buf, int, flags)
 {
-	struct file *f;
-	int r = vfs_open(pathname, O_PATH | O_NOFOLLOW, 0, &f);
-	if (r)
-		return r;
-	if (f->op_vtable->stat)
-		r = f->op_vtable->stat(f, stat);
-	else
-		r = -EBADF;
-	vfs_release(f);
-	return r;
+	log_info("newstatat(%d, \"%s\", %p, %x)\n", dirfd, pathname, buf, flags);
+	if ((!(flags & AT_EMPTY_PATH) && !mm_check_read_string(pathname)) || !mm_check_write(buf, sizeof(struct newstat)))
+		return -EFAULT;
+	return vfs_statat(dirfd, pathname, buf, flags);
 }
 
 DEFINE_SYSCALL(newfstat, int, fd, struct newstat *, buf)
@@ -967,7 +1047,7 @@ DEFINE_SYSCALL(newfstat, int, fd, struct newstat *, buf)
 	log_info("newfstat(%d, %p)\n", fd, buf);
 	if (!mm_check_write(buf, sizeof(struct newstat)))
 		return -EFAULT;
-	return vfs_fstat(fd, buf);
+	return vfs_statat(fd, NULL, buf, AT_EMPTY_PATH);
 }
 
 DEFINE_SYSCALL(newstat, const char *, pathname, struct newstat *, buf)
@@ -975,7 +1055,7 @@ DEFINE_SYSCALL(newstat, const char *, pathname, struct newstat *, buf)
 	log_info("newstat(\"%s\", %p)\n", pathname, buf);
 	if (!mm_check_read_string(pathname) || !mm_check_write(buf, sizeof(struct newstat)))
 		return -EFAULT;
-	return vfs_stat(pathname, buf);
+	return vfs_statat(AT_FDCWD, pathname, buf, 0);
 }
 
 DEFINE_SYSCALL(newlstat, const char *, pathname, struct newstat *, buf)
@@ -983,7 +1063,20 @@ DEFINE_SYSCALL(newlstat, const char *, pathname, struct newstat *, buf)
 	log_info("newlstat(\"%s\", %p)\n", pathname, buf);
 	if (!mm_check_read_string(pathname) || !mm_check_write(buf, sizeof(struct newstat)))
 		return -EFAULT;
-	return vfs_lstat(pathname, buf);
+	return vfs_statat(AT_FDCWD, pathname, buf, AT_SYMLINK_NOFOLLOW);
+}
+
+DEFINE_SYSCALL(fstatat64, int, dirfd, const char *, pathname, struct stat64 *, buf, int, flags)
+{
+	log_info("fstatat64(%d, \"%s\", %p, %x)\n", dirfd, pathname, buf, flags);
+	if ((!(flags & AT_EMPTY_PATH) && !mm_check_read_string(pathname)) || !mm_check_write(buf, sizeof(struct stat64)))
+		return -EFAULT;
+	struct newstat stat;
+	int r = vfs_statat(dirfd, pathname, &stat, flags);
+	if (r)
+		return r;
+	return stat64_from_newstat(buf, &stat);
+
 }
 
 DEFINE_SYSCALL(fstat64, int, fd, struct stat64 *, buf)
@@ -992,7 +1085,7 @@ DEFINE_SYSCALL(fstat64, int, fd, struct stat64 *, buf)
 	if (!mm_check_write(buf, sizeof(struct stat64)))
 		return -EFAULT;
 	struct newstat stat;
-	int r = vfs_fstat(fd, &stat);
+	int r = vfs_statat(fd, NULL, &stat, AT_EMPTY_PATH);
 	if (r)
 		return r;
 	return stat64_from_newstat(buf, &stat);
@@ -1004,7 +1097,7 @@ DEFINE_SYSCALL(stat64, const char *, pathname, struct stat64 *, buf)
 	if (!mm_check_write(buf, sizeof(struct stat64)))
 		return -EFAULT;
 	struct newstat stat;
-	int r = vfs_stat(pathname, &stat);
+	int r = vfs_statat(AT_FDCWD, pathname, &stat, 0);
 	if (r)
 		return r;
 	return stat64_from_newstat(buf, &stat);
@@ -1016,7 +1109,7 @@ DEFINE_SYSCALL(lstat64, const char *, pathname, struct stat64 *, buf)
 	if (!mm_check_write(buf, sizeof(struct stat64)))
 		return -EFAULT;
 	struct newstat stat;
-	int r = vfs_lstat(pathname, &stat);
+	int r = vfs_statat(AT_FDCWD, pathname, &stat, AT_SYMLINK_NOFOLLOW);
 	if (r)
 		return r;
 	return stat64_from_newstat(buf, &stat);
@@ -1028,7 +1121,7 @@ DEFINE_SYSCALL(fstat, int, fd, struct stat *, buf)
 	if (!mm_check_write(buf, sizeof(struct stat)))
 		return -EFAULT;
 	struct newstat stat;
-	int r = vfs_fstat(fd, &stat);
+	int r = vfs_statat(fd, NULL, &stat, AT_EMPTY_PATH);
 	if (r)
 		return r;
 	return stat_from_newstat(buf, &stat);
@@ -1040,7 +1133,7 @@ DEFINE_SYSCALL(stat, const char *, pathname, struct stat *, buf)
 	if (!mm_check_write(buf, sizeof(struct stat)))
 		return -EFAULT;
 	struct newstat stat;
-	int r = vfs_stat(pathname, &stat);
+	int r = vfs_statat(AT_FDCWD, pathname, &stat, 0);
 	if (r)
 		return r;
 	return stat_from_newstat(buf, &stat);
@@ -1052,7 +1145,7 @@ DEFINE_SYSCALL(lstat, const char *, pathname, struct stat *, buf)
 	if (!mm_check_write(buf, sizeof(struct stat)))
 		return -EFAULT;
 	struct newstat stat;
-	int r = vfs_lstat(pathname, &stat);
+	int r = vfs_statat(AT_FDCWD, pathname, &stat, AT_SYMLINK_NOFOLLOW);
 	if (r)
 		return r;
 	return stat_from_newstat(buf, &stat);
@@ -1100,7 +1193,7 @@ static int vfs_fstatfs(int fd, struct statfs64 *buf)
 static int vfs_statfs(const char *pathname, struct statfs64 *buf)
 {
 	struct file *f;
-	int r = vfs_open(pathname, O_PATH, 0, &f);
+	int r = vfs_openat(AT_FDCWD, pathname, O_PATH, 0, &f);
 	if (r)
 		return r;
 	if (f->op_vtable->statfs)
@@ -1197,7 +1290,7 @@ DEFINE_SYSCALL(utime, const char *, filename, const struct utimbuf *, times)
 	if (!mm_check_read_string(filename) || (times && !mm_check_read(times, sizeof(struct utimbuf))))
 		return -EFAULT;
 	struct file *f;
-	int r = vfs_open(filename, O_WRONLY, 0, &f);
+	int r = vfs_openat(AT_FDCWD, filename, O_WRONLY, 0, &f);
 	if (r < 0)
 		return r;
 	if (!times)
@@ -1221,7 +1314,7 @@ DEFINE_SYSCALL(utimes, const char *, filename, const struct timeval *, times)
 	if (!mm_check_read_string(filename) || (times && !mm_check_read(times, 2 * sizeof(struct timeval))))
 		return -EFAULT;
 	struct file *f;
-	int r = vfs_open(filename, O_WRONLY, 0, &f);
+	int r = vfs_openat(AT_FDCWD, filename, O_WRONLY, 0, &f);
 	if (r < 0)
 		return r;
 	if (!times)
@@ -1250,16 +1343,11 @@ DEFINE_SYSCALL(utimensat, int, dirfd, const char *, pathname, const struct times
 			return -EBADF;
 		return f->op_vtable->utimens(f, times);
 	}
-	if (dirfd != AT_FDCWD)
-	{
-		/* TODO */
-		log_error("Returning -ENOENT\n");
-		return -ENOENT;
-	}
-	if (flags)
-		log_error("flags (%x) not supported.\n", flags);
+	int openflags = O_WRONLY;
+	if (flags & AT_SYMLINK_NOFOLLOW)
+		openflags |= O_NOFOLLOW;
 	struct file *f;
-	int r = vfs_open(pathname, O_WRONLY, 0, &f);
+	int r = vfs_openat(dirfd, pathname, openflags, 0, &f);
 	if (r < 0)
 		return r;
 	r = f->op_vtable->utimens(f, times);
@@ -1272,27 +1360,26 @@ DEFINE_SYSCALL(chdir, const char *, pathname)
 	log_info("chdir(%s)\n", pathname);
 	if (!mm_check_read_string(pathname))
 		return -EFAULT;
-	int fd = sys_open(pathname, O_PATH | O_DIRECTORY, 0);
-	if (fd < 0)
-		return fd;
-	sys_close(fd);
-	char target[PATH_MAX];
-	int symlink_remain = MAX_SYMLINK_LEVEL;
-	int r = resolve_path(vfs->cwd, pathname, target, &symlink_remain);
+	struct file *f;
+	int r = vfs_openat(AT_FDCWD, pathname, O_PATH | O_DIRECTORY, 0, &f);
 	if (r < 0)
 		return r;
-	strcpy(vfs->cwd, target);
+	vfs_release(vfs->cwd);
+	vfs->cwd = f;
 	return 0;
 }
 
 DEFINE_SYSCALL(getcwd, char *, buf, size_t, size)
 {
-	log_info("getcwd(%p, %p): %s\n", buf, size, vfs->cwd);
+	log_info("getcwd(%p, %p)\n", buf, size);
 	if (!mm_check_write(buf, size))
 		return -EFAULT;
-	if (size < strlen(vfs->cwd) + 1)
+	char cwd[PATH_MAX];
+	int r = vfs->cwd->op_vtable->getpath(vfs->cwd, cwd);
+	if (size < r + 1)
 		return -ERANGE;
-	strcpy(buf, vfs->cwd);
+	log_info("cwd: \"%s\"\n", cwd);
+	memcpy(buf, cwd, r + 1);
 	return buf;
 }
 
@@ -1336,26 +1423,46 @@ DEFINE_SYSCALL(fcntl64, int, fd, int, cmd)
 	return sys_fcntl(fd, cmd, 0);
 }
 
-DEFINE_SYSCALL(access, const char *, pathname, int, mode)
+DEFINE_SYSCALL(faccessat, int, dirfd, const char *, pathname, int, mode, int, flags)
 {
-	log_info("access(\"%s\", %d)\n", pathname, mode);
+	log_info("faccessat(%d, \"%s\", %d, %x)\n", dirfd, pathname, mode, flags);
 	if (!mm_check_read_string(pathname))
 		return -EFAULT;
+	if (flags)
+	{
+		log_error("flags not supported.\n");
+		return -EINVAL;
+	}
 	/* Currently emulate access behaviour by testing whether the file exists */
 	struct file *f;
-	int r = vfs_open(pathname, O_PATH, mode, &f);
+	int r = vfs_openat(dirfd, pathname, O_PATH, mode, &f);
 	if (r < 0)
 		return r;
 	vfs_release(f);
 	return 0;
 }
 
+DEFINE_SYSCALL(access, const char *, pathname, int, mode)
+{
+	log_info("access(\"%s\", %d)\n", pathname, mode);
+	return sys_faccessat(AT_FDCWD, pathname, mode, 0);
+}
+
+DEFINE_SYSCALL(fchmodat, int, dirfd, const char *, pathname, int, mode, int, flags)
+{
+	log_info("fchmodat(%d, \"%s\", %d, %x)\n", dirfd, pathname, mode, flags);
+	if (!mm_check_read_string(pathname))
+		return -EFAULT;
+	if (flags)
+		log_error("flags not supported.\n");
+	log_error("fchmodat() not implemented.\n");
+	return 0;
+}
+
 DEFINE_SYSCALL(chmod, const char *, pathname, int, mode)
 {
 	log_info("chmod(\"%s\", %d)\n", pathname, mode);
-	if (!mm_check_read_string(pathname))
-		return -EFAULT;
-	return 0;
+	return sys_fchmodat(AT_FDCWD, pathname, mode, 0);
 }
 
 DEFINE_SYSCALL(umask, int, mask)
@@ -1365,87 +1472,31 @@ DEFINE_SYSCALL(umask, int, mask)
 	return old;
 }
 
+DEFINE_SYSCALL(fchownat, int, dirfd, const char *, pathname, uid_t, owner, gid_t, group, int, flags)
+{
+	log_info("fchownat(%d, \"%s\", %d, %d, %x)\n", dirfd, pathname, owner, group, flags);
+	if (pathname && !mm_check_read_string(pathname))
+		return -EFAULT;
+	log_error("fchownat() not implemented.\n");
+	return 0;
+}
+
 DEFINE_SYSCALL(fchown, int, fd, uid_t, owner, gid_t, group)
 {
 	log_info("fchown(%d, %d, %d)\n", fd, owner, group);
-	log_error("fchown() not implemented.\n");
-	return 0;
+	return sys_fchownat(AT_FDCWD, NULL, owner, group, AT_EMPTY_PATH);
 }
 
 DEFINE_SYSCALL(chown, const char *, pathname, uid_t, owner, gid_t, group)
 {
 	log_info("chown(\"%s\", %d, %d)\n", pathname, owner, group);
-	if (!mm_check_read_string(pathname))
-		return -EFAULT;
-	log_error("chown() not implemented.\n");
-	return 0;
+	return sys_fchownat(AT_FDCWD, pathname, owner, group, 0);
 }
 
 DEFINE_SYSCALL(lchown, const char *, pathname, uid_t, owner, gid_t, group)
 {
 	log_info("lchown(\"%s\", %d, %d)\n", pathname, owner, group);
-	if (!mm_check_read_string(pathname))
-		return -EFAULT;
-	log_error("lchown() not implemented.\n");
-	return 0;
-}
-
-DEFINE_SYSCALL(openat, int, dirfd, const char *, pathname, int, flags, int, mode)
-{
-	log_info("openat(%d, %s, 0x%x, 0x%x)\n", dirfd, pathname, flags, mode);
-	if (dirfd == AT_FDCWD)
-		return sys_open(pathname, flags, mode);
-	if (!mm_check_read_string(pathname))
-		return -EFAULT;
-	/* TODO */
-	log_error("Returning -ENOENT\n");
-	return -ENOENT;
-}
-
-DEFINE_SYSCALL(fstatat64, int, dirfd, const char *, pathname, struct stat64 *, buf, int, flags)
-{
-	log_info("fstatat64(%d, \"%s\", %p, %x)\n", dirfd, pathname, buf, flags);
-	if (dirfd == AT_FDCWD)
-		return sys_stat64(pathname, buf);
-	if (!mm_check_read_string(pathname))
-		return -EFAULT;
-	/* TODO */
-	log_error("fstatat64() not implemented.\n");
-	return -ENOENT;
-}
-
-DEFINE_SYSCALL(unlinkat, int, dirfd, const char *, pathname, int, flags)
-{
-	log_info("unlinkat(%d, \"%s\", %x)\n", dirfd, pathname, flags);
-	if (dirfd == AT_FDCWD)
-		return sys_unlink(pathname);
-	if (!mm_check_read_string(pathname))
-		return -EFAULT;
-	/* TODO */
-	log_error("unlinkat() not implemented.\n");
-	return -ENOENT;
-}
-
-DEFINE_SYSCALL(fchmodat, int, dirfd, const char *, pathname, int, mode, int, flags)
-{
-	log_info("fchmodat(%d, \"%s\", %d, %x)\n", dirfd, pathname, mode, flags);
-	if (!mm_check_read_string(pathname))
-		return -EFAULT;
-	/* TODO */
-	log_error("fchmodat() not implemented.\n");
-	return 0;
-}
-
-DEFINE_SYSCALL(faccessat, int, dirfd, const char *, pathname, int, mode, int, flags)
-{
-	log_info("faccessat(%d, %s, 0x%x, 0x%x)\n", dirfd, pathname, mode, flags);
-	if (dirfd == AT_FDCWD)
-		return sys_access(pathname, mode); /* TODO */
-	if (!mm_check_read_string(pathname))
-		return -EFAULT;
-	/* TODO */
-	log_error("Returning -ENOENT\n");
-	return -ENOENT;
+	return sys_fchownat(AT_FDCWD, pathname, owner, group, AT_SYMLINK_NOFOLLOW);
 }
 
 DEFINE_SYSCALL(poll, struct linux_pollfd *, fds, int, nfds, int, timeout)

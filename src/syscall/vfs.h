@@ -21,7 +21,7 @@ void vfs_shutdown();
 int vfs_fork(HANDLE process);
 int vfs_store_file(struct file *f, int cloexec);
 
-int vfs_open(const char *pathname, int flags, int mode, struct file **f);
+int vfs_openat(int dirfd, const char *pathname, int flags, int mode, struct file **f);
 void vfs_close(int fd);
 struct file *vfs_get(int fd);
 void vfs_ref(struct file *f);

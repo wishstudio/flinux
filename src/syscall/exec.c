@@ -89,7 +89,7 @@ static int load_elf(const char *filename, struct elf_header **executable, struct
 {
 	Elf_Ehdr eh;
 	struct file *f;
-	int r = vfs_open(filename, O_RDONLY, 0, &f);
+	int r = vfs_openat(AT_FDCWD, filename, O_RDONLY, 0, &f);
 	if (r < 0)
 		return r;
 

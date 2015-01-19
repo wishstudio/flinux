@@ -21,6 +21,8 @@ struct winfs_file
 {
 	struct file base_file;
 	HANDLE handle;
+	int pathlen;
+	char pathname[]; /* Not necessary null-terminated */
 };
 
 /* Convert a relative file name to NT file name, return name lengths, no NULL terminator is appended */
@@ -88,14 +90,23 @@ static int winfs_read_symlink(HANDLE hFile, char *target, int buflen)
 
 static int winfs_close(struct file *f)
 {
-	struct winfs_file *file = (struct winfs_file *)f;
-	if (CloseHandle(file->handle))
+	struct winfs_file *winfile = (struct winfs_file *)f;
+	if (CloseHandle(winfile->handle))
 	{
-		kfree(file, sizeof(struct winfs_file));
+		kfree(winfile, sizeof(struct winfs_file) + winfile->pathlen);
 		return 0;
 	}
 	else
 		return -1;
+}
+
+static int winfs_getpath(struct file *f, char *buf)
+{
+	struct winfs_file *winfile = (struct winfs_file *)f;
+	buf[0] = '/'; /* the mountpoint */
+	memcpy(buf + 1, winfile->pathname, winfile->pathlen);
+	buf[1 + winfile->pathlen] = 0;
+	return winfile->pathlen + 1;
 }
 
 static size_t winfs_read(struct file *f, char *buf, size_t count)
@@ -378,6 +389,7 @@ static int winfs_statfs(struct file *f, struct statfs64 *buf)
 static struct file_ops winfs_ops = 
 {
 	.close = winfs_close,
+	.getpath = winfs_getpath,
 	.read = winfs_read,
 	.write = winfs_write,
 	.pread = winfs_pread,
@@ -526,8 +538,9 @@ static int winfs_open(const char *pathname, int flags, int mode, struct file **f
 	FILE_ATTRIBUTE_TAG_INFO attributeInfo;
 	WCHAR wpathname[PATH_MAX];
 	struct winfs_file *file;
+	int pathlen = strlen(pathname);
 
-	if (utf8_to_utf16_filename(pathname, strlen(pathname) + 1, wpathname, PATH_MAX) <= 0)
+	if (utf8_to_utf16_filename(pathname, pathlen + 1, wpathname, PATH_MAX) <= 0)
 		return -ENOENT;
 	if (wpathname[0] == 0)
 	{
@@ -629,11 +642,13 @@ static int winfs_open(const char *pathname, int flags, int mode, struct file **f
 after_symlink_test:
 	if (fp)
 	{
-		file = (struct winfs_file *)kmalloc(sizeof(struct winfs_file));
+		file = (struct winfs_file *)kmalloc(sizeof(struct winfs_file) + pathlen);
 		file->base_file.op_vtable = &winfs_ops;
 		file->base_file.ref = 1;
 		file->base_file.flags = flags;
 		file->handle = handle;
+		file->pathlen = pathlen;
+		memcpy(file->pathname, pathname, pathlen);
 		*fp = (struct file *)file;
 	}
 	else

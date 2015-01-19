@@ -16,6 +16,7 @@ struct file_ops
 	int (*get_poll_status)(struct file *f);
 	HANDLE (*get_poll_handle)(struct file *f, int *poll_events);
 	int (*close)(struct file *f);
+	int (*getpath)(struct file *f, char *buf);
 	size_t (*read)(struct file *f, char *buf, size_t count);
 	size_t (*write)(struct file *f, const char *buf, size_t count);
 	size_t (*pread)(struct file *f, char *buf, size_t count, loff_t offset);
