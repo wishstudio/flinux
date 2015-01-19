@@ -1036,7 +1036,7 @@ static int vfs_statat(int dirfd, const char *pathname, struct newstat *stat, int
 		int openflags = O_PATH;
 		if (flags & AT_SYMLINK_NOFOLLOW)
 			openflags |= O_NOFOLLOW;
-		int r = vfs_openat(pathname, pathname, openflags, 0, &f);
+		int r = vfs_openat(dirfd, pathname, openflags, 0, &f);
 		if (r < 0)
 			return r;
 	}
