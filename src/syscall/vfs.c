@@ -1355,7 +1355,7 @@ DEFINE_SYSCALL(utimensat, int, dirfd, const char *, pathname, const struct times
 			return -EBADF;
 		return f->op_vtable->utimens(f, times);
 	}
-	int openflags = O_WRONLY;
+	int openflags = O_WRONLY | O_PATH;
 	if (flags & AT_SYMLINK_NOFOLLOW)
 		openflags |= O_NOFOLLOW;
 	struct file *f;
