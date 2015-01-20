@@ -1483,6 +1483,13 @@ DEFINE_SYSCALL(fchmodat, int, dirfd, const char *, pathname, int, mode, int, fla
 	return 0;
 }
 
+DEFINE_SYSCALL(fchmod, int, fd, int, mode)
+{
+	log_info("fchmod(%d, %d)\n", fd, mode);
+	log_error("fchmod() not implemented.\n");
+	return 0;
+}
+
 DEFINE_SYSCALL(chmod, const char *, pathname, int, mode)
 {
 	log_info("chmod(\"%s\", %d)\n", pathname, mode);
