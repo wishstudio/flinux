@@ -381,8 +381,11 @@ static int winfs_getdents(struct file *f, void *dirent, size_t count, getdents_c
 			buffer_size = BUFFER_SIZE;
 		status = NtQueryDirectoryFile(winfile->handle, NULL, NULL, NULL, &status_block, buffer, buffer_size, FileIdFullDirectoryInformation, FALSE, NULL, winfile->restart_scan);
 		winfile->restart_scan = 0;
-		if (status != STATUS_SUCCESS)
+		if (!NT_SUCCESS(status))
+		{
+			log_error("NtQueryDirectoryFile() failed, status: %x\n", status);
 			break;
+		}
 		if (status_block.Information == 0)
 			break;
 		int offset = 0;
@@ -421,7 +424,7 @@ static int winfs_getdents(struct file *f, void *dirent, size_t count, getdents_c
 				status = NtCreateFile(&handle, SYNCHRONIZE | FILE_READ_DATA, &attr, &status_block, NULL,
 					FILE_ATTRIBUTE_NORMAL, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, FILE_OPEN,
 					FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT, NULL, 0);
-				if (status == STATUS_SUCCESS)
+				if (NT_SUCCESS(status))
 				{
 					if (winfs_is_symlink(handle))
 						type = DT_LNK;
@@ -446,7 +449,7 @@ static int winfs_statfs(struct file *f, struct statfs64 *buf)
 	FILE_FS_FULL_SIZE_INFORMATION info;
 	IO_STATUS_BLOCK status_block;
 	NTSTATUS status = NtQueryVolumeInformationFile(winfile->handle, &status_block, &info, sizeof(info), FileFsFullSizeInformation);
-	if (status != STATUS_SUCCESS)
+	if (!NT_SUCCESS(status))
 	{
 		log_warning("NtQueryVolumeInformationFile() failed, status: %x\n", status);
 		return -EIO;
@@ -538,7 +541,7 @@ static int winfs_link(struct file *f, const char *newpath)
 		return -ENOENT;
 	IO_STATUS_BLOCK status_block;
 	status = NtSetInformationFile(winfile->handle, &status_block, info, info->FileNameLength + sizeof(FILE_LINK_INFORMATION), FileLinkInformation);
-	if (status != STATUS_SUCCESS)
+	if (!NT_SUCCESS(status))
 	{
 		log_warning("NtSetInformationFile() failed, status: %x.\n", status);
 		return -ENOENT;
@@ -573,7 +576,7 @@ static int winfs_rename(struct file *f, const char *newpath)
 		return -ENOENT;
 	IO_STATUS_BLOCK status_block;
 	status = NtSetInformationFile(winfile->handle, &status_block, info, info->FileNameLength + sizeof(FILE_RENAME_INFORMATION), FileRenameInformation);
-	if (status != STATUS_SUCCESS)
+	if (!NT_SUCCESS(status))
 	{
 		log_warning("NtSetInformationFile() failed, status: %x\n", status);
 		return -ENOENT;
@@ -726,7 +729,7 @@ after_symlink_test:
 		info.EndOfFile.QuadPart = 0;
 		IO_STATUS_BLOCK status_block;
 		NTSTATUS status = NtSetInformationFile(handle, &status_block, &info, sizeof(info), FileEndOfFileInformation);
-		if (status != STATUS_SUCCESS)
+		if (!NT_SUCCESS(status))
 			log_error("NtSetInformationFile() failed, status: %x\n", status);
 	}
 

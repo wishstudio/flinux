@@ -586,7 +586,7 @@ static int allocate_block(size_t i)
 
 	/* Allocate section */
 	status = NtCreateSection(&handle, SECTION_MAP_READ | SECTION_MAP_WRITE | SECTION_MAP_EXECUTE, &attr, &max_size, PAGE_EXECUTE_READWRITE, SEC_COMMIT, NULL);
-	if (status != STATUS_SUCCESS)
+	if (!NT_SUCCESS(status))
 	{
 		log_error("NtCreateSection() failed. Status: %x\n", status);
 		return 0;
@@ -596,7 +596,7 @@ static int allocate_block(size_t i)
 	PVOID base_addr = GET_BLOCK_ADDRESS(i);
 	SIZE_T view_size = BLOCK_SIZE;
 	status = NtMapViewOfSection(handle, NtCurrentProcess(), &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, PAGE_EXECUTE_READWRITE);
-	if (status != STATUS_SUCCESS)
+	if (!NT_SUCCESS(status))
 	{
 		log_error("NtMapViewOfSection() failed. Address: %p, Status: %x\n", base_addr, status);
 		NtClose(handle);
@@ -624,14 +624,14 @@ static HANDLE duplicate_section(HANDLE source, void *source_addr)
 	NTSTATUS status;
 
 	status = NtCreateSection(&dest, SECTION_MAP_READ | SECTION_MAP_WRITE | SECTION_MAP_EXECUTE, &attr, &max_size, PAGE_EXECUTE_READWRITE, SEC_COMMIT, NULL);
-	if (status != STATUS_SUCCESS)
+	if (!NT_SUCCESS(status))
 	{
 		log_error("NtCreateSection() failed, status: %x\n", status);
 		return NULL;
 	}
 	
 	status = NtMapViewOfSection(dest, NtCurrentProcess(), &dest_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, PAGE_READWRITE);
-	if (status != STATUS_SUCCESS)
+	if (!NT_SUCCESS(status))
 	{
 		log_error("NtMapViewOfSection() failed, status: %x\n", status);
 		return NULL;
@@ -645,7 +645,7 @@ static HANDLE duplicate_section(HANDLE source, void *source_addr)
 	}
 	CopyMemory(dest_addr, source_addr, BLOCK_SIZE);
 	status = NtUnmapViewOfSection(NtCurrentProcess(), dest_addr);
-	if (status != STATUS_SUCCESS)
+	if (!NT_SUCCESS(status))
 	{
 		log_error("NtUnmapViewOfSection() failed, status: %x\n", status);
 		return NULL;
@@ -665,7 +665,7 @@ static int take_block_ownership(size_t block)
 	OBJECT_BASIC_INFORMATION info;
 	NTSTATUS status;
 	status = NtQueryObject(handle, ObjectBasicInformation, &info, sizeof(OBJECT_BASIC_INFORMATION), NULL);
-	if (status != STATUS_SUCCESS)
+	if (!NT_SUCCESS(status))
 	{
 		log_error("NtQueryObject() on block %p failed, status: 0x%x.\n", block, status);
 		return 0;
@@ -686,13 +686,13 @@ static int take_block_ownership(size_t block)
 	}
 	log_info("Duplicating section succeeded. Remapping...\n");
 	status = NtUnmapViewOfSection(NtCurrentProcess(), GET_BLOCK_ADDRESS(block));
-	if (status != STATUS_SUCCESS)
+	if (!NT_SUCCESS(status))
 	{
 		log_error("Unmapping failed, status: %x\n", status);
 		return 0;
 	}
 	status = NtClose(handle);
-	if (status != STATUS_SUCCESS)
+	if (!NT_SUCCESS(status))
 	{
 		log_error("NtClose() failed, status: %x\n", status);
 		return 0;
@@ -700,7 +700,7 @@ static int take_block_ownership(size_t block)
 	PVOID base_addr = GET_BLOCK_ADDRESS(block);
 	SIZE_T view_size = BLOCK_SIZE;
 	status = NtMapViewOfSection(new_section, NtCurrentProcess(), &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, PAGE_EXECUTE_READWRITE);
-	if (status != STATUS_SUCCESS)
+	if (!NT_SUCCESS(status))
 	{
 		log_error("Remapping failed, status: %x\n", status);
 		return 0;
@@ -851,7 +851,7 @@ int mm_fork(HANDLE process)
 				SIZE_T view_size = BLOCK_SIZE;
 				NTSTATUS status;
 				status = NtMapViewOfSection(handle, process, &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, PAGE_EXECUTE_READWRITE);
-				if (status != STATUS_SUCCESS)
+				if (!NT_SUCCESS(status))
 				{
 					log_error("mm_fork(): Map failed: %p, status code: %x\n", base_addr, status);
 					mm_dump_windows_memory_mappings(process);

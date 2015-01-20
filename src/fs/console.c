@@ -101,7 +101,7 @@ void console_init()
 	obj_attr.SecurityQualityOfService = NULL;
 	NTSTATUS status;
 	status = NtCreateSection(&section, SECTION_MAP_READ | SECTION_MAP_WRITE, &obj_attr, &section_size, PAGE_READWRITE, SEC_COMMIT, NULL);
-	if (status != STATUS_SUCCESS)
+	if (!NT_SUCCESS(status))
 	{
 		log_error("NtCreateSection() failed, status: %x\n", status);
 		return;
@@ -109,7 +109,7 @@ void console_init()
 	PVOID base_addr = console;
 	SIZE_T view_size = sizeof(struct console_data);
 	status = NtMapViewOfSection(section, NtCurrentProcess(), &base_addr, 0, sizeof(struct console_data), NULL, &view_size, ViewUnmap, 0, PAGE_READWRITE);
-	if (status != STATUS_SUCCESS)
+	if (!NT_SUCCESS(status))
 	{
 		log_error("NtMapViewOfSection() failed, status: %x\n", status);
 		return;
@@ -181,7 +181,7 @@ int console_fork(HANDLE process)
 	SIZE_T view_size = sizeof(struct console_data);
 	NTSTATUS status;
 	status = NtMapViewOfSection(console->section, process, &base_addr, 0, sizeof(struct console_data), NULL, &view_size, ViewUnmap, 0, PAGE_READWRITE);
-	if (status != STATUS_SUCCESS)
+	if (!NT_SUCCESS(status))
 	{
 		log_error("NtMapViewOfSection() failed, status: %x\n", status);
 		return 0;
