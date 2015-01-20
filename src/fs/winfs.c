@@ -629,17 +629,10 @@ static int winfs_open(const char *pathname, int flags, int mode, struct file **f
 	if (flags & O_EXCL)
 		creationDisposition = CREATE_NEW;
 	else if (flags & O_CREAT)
-	{
-		if (flags & O_TRUNC)
-			creationDisposition = CREATE_ALWAYS; /* FIXME: This is wrong! */
-		else
-			creationDisposition = OPEN_ALWAYS;
-	}
-	else if (flags & O_TRUNC)
-		creationDisposition = TRUNCATE_EXISTING;
+		creationDisposition = OPEN_ALWAYS;
 	else
 		creationDisposition = OPEN_EXISTING;
-	log_info("CreateFileW(): %s\n", pathname);
+	//log_debug("CreateFileW(): %s\n", pathname);
 	SECURITY_ATTRIBUTES attr;
 	attr.nLength = sizeof(SECURITY_ATTRIBUTES);
 	attr.lpSecurityDescriptor = NULL;
@@ -665,6 +658,7 @@ static int winfs_open(const char *pathname, int flags, int mode, struct file **f
 		return -EIO;
 	}
 	/* Test if the file is a symlink */
+	int is_symlink = 0;
 	if (attributeInfo.FileAttributes != INVALID_FILE_ATTRIBUTES && (attributeInfo.FileAttributes & FILE_ATTRIBUTE_SYSTEM))
 	{
 		log_info("The file has system flag set.\n");
@@ -695,6 +689,7 @@ static int winfs_open(const char *pathname, int flags, int mode, struct file **f
 				log_info("Specified O_NOFOLLOW but not O_PATH, returning ELOOP.\n");
 				return -ELOOP;
 			}
+			is_symlink = 1;
 		}
 		log_info("Opening file directly.\n");
 	}
@@ -705,6 +700,17 @@ static int winfs_open(const char *pathname, int flags, int mode, struct file **f
 	}
 
 after_symlink_test:
+	if (!is_symlink && (flags & O_TRUNC) && ((flags & O_WRONLY) || (flags & O_RDWR)))
+	{
+		/* Truncate the file */
+		FILE_END_OF_FILE_INFORMATION info;
+		info.EndOfFile.QuadPart = 0;
+		IO_STATUS_BLOCK status_block;
+		NTSTATUS status = NtSetInformationFile(handle, &status_block, &info, sizeof(info), FileEndOfFileInformation);
+		if (status != STATUS_SUCCESS)
+			log_error("NtSetInformationFile() failed, status: %x\n", status);
+	}
+
 	if (fp)
 	{
 		file = (struct winfs_file *)kmalloc(sizeof(struct winfs_file) + pathlen);
