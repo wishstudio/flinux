@@ -73,21 +73,21 @@ static int filename_to_nt_pathname(const char *filename, WCHAR *buf, int buf_siz
 }
 
 static int cached_sid_initialized;
+static char cached_sid_buffer[256];
 static PSID cached_sid;
 
 /* TODO: This function should be placed in a better place */
 static PSID get_user_sid()
 {
 	if (cached_sid_initialized)
-		return &cached_sid;
+		return cached_sid;
 	else
 	{
 		HANDLE token;
 		OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token);
-		char buf[256];
 		DWORD len;
-		GetTokenInformation(token, TokenUser, buf, sizeof(buf), &len);
-		TOKEN_USER *user = (TOKEN_USER *)buf;
+		GetTokenInformation(token, TokenUser, cached_sid_buffer, sizeof(cached_sid_buffer), &len);
+		TOKEN_USER *user = (TOKEN_USER *)cached_sid_buffer;
 		cached_sid = user->User.Sid;
 		cached_sid_initialized = 1;
 		return cached_sid;
@@ -593,7 +593,7 @@ static int winfs_symlink(const char *target, const char *linkpath)
 		return -ENOENT;
 
 	log_info("CreateFileW(): %s\n", linkpath);
-	handle = CreateFileW(wlinkpath, GENERIC_WRITE, FILE_SHARE_DELETE, NULL, CREATE_NEW, FILE_ATTRIBUTE_SYSTEM, NULL);
+	handle = CreateFileW(wlinkpath, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, CREATE_NEW, FILE_ATTRIBUTE_SYSTEM, NULL);
 	if (handle == INVALID_HANDLE_VALUE)
 	{
 		DWORD err = GetLastError();
@@ -664,7 +664,7 @@ static int winfs_unlink(const char *pathname)
 	IO_STATUS_BLOCK status_block;
 	NTSTATUS status;
 	HANDLE handle;
-	status = NtOpenFile(&handle, SYNCHRONIZE | DELETE, &attr, &status_block, FILE_SHARE_DELETE, FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT);
+	status = NtOpenFile(&handle, DELETE, &attr, &status_block, FILE_SHARE_DELETE, FILE_NON_DIRECTORY_FILE | FILE_OPEN_FOR_BACKUP_INTENT);
 	if (!NT_SUCCESS(status))
 	{
 		if (status != STATUS_SHARING_VIOLATION)
@@ -677,8 +677,8 @@ static int winfs_unlink(const char *pathname)
 		 * To make the file disappear from its parent directory immediately, we move the file
 		 * to Windows recycle bin prior to deletion.
 		 */
-		status = NtOpenFile(&handle, SYNCHRONIZE | DELETE, &attr, &status_block, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-			FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT);
+		status = NtOpenFile(&handle, DELETE, &attr, &status_block, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+			FILE_NON_DIRECTORY_FILE | FILE_OPEN_FOR_BACKUP_INTENT);
 		if (!NT_SUCCESS(status))
 		{
 			log_warning("NtOpenFile() failed, status: %x\n", status);
