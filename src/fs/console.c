@@ -395,6 +395,41 @@ static void move_down(int count)
 	set_pos(console->x, min(console->y + count, console->height - 1));
 }
 
+static void scroll_up(int count)
+{
+	/* TODO: Cursor position? */
+	if (count > console->scroll_bottom - console->scroll_top)
+	{
+		/* It's actually a clear operation */
+		int len = (console->scroll_top - console->scroll_bottom + 1) * console->width;
+		COORD pos;
+		pos.X = 0;
+		pos.Y = console->top + console->scroll_top;
+		DWORD written;
+		FillConsoleOutputAttribute(console->out, get_text_attribute(), len, pos, &written);
+	}
+	else
+	{
+		CHAR_INFO fill_char;
+		fill_char.Attributes = get_text_attribute();
+		fill_char.Char.UnicodeChar = L' ';
+		SMALL_RECT scroll_rect;
+		scroll_rect.Left = 0;
+		scroll_rect.Right = console->width - 1;
+		scroll_rect.Top = console->top + console->scroll_top + count;
+		scroll_rect.Bottom = console->top + console->scroll_bottom;
+		SMALL_RECT clip_rect;
+		clip_rect.Left = 0;
+		clip_rect.Right = console->width - 1;
+		clip_rect.Top = console->top + console->scroll_top;
+		clip_rect.Bottom = console->top + console->scroll_bottom;
+		COORD origin;
+		origin.X = 0;
+		origin.Y = console->top + console->scroll_top;
+		ScrollConsoleScreenBufferW(console->out, &scroll_rect, &clip_rect, origin, &fill_char);
+	}
+}
+
 static void cr()
 {
 	DWORD bytes_written;
@@ -757,6 +792,12 @@ static void control_escape_csi(char ch)
 		console->scroll_top = console->params[0] - 1;
 		console->scroll_bottom = console->params[1] - 1;
 		set_pos(0, 0);
+		console->processor = NULL;
+		break;
+
+	case 'S': /* SU */
+		scroll_up(console->params[0]? console->params[0]: 1);
+		console->processor = NULL;
 		break;
 
 	case '?':
