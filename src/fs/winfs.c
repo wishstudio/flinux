@@ -90,6 +90,7 @@ static PSID get_user_sid()
 		TOKEN_USER *user = (TOKEN_USER *)cached_sid_buffer;
 		cached_sid = user->User.Sid;
 		cached_sid_initialized = 1;
+		CloseHandle(token);
 		return cached_sid;
 	}
 }
