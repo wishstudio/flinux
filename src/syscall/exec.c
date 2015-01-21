@@ -373,6 +373,12 @@ DEFINE_SYSCALL(execve, const char *, filename, char **, argv, char **, envp)
 		current_startup_base = startup + sizeof(uintptr_t);
 	}
 
+	/* Save filename in startup data area */
+	int flen = strlen(filename);
+	memcpy(current_startup_base, filename, flen + 1);
+	filename = current_startup_base;
+	current_startup_base += flen + 1;
+
 	char *base = current_startup_base;
 	int argc, env_size;
 	for (argc = 0; argv[argc]; argc++)
@@ -413,22 +419,11 @@ DEFINE_SYSCALL(execve, const char *, filename, char **, argv, char **, envp)
 
 	base = (char *)(new_envp + env_size + 1);
 
-	/* TODO: This is really ugly, we should move it into a specific UTF8->UTF16 conversion routine when we supports unicode */
-	/* Normalize filename */
-	char fb[1024];
-	strcpy(fb, filename);
-	char *f = fb;
-	while (*f == ' ' || *f == '\t' || *f == '\r' || *f == '\n')
-		f++;
-	int len = strlen(f);
-	while (f[len - 1] == ' ' || f[len - 1] == '\t' || f[len - 1] == '\r' || f[len - 1] == '\n')
-		f[--len] = 0;
-
 	vfs_reset();
 	mm_reset();
 	tls_reset();
 	dbt_reset();
-	if (do_execve(f, argc, new_argv, env_size, new_envp, base) != 0)
+	if (do_execve(filename, argc, new_argv, env_size, new_envp, base) != 0)
 	{
 		log_warning("execve() failed.\n");
 		ExitProcess(0); /* TODO: Recover */
