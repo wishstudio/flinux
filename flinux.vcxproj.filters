@@ -193,6 +193,9 @@
     <ClInclude Include="src\common\tcp.h">
       <Filter>common</Filter>
     </ClInclude>
+    <ClInclude Include="src\common\sysinfo.h">
+      <Filter>common</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />

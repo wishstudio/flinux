@@ -20,6 +20,7 @@
 #include <common/errno.h>
 #include <common/futex.h>
 #include <common/resource.h>
+#include <common/sysinfo.h>
 #include <common/wait.h>
 #include <syscall/mm.h>
 #include <syscall/process.h>
@@ -285,6 +286,30 @@ DEFINE_SYSCALL(oldolduname, struct oldold_utsname *, buf)
 	strncpy(buf->release, newbuf.release, __OLD_UTS_LEN + 1);
 	strncpy(buf->version, newbuf.version, __OLD_UTS_LEN + 1);
 	strncpy(buf->machine, newbuf.machine, __OLD_UTS_LEN + 1);
+	return 0;
+}
+
+DEFINE_SYSCALL(sysinfo, struct sysinfo *, info)
+{
+	log_info("sysinfo(%p)\n", info);
+	if (!mm_check_write(info, sizeof(*info)))
+		return -EFAULT;
+	MEMORYSTATUSEX memory;
+	GlobalMemoryStatusEx(&memory);
+
+	info->uptime = (intptr_t)(GetTickCount64() / 1000ULL);
+	info->loads[0] = info->loads[1] = info->loads[2] = 0; /* TODO */
+	info->totalram = memory.ullTotalPhys / PAGE_SIZE;
+	info->freeram = memory.ullAvailPhys / PAGE_SIZE;
+	info->sharedram = 0;
+	info->bufferram = 0;
+	info->totalswap = memory.ullTotalPageFile / PAGE_SIZE;
+	info->freeswap = memory.ullAvailPageFile / PAGE_SIZE;
+	info->procs = 100; /* TODO */
+	info->totalhigh = 0;
+	info->freehigh = 0;
+	info->mem_unit = PAGE_SIZE;
+	RtlSecureZeroMemory(info->_f, sizeof(info->_f));
 	return 0;
 }
 
