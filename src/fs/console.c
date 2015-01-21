@@ -395,19 +395,20 @@ static void move_down(int count)
 	set_pos(console->x, min(console->y + count, console->height - 1));
 }
 
+static void clear_scroll_area()
+{
+	int len = (console->scroll_top - console->scroll_bottom + 1) * console->width;
+	COORD pos;
+	pos.X = 0;
+	pos.Y = console->top + console->scroll_top;
+	DWORD written;
+	FillConsoleOutputAttribute(console->out, get_text_attribute(), len, pos, &written);
+}
+
 static void scroll_up(int count)
 {
-	/* TODO: Cursor position? */
 	if (count > console->scroll_bottom - console->scroll_top)
-	{
-		/* It's actually a clear operation */
-		int len = (console->scroll_top - console->scroll_bottom + 1) * console->width;
-		COORD pos;
-		pos.X = 0;
-		pos.Y = console->top + console->scroll_top;
-		DWORD written;
-		FillConsoleOutputAttribute(console->out, get_text_attribute(), len, pos, &written);
-	}
+		clear_scroll_area();
 	else
 	{
 		CHAR_INFO fill_char;
@@ -426,6 +427,32 @@ static void scroll_up(int count)
 		COORD origin;
 		origin.X = 0;
 		origin.Y = console->top + console->scroll_top;
+		ScrollConsoleScreenBufferW(console->out, &scroll_rect, &clip_rect, origin, &fill_char);
+	}
+}
+
+static void scroll_down(int count)
+{
+	if (count > console->scroll_bottom - console->scroll_top)
+		clear_scroll_area();
+	else
+	{
+		CHAR_INFO fill_char;
+		fill_char.Attributes = get_text_attribute();
+		fill_char.Char.UnicodeChar = L' ';
+		SMALL_RECT scroll_rect;
+		scroll_rect.Left = 0;
+		scroll_rect.Right = console->width - 1;
+		scroll_rect.Top = console->top + console->scroll_top;
+		scroll_rect.Bottom = console->top + console->scroll_bottom - count;
+		SMALL_RECT clip_rect;
+		clip_rect.Left = 0;
+		clip_rect.Right = console->width - 1;
+		clip_rect.Top = console->top + console->scroll_top;
+		clip_rect.Bottom = console->top + console->scroll_bottom;
+		COORD origin;
+		origin.X = 0;
+		origin.Y = console->top + console->scroll_top + count;
 		ScrollConsoleScreenBufferW(console->out, &scroll_rect, &clip_rect, origin, &fill_char);
 	}
 }
@@ -905,20 +932,21 @@ static void control_escape(char ch)
 		console->processor = control_escape_osc;
 		break;
 
-	case 'D':
-		/* TODO: Scroll display */
-		move_down(1);
-		console->processor = NULL;
-		break;
-
-	case 'E':
+	case 'D': /* IND */
 		nl();
 		console->processor = NULL;
 		break;
 
-	case 'M':
-		/* TODO: Scroll display */
-		move_up(1);
+	case 'E': /* NEL */
+		crnl();
+		console->processor = NULL;
+		break;
+
+	case 'M': /* RI */
+		if (console->y == console->scroll_top)
+			scroll_down(1);
+		else
+			set_pos(console->x, console->y - 1);
 		console->processor = NULL;
 		break;
 
