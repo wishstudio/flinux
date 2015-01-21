@@ -57,6 +57,7 @@ struct console_data
 	/* console mode settings */
 	struct termios termios;
 	int bright, reverse, foreground, background;
+	int cursor_key_mode;
 	int origin_mode;
 	int wraparound_mode;
 
@@ -157,6 +158,7 @@ void console_init()
 	console->reverse = 0;
 	console->foreground = 7;
 	console->background = 0;
+	console->cursor_key_mode = 0;
 	console->origin_mode = 0;
 	console->wraparound_mode = 1;
 
@@ -624,6 +626,10 @@ static void change_private_mode(int mode, int set)
 {
 	switch (mode)
 	{
+	case 1: /* DECCKM */
+		console->cursor_key_mode = set;
+		break;
+
 	case 3:
 		if (set) /* 132 column mode */
 			console_set_size(132, 24);
@@ -1124,19 +1130,19 @@ static size_t console_read(struct file *f, char *buf, size_t count)
 				switch (ir.Event.KeyEvent.wVirtualKeyCode)
 				{
 				case VK_UP:
-					console_buffer_add_string(buf, &bytes_read, &count, "\x1B[A", 3);
+					console_buffer_add_string(buf, &bytes_read, &count, console->cursor_key_mode? "\x1BOA": "\x1B[A", 3);
 					break;
 
 				case VK_DOWN:
-					console_buffer_add_string(buf, &bytes_read, &count, "\x1B[B", 3);
+					console_buffer_add_string(buf, &bytes_read, &count, console->cursor_key_mode? "\x1BOB": "\x1B[B", 3);
 					break;
 
 				case VK_RIGHT:
-					console_buffer_add_string(buf, &bytes_read, &count, "\x1B[C", 3);
+					console_buffer_add_string(buf, &bytes_read, &count, console->cursor_key_mode? "\x1BOC": "\x1B[C", 3);
 					break;
 
 				case VK_LEFT:
-					console_buffer_add_string(buf, &bytes_read, &count, "\x1B[D", 3);
+					console_buffer_add_string(buf, &bytes_read, &count, console->cursor_key_mode? "\x1BOD": "\x1B[D", 3);
 					break;
 					
 				default:
