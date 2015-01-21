@@ -42,6 +42,11 @@
 static char *const startup = (char *)STARTUP_DATA_BASE;
 
 #define ALIGN_TO(x, a) ((uintptr_t)((x) + (a) - 1) & -(a))
+#define ENV(x) \
+	do { \
+		memcpy(envbuf, x, sizeof(x) + 1); \
+		envbuf += sizeof(x) + 1; \
+	} while (0)
 
 void main()
 {
@@ -70,21 +75,13 @@ void main()
 	*(uintptr_t*) startup = 1;
 	char *current_startup_base = startup + sizeof(uintptr_t);
 	memcpy(current_startup_base, cmdline, len + 1);
-	/* TODO: This works now, but looks too ugly */
-	char *envbuf = ALIGN_TO(current_startup_base + len + 1, sizeof(void*));
-	envbuf[0] = 'T';
-	envbuf[1] = 'E';
-	envbuf[2] = 'R';
-	envbuf[3] = 'M';
-	envbuf[4] = '=';
-	envbuf[5] = 'x';
-	envbuf[6] = 't';
-	envbuf[7] = 'e';
-	envbuf[8] = 'r';
-	envbuf[9] = 'm';
-	envbuf[10] = 0;
+	char *envbuf = (char *)ALIGN_TO(current_startup_base + len + 1, sizeof(void*));
+	char *env0 = envbuf;
+	ENV("TERM=xterm");
+	char *env1 = envbuf;
+	ENV("HOME=/root");
 	int argc = 0;
-	const char **argv = (const char **)(envbuf + 16);
+	const char **argv = (const char **)ALIGN_TO(envbuf, sizeof(void*));
 
 	/* Parse command line */
 	int in_quote = 0;
@@ -107,9 +104,10 @@ void main()
 		}
 	argv[argc] = NULL;
 	const char **envp = argv + argc + 1;
-	int env_size = 1;
-	envp[0] = envbuf;
-	envp[1] = NULL;
+	int env_size = 2;
+	envp[0] = env0;
+	envp[1] = env1;
+	envp[2] = NULL;
 	char *buffer_base = (char*)(envp + env_size + 1);
 
 	const char *filename = NULL;
