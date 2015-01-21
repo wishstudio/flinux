@@ -359,6 +359,17 @@ static size_t winfs_readlink(struct file *f, char *target, size_t buflen)
 	return winfs_read_symlink(winfile->handle, target, (int)buflen);
 }
 
+static int winfs_fsync(struct file *f)
+{
+	struct winfs_file *winfile = (struct winfs_file *) f;
+	if (!FlushFileBuffers(winfile->handle))
+	{
+		log_warning("FlushFileBuffers() failed, error code: %d\n", GetLastError());
+		return -EIO;
+	}
+	return 0;
+}
+
 static int winfs_llseek(struct file *f, loff_t offset, loff_t *newoffset, int whence)
 {
 	struct winfs_file *winfile = (struct winfs_file *) f;
@@ -578,6 +589,7 @@ static struct file_ops winfs_ops =
 	.pread = winfs_pread,
 	.pwrite = winfs_pwrite,
 	.readlink = winfs_readlink,
+	.fsync = winfs_fsync,
 	.llseek = winfs_llseek,
 	.stat = winfs_stat,
 	.utimens = winfs_utimens,

@@ -416,6 +416,24 @@ DEFINE_SYSCALL(pwritev, int, fd, const struct iovec *, iov, int, iovcnt, off_t, 
 		return -EBADF;
 }
 
+DEFINE_SYSCALL(fsync, int, fd)
+{
+	log_info("fsync(%d)\n", fd);
+	struct file *f = vfs_get(fd);
+	if (!f)
+		return -EBADF;
+	return f->op_vtable->fsync(f);
+}
+
+DEFINE_SYSCALL(fdatasync, int, fd)
+{
+	log_info("fdatasync(%d)\n", fd);
+	struct file *f = vfs_get(fd);
+	if (!f)
+		return -EBADF;
+	return f->op_vtable->fsync(f);
+}
+
 DEFINE_SYSCALL(lseek, int, fd, off_t, offset, int, whence)
 {
 	log_info("lseek(%d, %d, %d)\n", fd, offset, whence);

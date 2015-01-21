@@ -41,6 +41,7 @@ struct file_ops
 	size_t (*pread)(struct file *f, char *buf, size_t count, loff_t offset);
 	size_t (*pwrite)(struct file *f, const char *buf, size_t count, loff_t offset);
 	size_t (*readlink)(struct file *f, char *buf, size_t bufsize);
+	int (*fsync)(struct file *f);
 	int (*llseek)(struct file *f, loff_t offset, loff_t *newoffset, int whence);
 	int (*stat)(struct file *f, struct newstat *buf);
 	int (*utimens)(struct file *f, const struct timespec *times);
