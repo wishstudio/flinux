@@ -694,6 +694,12 @@ DEFINE_SYSCALL(open, const char *, pathname, int, flags, int, mode)
 	return sys_openat(AT_FDCWD, pathname, flags, mode);
 }
 
+DEFINE_SYSCALL(creat, const char *, pathname, int, mode)
+{
+	log_info("creat(\"%s\", %x)\n", pathname, mode);
+	return sys_openat(AT_FDCWD, pathname, O_CREAT | O_WRONLY | O_TRUNC, mode);
+}
+
 DEFINE_SYSCALL(close, int, fd)
 {
 	log_info("close(%d)\n", fd);
