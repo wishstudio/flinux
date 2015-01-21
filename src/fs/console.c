@@ -49,6 +49,7 @@
 #define MAX_INPUT			256
 #define MAX_CANON			256
 #define MAX_STRING			256
+#define DEFAULT_ATTRIBUTE	0
 
 struct console_data
 {
@@ -407,6 +408,11 @@ static void clear_scroll_area()
 	FillConsoleOutputAttribute(console->out, get_text_attribute(), len, pos, &written);
 }
 
+static BOOL is_inside_scroll_area()
+{
+	return console->y >= console->scroll_top && console->y <= console->scroll_bottom;
+}
+
 static void scroll_up(int count)
 {
 	if (count > console->scroll_bottom - console->scroll_top)
@@ -535,6 +541,9 @@ static void write_normal(const char *buf, int size)
 	}
 }
 
+#define ERASE_SCREEN_CUR_TO_END		0
+#define ERASE_SCREEN_BEGIN_TO_CUR	1
+#define ERASE_SCREEN_BEGIN_TO_END	2
 static void erase_screen(int mode)
 {
 	COORD start;
@@ -570,6 +579,9 @@ static void erase_screen(int mode)
 	FillConsoleOutputCharacterW(console->out, L' ', count, start, &num_written);
 }
 
+#define ERASE_LINE_CUR_TO_END		0
+#define ERASE_LINE_BEGIN_TO_CUR		1
+#define ERASE_LINE_BEGIN_TO_END		2
 static void erase_line(int mode)
 {
 	COORD start;
@@ -601,6 +613,64 @@ static void erase_line(int mode)
 	DWORD num_written;
 	FillConsoleOutputAttribute(console->out, get_text_attribute(console), count, start, &num_written);
 	FillConsoleOutputCharacterW(console->out, L' ', count, start, &num_written);
+}
+
+static void insert_character(int count)
+{
+	if (is_inside_scroll_area())
+	{
+		if (console->x + count >= console->width)
+			erase_line(ERASE_LINE_CUR_TO_END);
+		else
+		{
+			CHAR_INFO fill_char;
+			fill_char.Attributes = DEFAULT_ATTRIBUTE;
+			fill_char.Char.UnicodeChar = L' ';
+			SMALL_RECT scroll_rect;
+			scroll_rect.Left = console->x;
+			scroll_rect.Right = console->width - 1 - count;
+			scroll_rect.Top = console->y;
+			scroll_rect.Bottom = console->y;
+			SMALL_RECT clip_rect;
+			clip_rect.Left = console->x;
+			clip_rect.Right = console->width - 1;
+			clip_rect.Top = console->y;
+			clip_rect.Bottom = console->y;
+			COORD origin;
+			origin.X = console->x + count;
+			origin.Y = console->y;
+			ScrollConsoleScreenBufferW(console->out, &scroll_rect, &clip_rect, origin, &fill_char);
+		}
+	}
+}
+
+static void delete_character(int count)
+{
+	if (is_inside_scroll_area())
+	{
+		if (console->x + count >= console->width)
+			erase_line(ERASE_LINE_CUR_TO_END);
+		else
+		{
+			CHAR_INFO fill_char;
+			fill_char.Attributes = DEFAULT_ATTRIBUTE;
+			fill_char.Char.UnicodeChar = L' ';
+			SMALL_RECT scroll_rect;
+			scroll_rect.Left = console->x + count;
+			scroll_rect.Right = console->width - 1;
+			scroll_rect.Top = console->y;
+			scroll_rect.Bottom = console->y;
+			SMALL_RECT clip_rect;
+			clip_rect.Left = console->x;
+			clip_rect.Right = console->width - 1;
+			clip_rect.Top = console->y;
+			clip_rect.Bottom = console->y;
+			COORD origin;
+			origin.X = console->x;
+			origin.Y = console->y;
+			ScrollConsoleScreenBufferW(console->out, &scroll_rect, &clip_rect, origin, &fill_char);
+		}
+	}
 }
 
 static void change_mode(int mode, int set)
@@ -758,6 +828,16 @@ static void control_escape_csi(char ch)
 			change_private_mode(console->params[0], 0);
 		else
 			change_mode(console->params[0], 0);
+		console->processor = NULL;
+		break;
+
+	case '@': /* ICH */
+		insert_character(console->params[0]? console->params[0]: 1);
+		console->processor = NULL;
+		break;
+
+	case 'P': /* DCH */
+		delete_character(console->params[0]? console->params[0]: 1);
 		console->processor = NULL;
 		break;
 
