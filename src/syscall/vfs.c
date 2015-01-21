@@ -1755,3 +1755,87 @@ DEFINE_SYSCALL(select, int, nfds, struct fdset *, readfds, struct fdset *, write
 	}
 	return r;
 }
+
+DEFINE_SYSCALL(getxattr, const char *, path, const char *, name, void *, value, size_t, size)
+{
+	log_info("getxattr(\"%s\", \"%s\", %p, %d)\n", path, name, value, size);
+	log_warning("getxattr() not implemented.\n");
+	return -EOPNOTSUPP;
+}
+
+DEFINE_SYSCALL(lgetxattr, const char *, path, const char *, name, void *, value, size_t, size)
+{
+	log_info("lgetxattr(\"%s\", \"%s\", %p, %d)\n", path, name, value, size);
+	log_warning("lgetxattr() not implemented.\n");
+	return -EOPNOTSUPP;
+}
+
+DEFINE_SYSCALL(fgetxattr, int, fd, const char *, name, void *, value, size_t, size)
+{
+	log_info("fgetxattr(%d, \"%s\", %p, %d)\n", fd, name, value, size);
+	log_warning("fgetxattr() not implemented.\n");
+	return -EOPNOTSUPP;
+}
+
+DEFINE_SYSCALL(listxattr, const char *, path, char *, list, size_t, size)
+{
+	log_info("listxattr(\"%s\", %p, %d)\n", path, list, size);
+	log_warning("listxattr() not implemented.\n");
+	return -EOPNOTSUPP;
+}
+
+DEFINE_SYSCALL(llistxattr, const char *, path, char *, list, size_t, size)
+{
+	log_info("llistxattr(\"%s\", %p, %d)\n", path, list, size);
+	log_warning("llistxattr() not implemented.\n");
+	return -EOPNOTSUPP;
+}
+
+DEFINE_SYSCALL(flistxattr, int, fd, char *, list, size_t, size)
+{
+	log_info("flistxattr(%d, %p, %d)\n", fd, list, size);
+	log_warning("flistxattr() not implemented.\n");
+	return -EOPNOTSUPP;
+}
+
+DEFINE_SYSCALL(setxattr, const char *, path, const char *, name, const void *, value, size_t, size, int, flags)
+{
+	log_info("setxattr(\"%s\", \"%s\", %p, %d, %x)\n", path, name, value, size, flags);
+	log_warning("setxattr() not implemented.\n");
+	return -EOPNOTSUPP;
+}
+
+DEFINE_SYSCALL(lsetxattr, const char *, path, const char *, name, const void *, value, size_t, size, int, flags)
+{
+	log_info("lsetxattr(\"%s\", \"%s\", %p, %d, %x)\n", path, name, value, size, flags);
+	log_warning("lsetxattr() not implemented.\n");
+	return -EOPNOTSUPP;
+}
+
+DEFINE_SYSCALL(fsetxattr, int, fd, const char *, name, const void *, value, size_t, size, int, flags)
+{
+	log_info("fsetxattr(%d, \"%s\", %p, %d, %x)\n", fd, name, value, size, flags);
+	log_warning("fsetxattr() not implemented.\n");
+	return -EOPNOTSUPP;
+}
+
+DEFINE_SYSCALL(removexattr, const char *, path, const char *, name)
+{
+	log_info("removexattr(\"%s\", \"%s\")\n", path, name);
+	log_warning("removexattr() not implemented.\n");
+	return -EOPNOTSUPP;
+}
+
+DEFINE_SYSCALL(lremovexattr, const char *, path, const char *, name)
+{
+	log_info("lremovexattr(\"%s\", \"%s\")\n", path, name);
+	log_warning("lremovexattr() not implemented.\n");
+	return -EOPNOTSUPP;
+}
+
+DEFINE_SYSCALL(fremovexattr, int, fd, const char *, name)
+{
+	log_info("fremovexattr(%d, \"%s\")\n", fd, name);
+	log_warning("fremovexattr() not implemented.\n");
+	return -EOPNOTSUPP;
+}
