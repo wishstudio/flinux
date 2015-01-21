@@ -965,10 +965,19 @@ static size_t console_read(struct file *f, char *buf, size_t count)
 		buf[bytes_read++] = console->input_buffer[console->input_buffer_tail];
 		console->input_buffer_tail = (console->input_buffer_tail + 1) % MAX_INPUT;
 	}
+	if (!(console->termios.c_lflag & ICANON))
+	{
+		if (console->termios.c_cc[VTIME])
+			log_error("termios.c_cc[VTIME] not supported.\n");
+		if (console->termios.c_cc[VMIN] == 0)
+			log_error("termios.c_cc[VMIN] == 0 not supported\n");
+	}
 	char line[MAX_CANON + 1]; /* One more for storing CR or LF */
 	size_t len = 0;
 	while (count > 0)
 	{
+		if (!(console->termios.c_lflag & ICANON) && bytes_read >= console->termios.c_cc[VMIN])
+			break;
 		INPUT_RECORD ir;
 		DWORD read;
 		ReadConsoleInputA(console->in, &ir, 1, &read);
