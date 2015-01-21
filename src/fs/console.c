@@ -58,6 +58,7 @@ struct console_data
 	/* console mode settings */
 	struct termios termios;
 	int bright, reverse, foreground, background;
+	int insert_mode;
 	int cursor_key_mode;
 	int origin_mode;
 	int wraparound_mode;
@@ -159,6 +160,7 @@ void console_init()
 	console->reverse = 0;
 	console->foreground = 7;
 	console->background = 0;
+	console->insert_mode = 0;
 	console->cursor_key_mode = 0;
 	console->origin_mode = 0;
 	console->wraparound_mode = 1;
@@ -483,6 +485,8 @@ static void write_normal(const char *buf, int size)
 			crnl();
 		/* Write to line end at most */
 		int line_remain = min(size, console->width - console->x);
+		if (console->insert_mode && console->x + line_remain < console->width)
+			scroll(console->x, console->width - 1, console->y, console->y, line_remain, 0);
 		DWORD bytes_written;
 		WriteConsoleA(console->out, buf, line_remain, &bytes_written, NULL);
 		console->x += line_remain;
@@ -598,6 +602,10 @@ static void change_mode(int mode, int set)
 {
 	switch (mode)
 	{
+	case 4: /* IRM */
+		console->insert_mode = set;
+		break;
+
 	case 20: /* LNM */
 		/* TODO: When LNM is set, CR should be translated to CR LF on input
 		 * But there isn't a corresponding termios flag for this
