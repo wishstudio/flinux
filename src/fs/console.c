@@ -1145,6 +1145,40 @@ static size_t console_read(struct file *f, char *buf, size_t count)
 					console_buffer_add_string(buf, &bytes_read, &count, console->cursor_key_mode? "\x1BOD": "\x1B[D", 3);
 					break;
 					
+				case VK_HOME:
+					console_buffer_add_string(buf, &bytes_read, &count, console->cursor_key_mode? "\x1BOH": "\x1B[H", 3);
+					break;
+
+				case VK_END:
+					console_buffer_add_string(buf, &bytes_read, &count, console->cursor_key_mode? "\x1BOF": "\x1B[F", 3);
+					break;
+
+				case VK_INSERT: console_buffer_add_string(buf, &bytes_read, &count, "\x1B[2~", 4); break;
+				case VK_DELETE: console_buffer_add_string(buf, &bytes_read, &count, "\x1B[3~", 4); break;
+				case VK_PRIOR: console_buffer_add_string(buf, &bytes_read, &count, "\x1B[5~", 4); break;
+				case VK_NEXT: console_buffer_add_string(buf, &bytes_read, &count, "\x1B[6~", 4); break;
+					
+				case VK_F1: console_buffer_add_string(buf, &bytes_read, &count, "\x1BOP", 3); break;
+				case VK_F2: console_buffer_add_string(buf, &bytes_read, &count, "\x1BOQ", 3); break;
+				case VK_F3: console_buffer_add_string(buf, &bytes_read, &count, "\x1BOR", 3); break;
+				case VK_F4: console_buffer_add_string(buf, &bytes_read, &count, "\x1BOS", 3); break;
+				case VK_F5: console_buffer_add_string(buf, &bytes_read, &count, "\x1B[15~", 5); break;
+				case VK_F6: console_buffer_add_string(buf, &bytes_read, &count, "\x1B[17~", 5); break;
+				case VK_F7: console_buffer_add_string(buf, &bytes_read, &count, "\x1B[18~", 5); break;
+				case VK_F8: console_buffer_add_string(buf, &bytes_read, &count, "\x1B[19~", 5); break;
+				case VK_F9: console_buffer_add_string(buf, &bytes_read, &count, "\x1B[20~", 5); break;
+				case VK_F10: console_buffer_add_string(buf, &bytes_read, &count, "\x1B[21~", 5); break;
+				case VK_F11: console_buffer_add_string(buf, &bytes_read, &count, "\x1B[23~", 5); break;
+				case VK_F12: console_buffer_add_string(buf, &bytes_read, &count, "\x1B[24~", 5); break;
+				case VK_F13: console_buffer_add_string(buf, &bytes_read, &count, "\x1B[25~", 5); break;
+				case VK_F14: console_buffer_add_string(buf, &bytes_read, &count, "\x1B[26~", 5); break;
+				case VK_F15: console_buffer_add_string(buf, &bytes_read, &count, "\x1B[28~", 5); break;
+				case VK_F16: console_buffer_add_string(buf, &bytes_read, &count, "\x1B[29~", 5); break;
+				case VK_F17: console_buffer_add_string(buf, &bytes_read, &count, "\x1B[31~", 5); break;
+				case VK_F18: console_buffer_add_string(buf, &bytes_read, &count, "\x1B[32~", 5); break;
+				case VK_F19: console_buffer_add_string(buf, &bytes_read, &count, "\x1B[33~", 5); break;
+				case VK_F20: console_buffer_add_string(buf, &bytes_read, &count, "\x1B[34~", 5); break;
+					
 				default:
 					if (ch == '\r' && console->termios.c_iflag & IGNCR)
 						break;
