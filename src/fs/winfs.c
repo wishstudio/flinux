@@ -28,10 +28,10 @@
 #include <log.h>
 #include <str.h>
 
+#include <ntdll.h>
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <limits.h>
-#include <ntdll.h>
 
 #define WINFS_SYMLINK_HEADER		"!<SYMLINK>\379\378"
 #define WINFS_SYMLINK_HEADER_LEN	(sizeof(WINFS_SYMLINK_HEADER) - 1)
@@ -45,7 +45,7 @@ struct winfs_file
 	char pathname[]; /* Not necessary null-terminated */
 };
 
-/* Convert a relative file name to NT file name, return name lengths, no NULL terminator is appended */
+/* Convert an utf-8 file name to NT file name, return converted name length in bytes, no NULL terminator is appended */
 static int filename_to_nt_pathname(const char *filename, WCHAR *buf, int buf_size)
 {
 	if (buf_size < 4)
@@ -70,6 +70,100 @@ static int filename_to_nt_pathname(const char *filename, WCHAR *buf, int buf_siz
 	if (fl == 0)
 		return 0;
 	return out_size + fl;
+}
+
+static int cached_sid_initialized;
+static PSID cached_sid;
+
+/* TODO: This function should be placed in a better place */
+static PSID get_user_sid()
+{
+	if (cached_sid_initialized)
+		return &cached_sid;
+	else
+	{
+		HANDLE token;
+		OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token);
+		char buf[256];
+		DWORD len;
+		GetTokenInformation(token, TokenUser, buf, sizeof(buf), &len);
+		TOKEN_USER *user = (TOKEN_USER *)buf;
+		cached_sid = user->User.Sid;
+		cached_sid_initialized = 1;
+		return cached_sid;
+	}
+}
+
+/* Move a file handle to recycle bin
+ * The pathname must be a valid NT file name generated using filename_to_nt_pathname()
+ */
+static NTSTATUS move_to_recycle_bin(HANDLE handle, WCHAR *pathname)
+{
+	IO_STATUS_BLOCK status_block;
+	NTSTATUS status;
+
+	/* TODO: Handle the case when recycle bin does not exist (according to cygwin) */
+	/* TODO: Handle when the file is inside recycle bin */
+	WCHAR recyclepath[512];
+	UNICODE_STRING recycle;
+	RtlInitEmptyUnicodeString(&recycle, recyclepath, sizeof(recyclepath));
+	/* Root directory, should look like "\??\C:\", 7 characters */
+	UNICODE_STRING root;
+	RtlInitCountedUnicodeString(&root, pathname, sizeof(WCHAR) * 7);
+	RtlAppendUnicodeStringToString(&recycle, &root);
+	RtlAppendUnicodeToString(&recycle, L"$Recycle.Bin\\");
+
+	WCHAR renamepath[512];
+	UNICODE_STRING rename;
+	RtlInitEmptyUnicodeString(&rename, renamepath, sizeof(renamepath));
+	RtlAppendUnicodeStringToString(&rename, &recycle);
+	/* Append user sid */
+	{
+		WCHAR buf[256];
+		UNICODE_STRING sid;
+		RtlInitEmptyUnicodeString(&sid, buf, sizeof(buf));
+		RtlConvertSidToUnicodeString(&sid, get_user_sid(), FALSE);
+		RtlAppendUnicodeStringToString(&rename, &sid);
+		RtlAppendUnicodeToString(&rename, L"\\");
+	}
+	/* Generate an unique file name by append file id and a hash of the pathname,
+	 * To allow unlinking multiple hard links of the same file
+	 */
+	RtlAppendUnicodeToString(&rename, L".flinux");
+	/* Append file id */
+	{
+		FILE_INTERNAL_INFORMATION info;
+		status = NtQueryInformationFile(handle, &status_block, &info, sizeof(info), FileInternalInformation);
+		if (!NT_SUCCESS(status))
+		{
+			log_error("NtQueryInformationFile(FileInternalInformation) failed, status: %x\n", status);
+			return status;
+		}
+		RtlAppendInt64ToString(info.IndexNumber.QuadPart, 16, &rename);
+		RtlAppendUnicodeToString(&rename, L"_");
+	}
+	/* Append file path hash */
+	{
+		UNICODE_STRING path;
+		RtlInitUnicodeString(&path, pathname);
+		ULONG hash;
+		RtlHashUnicodeString(&path, FALSE, HASH_STRING_ALGORITHM_DEFAULT, &hash);
+		RtlAppendIntegerToString(hash, 16, &rename);
+	}
+	/* Rename file */
+	char buf[512];
+	FILE_RENAME_INFORMATION *info = (FILE_RENAME_INFORMATION *)buf;
+	info->ReplaceIfExists = FALSE;
+	info->RootDirectory = NULL;
+	info->FileNameLength = rename.Length;
+	memcpy(info->FileName, rename.Buffer, rename.Length);
+	status = NtSetInformationFile(handle, &status_block, info, sizeof(*info) + info->FileNameLength, FileRenameInformation);
+	if (!NT_SUCCESS(status))
+	{
+		log_error("NtSetInformationFile(FileRenameInformation) failed, status: %x\n", status);
+		return status;
+	}
+	return STATUS_SUCCESS;
 }
 
 /* Test if a handle is a symlink, does not read the target
@@ -428,7 +522,7 @@ static int winfs_getdents(struct file *f, void *dirent, size_t count, getdents_c
 				{
 					if (winfs_is_symlink(handle))
 						type = DT_LNK;
-					CloseHandle(handle);
+					NtClose(handle);
 				}
 				else
 					log_warning("NtCreateFile() failed, status: %x\n", status);
@@ -552,14 +646,57 @@ static int winfs_link(struct file *f, const char *newpath)
 static int winfs_unlink(const char *pathname)
 {
 	WCHAR wpathname[PATH_MAX];
-	
-	if (utf8_to_utf16_filename(pathname, strlen(pathname) + 1, wpathname, PATH_MAX) <= 0)
+	int len = filename_to_nt_pathname(pathname, wpathname, PATH_MAX);
+	if (len <= 0)
 		return -ENOENT;
-	if (!DeleteFileW(wpathname))
+
+	UNICODE_STRING object_name;
+	RtlInitCountedUnicodeString(&object_name, wpathname, len * sizeof(WCHAR));
+
+	OBJECT_ATTRIBUTES attr;
+	attr.Length = sizeof(OBJECT_ATTRIBUTES);
+	attr.RootDirectory = NULL;
+	attr.ObjectName = &object_name;
+	attr.Attributes = 0;
+	attr.SecurityDescriptor = NULL;
+	attr.SecurityQualityOfService = NULL;
+	IO_STATUS_BLOCK status_block;
+	NTSTATUS status;
+	HANDLE handle;
+	status = NtOpenFile(&handle, SYNCHRONIZE | DELETE, &attr, &status_block, FILE_SHARE_DELETE, FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT);
+	if (!NT_SUCCESS(status))
 	{
-		log_warning("DeleteFile() failed.\n");
-		return -ENOENT;
+		if (status != STATUS_SHARING_VIOLATION)
+		{
+			log_warning("NtOpenFile() failed, status: %x\n", status);
+			return -ENOENT;
+		}
+		/* This file has open handles in some processes, even we set delete disposition flags
+		 * The actual deletion of the file will be delayed to the last handle closing
+		 * To make the file disappear from its parent directory immediately, we move the file
+		 * to Windows recycle bin prior to deletion.
+		 */
+		status = NtOpenFile(&handle, SYNCHRONIZE | DELETE, &attr, &status_block, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+			FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT);
+		if (!NT_SUCCESS(status))
+		{
+			log_warning("NtOpenFile() failed, status: %x\n", status);
+			return -EBUSY;
+		}
+		status = move_to_recycle_bin(handle, wpathname);
+		if (!NT_SUCCESS(status))
+			return -EBUSY;
 	}
+	/* Set disposition flag */
+	FILE_DISPOSITION_INFORMATION info;
+	info.DeleteFile = TRUE;
+	status = NtSetInformationFile(handle, &status_block, &info, sizeof(info), FileDispositionInformation);
+	if (!NT_SUCCESS(status))
+	{
+		log_warning("NtSetInformation(FileDispositionInformation) failed, status: %x\n", status);
+		return -EBUSY;
+	}
+	NtClose(handle);
 	return 0;
 }
 
@@ -569,7 +706,7 @@ static int winfs_rename(struct file *f, const char *newpath)
 	char buf[sizeof(FILE_RENAME_INFORMATION) + PATH_MAX * 2];
 	NTSTATUS status;
 	FILE_RENAME_INFORMATION *info = (FILE_RENAME_INFORMATION *)buf;
-	info->ReplaceIfExists = TRUE;
+	info->ReplaceIfExists = TRUE; /* TODO: This should be worked on to provide true Linux semantics (refer to unlink()) */
 	info->RootDirectory = NULL;
 	info->FileNameLength = 2 * filename_to_nt_pathname(newpath, info->FileName, PATH_MAX);
 	if (info->FileNameLength == 0)

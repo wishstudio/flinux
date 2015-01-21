@@ -6,7 +6,8 @@
 
 typedef LONG NTSTATUS;
 
-#define STATUS_SUCCESS 0
+#define STATUS_SUCCESS					0x00000000
+#define STATUS_SHARING_VIOLATION		0xC0000043
 
 #ifndef NT_SUCCESS
 #define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
@@ -163,6 +164,15 @@ NTSYSAPI NTSTATUS NTAPI NtCreateFile(
 	_In_		ULONG EaLength
 	);
 
+NTSYSAPI NTSTATUS NTAPI NtOpenFile(
+	_Out_		PHANDLE FileHanle,
+	_In_		ACCESS_MASK DesiredAccess,
+	_In_		POBJECT_ATTRIBUTES ObjectAttributes,
+	_Out_		PIO_STATUS_BLOCK IoStatusBlock,
+	_In_		ULONG ShareAccess,
+	_In_		ULONG OpenOptions
+	);
+
 /* File information class */
 typedef enum _FILE_INFORMATION_CLASS {
 	FileDirectoryInformation = 1,
@@ -224,6 +234,10 @@ typedef enum _FILE_INFORMATION_CLASS {
 	FileMaximumInformation
 } FILE_INFORMATION_CLASS, *PFILE_INFORMATION_CLASS;
 
+typedef struct _FILE_INTERNAL_INFORMATION {
+	LARGE_INTEGER IndexNumber;
+} FILE_INTERNAL_INFORMATION, *PFILE_INTERNAL_INFORMATION;
+
 typedef struct _FILE_RENAME_INFORMATION {
 	BOOLEAN ReplaceIfExists;
 	HANDLE  RootDirectory;
@@ -261,6 +275,14 @@ typedef struct _FILE_ID_FULL_DIR_INFORMATION {
 	LARGE_INTEGER FileId;
 	WCHAR         FileName[1];
 } FILE_ID_FULL_DIR_INFORMATION, *PFILE_ID_FULL_DIR_INFORMATION;
+
+NTSYSAPI NTSTATUS NTAPI NtQueryInformationFile(
+	_In_		HANDLE FileHandle,
+	_Out_		PIO_STATUS_BLOCK IoStatusBlock,
+	_Out_		PVOID FileInformation,
+	_In_		ULONG Length,
+	_In_		FILE_INFORMATION_CLASS FileInformationClass
+	);
 
 NTSYSAPI NTSTATUS NTAPI NtSetInformationFile(
 	_In_		HANDLE FileHandle,
@@ -400,3 +422,100 @@ NTSYSAPI NTSTATUS NTAPI NtQueryTimerResolution(
 	_Out_		PULONG MaximumResolution,
 	_Out_		PULONG ActualResolution
 	);
+
+/* RTL functions */
+#define HASH_STRING_ALGORITHM_DEFAULT	0
+#define HASH_STRING_ALGORITHM_X65599	1
+#define HASH_STRING_ALGORITHM_INVALID	0xFFFFFFFF
+
+NTSYSAPI NTSTATUS NTAPI RtlAppendUnicodeStringToString(
+	_Inout_		PUNICODE_STRING Destination,
+	_In_		PCUNICODE_STRING Source
+	);
+
+NTSYSAPI NTSTATUS NTAPI RtlAppendUnicodeToString(
+	_Inout_		PUNICODE_STRING Destination,
+	_In_opt_	PCWSTR Source
+	);
+
+NTSYSAPI NTSTATUS NTAPI RtlConvertSidToUnicodeString(
+	_Out_		PUNICODE_STRING UnicodeString,
+	_In_		PSID Sid,
+	_In_		BOOLEAN AllocateDestinationString
+	);
+
+NTSYSAPI NTSTATUS NTAPI RtlHashUnicodeString(
+	_In_		PUNICODE_STRING UnicodeString,
+	_In_		BOOLEAN CaseInSensitive,
+	_In_		ULONG HashAlgorithm,
+	_Out_		PULONG HashValue
+	);
+
+NTSYSAPI void NTAPI RtlInitUnicodeString(
+	_Out_		PUNICODE_STRING DestinationString,
+	_In_opt_	PCWSTR SourceString
+	);
+
+NTSYSAPI NTSTATUS NTAPI RtlInt64ToUnicodeString(
+	_In_		ULONGLONG Value,
+	_In_opt_	ULONG Base,
+	_Inout_		PUNICODE_STRING String
+	);
+
+NTSYSAPI NTSTATUS NTAPI RtlIntegerToUnicodeString(
+	_In_		ULONG Value,
+	_In_opt_	ULONG Base,
+	_Inout_		PUNICODE_STRING String
+	);
+
+/* Helper routines */
+/* Initialize an empty unicode string given buffer and size */
+_inline void RtlInitEmptyUnicodeString(
+	_Out_		PUNICODE_STRING DestinationString,
+	_In_		PWCHAR Buffer,
+	_In_		USHORT BufferSize
+	)
+{
+	DestinationString->Length = 0;
+	DestinationString->MaximumLength = BufferSize;
+	DestinationString->Buffer = Buffer;
+}
+
+/* Initialize a string from a counted string */
+_inline void RtlInitCountedUnicodeString(
+	_Out_		PUNICODE_STRING DestinationString,
+	_In_		PWCHAR String,
+	_In_		USHORT StringSize
+	)
+{
+	DestinationString->Length = DestinationString->MaximumLength = StringSize;
+	DestinationString->Buffer = String;
+}
+
+/* Append a 64 bit integer to an unicode string */
+_inline NTSTATUS RtlAppendInt64ToString(
+	_In_		ULONGLONG Value,
+	_In_opt_	ULONG Base,
+	_Inout_		PUNICODE_STRING String
+	)
+{
+	WCHAR buf[32];
+	UNICODE_STRING str;
+	RtlInitEmptyUnicodeString(&str, buf, sizeof(buf));
+	RtlInt64ToUnicodeString(Value, Base, &str);
+	return RtlAppendUnicodeStringToString(String, &str);
+}
+
+/* Append an integer to an unicode string */
+_inline NTSTATUS RtlAppendIntegerToString(
+	_In_		ULONG Value,
+	_In_opt_	ULONG Base,
+	_Inout_		PUNICODE_STRING String
+	)
+{
+	WCHAR buf[32];
+	UNICODE_STRING str;
+	RtlInitEmptyUnicodeString(&str, buf, sizeof(buf));
+	RtlIntegerToUnicodeString(Value, Base, &str);
+	return RtlAppendUnicodeStringToString(String, &str);
+}
