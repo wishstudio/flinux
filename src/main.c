@@ -86,6 +86,7 @@ void main()
 	int argc = 0;
 	const char **argv = (const char **)(envbuf + 16);
 
+	/* Parse command line */
 	int in_quote = 0;
 	const char *j = current_startup_base;
 	for (char *i = current_startup_base; i <= current_startup_base + len; i++)
@@ -105,10 +106,11 @@ void main()
 			j = i + 1;
 		}
 	argv[argc] = NULL;
-	const char **envp = argv + argc + 2;
+	const char **envp = argv + argc + 1;
 	int env_size = 1;
 	envp[0] = envbuf;
 	envp[1] = NULL;
+	char *buffer_base = (char*)(envp + env_size + 1);
 
 	const char *filename = NULL;
 	for (int i = 1; i < argc; i++)
@@ -120,7 +122,7 @@ void main()
 			filename = argv[i];
 	}
 	if (filename)
-		do_execve(filename, argc - 1, argv + 1, env_size, envp);
+		do_execve(filename, argc - 1, argv + 1, env_size, envp, buffer_base);
 	kprintf("Execution failed.\n");
 	ExitProcess(1);
 }

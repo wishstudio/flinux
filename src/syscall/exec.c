@@ -50,6 +50,13 @@ struct elf_header
 	char pht[];
 };
 
+struct binfmt
+{
+	char *buffer_base;
+	const char *argv0, *argv1;
+	struct elf_header *executable, *interpreter;
+};
+
 __declspec(noreturn) void goto_entrypoint(const char *stack, void *entrypoint);
 
 /* Macros for easier initial stack mangling */
@@ -57,7 +64,7 @@ __declspec(noreturn) void goto_entrypoint(const char *stack, void *entrypoint);
 #define AUX_VEC(id, value) PTR(value); PTR(id)
 #define ALLOC(size) (stack -= (size))
 
-static void run(struct elf_header *executable, struct elf_header *interpreter, int argc, char *argv[], int env_size, char *envp[])
+static void run(struct binfmt *binary, int argc, char *argv[], int env_size, char *envp[])
 {
 	/* Generate initial stack */
 	char *stack_base = process_get_stack_base();
@@ -65,6 +72,9 @@ static void run(struct elf_header *executable, struct elf_header *interpreter, i
 	/* 16 random bytes for AT_RANDOM */
 	/* TODO: Fill in real content */
 	char *random_bytes = ALLOC(16);
+
+	struct elf_header *executable = binary->executable;
+	struct elf_header *interpreter = binary->interpreter;
 
 	/* auxiliary vector */
 	PTR(NULL);
@@ -87,9 +97,19 @@ static void run(struct elf_header *executable, struct elf_header *interpreter, i
 	PTR(NULL);
 	for (int i = argc - 1; i >= 0; i--)
 		PTR(argv[i]);
+	/* Insert additional arguments from special binfmt */
+	if (binary->argv1)
+	{
+		PTR(binary->argv1);
+		argc++;
+	}
+	if (binary->argv0)
+	{
+		PTR(binary->argv0);
+		argc++;
+	}
 
 	/* argc */
-	/* TODO: We need to verify if this works on amd64 */
 	PTR(argc);
 
 	/* Call executable entrypoint */
@@ -104,23 +124,15 @@ static void run(struct elf_header *executable, struct elf_header *interpreter, i
 	dbt_run(entrypoint, stack);
 }
 
-static int load_elf(const char *filename, struct elf_header **executable, struct elf_header **interpreter)
+static int load_elf(struct file *f, struct binfmt *binary)
 {
 	Elf_Ehdr eh;
-	struct file *f;
-	int r = vfs_openat(AT_FDCWD, filename, O_RDONLY, 0, &f);
-	if (r < 0)
-		return r;
-
-	if (!winfs_is_winfile(f))
-		return -EACCES;
 
 	/* Load ELF header */
 	f->op_vtable->pread(f, &eh, sizeof(eh), 0);
 	if (eh.e_type != ET_EXEC && eh.e_type != ET_DYN)
 	{
 		log_error("Only ET_EXEC and ET_DYN executables can be loaded.\n");
-		vfs_release(f);
 		return -EACCES;
 	}
 
@@ -133,16 +145,16 @@ static int load_elf(const char *filename, struct elf_header **executable, struct
 	{
 		log_error("Not an i386 executable.\n");
 #endif
-		vfs_release(f);
 		return -EACCES;
 	}
 
 	/* Load program header table */
 	size_t phsize = (size_t)eh.e_phentsize * (size_t)eh.e_phnum;
 	struct elf_header *elf = kmalloc(sizeof(struct elf_header) + phsize); /* TODO: Free it at execve */
-	*executable = elf;
-	if (interpreter)
-		*interpreter = NULL;
+	if (binary->executable)
+		binary->interpreter = elf;
+	else
+		binary->executable = elf;
 	elf->eh = eh;
 	f->op_vtable->pread(f, elf->pht, phsize, eh.e_phoff); /* TODO */
 
@@ -170,10 +182,7 @@ static int load_elf(const char *filename, struct elf_header **executable, struct
 	{
 		size_t free_addr = mm_find_free_pages(elf->high - elf->low) * PAGE_SIZE;
 		if (!free_addr)
-		{
-			vfs_release(f);
 			return -ENOMEM;
-		}
 		elf->load_base = free_addr - elf->low;
 		log_info("ET_DYN load offset: %p, real range [%p, %p)\n", elf->load_base, elf->load_base + elf->low, elf->load_base + elf->high);
 	}
@@ -216,32 +225,127 @@ static int load_elf(const char *filename, struct elf_header **executable, struct
 		Elf_Phdr *ph = (Elf_Phdr *)&elf->pht[eh.e_phentsize * i];
 		if (ph->p_type == PT_INTERP)
 		{
-			if (interpreter == NULL)
-			{
-				vfs_release(f);
+			if (binary->interpreter)
 				return -EACCES; /* Bad interpreter */
-			}
 			char path[MAX_PATH];
 			f->op_vtable->pread(f, path, ph->p_filesz, ph->p_offset); /* TODO */
 			path[ph->p_filesz] = 0;
-			if (load_elf(path, interpreter, NULL) < 0)
+
+			struct file *fi;
+			int r = vfs_openat(AT_FDCWD, path, O_RDONLY, 0, &fi);
+			if (r < 0)
+				return r;
+			if (!winfs_is_winfile(fi))
 			{
-				vfs_release(f);
-				return -EACCES; /* Bad interpreter */
+				vfs_release(fi);
+				return -EACCES;
 			}
+
+			r = load_elf(fi, binary);
+			vfs_release(fi);
+			if (r < 0)
+				return -EACCES; /* Bad interpreter */
 		}
 	}
-	vfs_release(f);
 	return 0;
 }
 
-int do_execve(const char *filename, int argc, char *argv[], int env_size, char *envp[])
+#define MAX_SHEBANG_LINE	256
+static int load_script(struct file *f, struct binfmt *binary)
 {
-	struct elf_header *executable, *interpreter;
-	int r = load_elf(filename, &executable, &interpreter);
+	/* Parse the shebang line */
+	int size = f->op_vtable->pread(f, binary->buffer_base, MAX_SHEBANG_LINE, 0);
+	char *p = binary->buffer_base, *end = p + size;
+	/* Skip shebang */
+	p += 2;
+	/* Skip spaces */
+	while (p < end && *p == ' ')
+		p++;
+	if (p == end)
+		return -EACCES;
+	const char *executable = p;
+	binary->argv0 = p;
+	while (p < end && *p != ' ' && *p != '\n')
+		p++;
+	if (p == end)
+		return -EACCES;
+	if (*p == '\n')
+		*p = 0; /* It has no argument */
+	else
+	{
+		*p++ = 0;
+		while (p < end && *p == ' ')
+			p++;
+		if (p == end)
+			return -EACCES;
+		if (*p != '\n')
+		{
+			/* It has an argument */
+			binary->argv1 = p;
+			while (p < end && *p != '\n')
+				p++;
+			if (p == end)
+				return -EACCES;
+			*p = 0;
+		}
+	}
+
+	struct file *fe;
+	int r = vfs_openat(AT_FDCWD, executable, O_RDONLY, 0, &fe);
 	if (r < 0)
 		return r;
-	run(executable, interpreter, argc, argv, env_size, envp);
+	if (!winfs_is_winfile(fe))
+	{
+		vfs_release(fe);
+		return -EACCES;
+	}
+	/* TODO: Recursive interpreters */
+	return load_elf(fe, binary);
+}
+
+int do_execve(const char *filename, int argc, char *argv[], int env_size, char *envp[], char *buffer_base)
+{
+	buffer_base = (char*)((uintptr_t)(buffer_base + sizeof(void*) - 1) & -sizeof(void*));
+
+	/* Detect file type */
+	int r;
+	char magic[4];
+	struct file *f;
+	r = vfs_openat(AT_FDCWD, filename, O_RDONLY, 0, &f);
+	if (r < 0)
+		return r;
+	if (!winfs_is_winfile(f))
+	{
+		vfs_release(f);
+		return -EACCES;
+	}
+	r = f->op_vtable->pread(f, magic, 4, 0);
+	if (r < 4)
+		return -EACCES;
+
+	struct binfmt binary;
+	binary.argv0 = NULL;
+	binary.argv1 = NULL;
+	binary.buffer_base = buffer_base;
+	binary.executable = NULL;
+	binary.interpreter = NULL;
+
+	/* Load file */
+	if (magic[0] == ELFMAG0 && magic[1] == ELFMAG1 && magic[2] == ELFMAG2 && magic[3] == ELFMAG3)
+		r = load_elf(f, &binary);
+	else if (magic[0] == '#' && magic[1] == '!')
+		r = load_script(f, &binary);
+	else
+	{
+		log_error("Unknown binary magic: %c%c%c%c", magic[0], magic[1], magic[2], magic[3]);
+		return -EACCES;
+	}
+	vfs_release(f);
+	if (r < 0)
+		return r;
+
+	/* Execute file */
+	run(&binary, argc, argv, env_size, envp);
 	return 0;
 }
 
@@ -307,6 +411,8 @@ DEFINE_SYSCALL(execve, const char *, filename, char **, argv, char **, envp)
 	}
 	new_envp[env_size] = NULL;
 
+	base = (char *)(new_envp + env_size + 1);
+
 	/* TODO: This is really ugly, we should move it into a specific UTF8->UTF16 conversion routine when we supports unicode */
 	/* Normalize filename */
 	char fb[1024];
@@ -322,7 +428,7 @@ DEFINE_SYSCALL(execve, const char *, filename, char **, argv, char **, envp)
 	mm_reset();
 	tls_reset();
 	dbt_reset();
-	if (do_execve(f, argc, new_argv, env_size, new_envp) != 0)
+	if (do_execve(f, argc, new_argv, env_size, new_envp, base) != 0)
 	{
 		log_warning("execve() failed.\n");
 		ExitProcess(0); /* TODO: Recover */
