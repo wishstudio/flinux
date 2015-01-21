@@ -398,14 +398,14 @@ static void move_down(int count)
 	set_pos(console->x, min(console->y + count, console->height - 1));
 }
 
-static void clear_scroll_area()
+static void erase_screen_lines(int top, int bottom)
 {
-	int len = (console->scroll_top - console->scroll_bottom + 1) * console->width;
+	int len = (bottom - top + 1) * console->width;
 	COORD pos;
 	pos.X = 0;
-	pos.Y = console->top + console->scroll_top;
+	pos.Y = console->top + top;
 	DWORD written;
-	FillConsoleOutputAttribute(console->out, get_text_attribute(), len, pos, &written);
+	FillConsoleOutputAttribute(console->out, DEFAULT_ATTRIBUTE, len, pos, &written);
 }
 
 static BOOL is_inside_scroll_area()
@@ -416,11 +416,11 @@ static BOOL is_inside_scroll_area()
 static void scroll_up(int count)
 {
 	if (count > console->scroll_bottom - console->scroll_top)
-		clear_scroll_area();
+		erase_screen_lines(console->scroll_top, console->scroll_bottom);
 	else
 	{
 		CHAR_INFO fill_char;
-		fill_char.Attributes = get_text_attribute();
+		fill_char.Attributes = DEFAULT_ATTRIBUTE;
 		fill_char.Char.UnicodeChar = L' ';
 		SMALL_RECT scroll_rect;
 		scroll_rect.Left = 0;
@@ -442,11 +442,11 @@ static void scroll_up(int count)
 static void scroll_down(int count)
 {
 	if (count > console->scroll_bottom - console->scroll_top)
-		clear_scroll_area();
+		erase_screen_lines(console->scroll_top, console->scroll_bottom);
 	else
 	{
 		CHAR_INFO fill_char;
-		fill_char.Attributes = get_text_attribute();
+		fill_char.Attributes = DEFAULT_ATTRIBUTE;
 		fill_char.Char.UnicodeChar = L' ';
 		SMALL_RECT scroll_rect;
 		scroll_rect.Left = 0;
@@ -491,7 +491,7 @@ static void nl()
 	{
 		/* A partial region needs to be scrolled */
 		CHAR_INFO fill_char;
-		fill_char.Attributes = get_text_attribute();
+		fill_char.Attributes = DEFAULT_ATTRIBUTE;
 		fill_char.Char.UnicodeChar = L' ';
 		SMALL_RECT scroll_rect;
 		scroll_rect.Left = 0;
@@ -615,6 +615,64 @@ static void erase_line(int mode)
 	FillConsoleOutputCharacterW(console->out, L' ', count, start, &num_written);
 }
 
+static void insert_line(int count)
+{
+	if (is_inside_scroll_area())
+	{
+		if (console->y + count > console->scroll_bottom)
+			erase_screen_lines(console->y, console->scroll_bottom);
+		else
+		{
+			CHAR_INFO fill_char;
+			fill_char.Attributes = DEFAULT_ATTRIBUTE;
+			fill_char.Char.UnicodeChar = L' ';
+			SMALL_RECT scroll_rect;
+			scroll_rect.Left = 0;
+			scroll_rect.Right = console->width - 1;
+			scroll_rect.Top = console->top + console->y;
+			scroll_rect.Bottom = console->top + console->scroll_bottom - count;
+			SMALL_RECT clip_rect;
+			clip_rect.Left = console->x;
+			clip_rect.Right = console->width - 1;
+			clip_rect.Top = console->top + console->y;
+			clip_rect.Bottom = console->top + console->scroll_bottom;
+			COORD origin;
+			origin.X = 0;
+			origin.Y = console->top + console->y + count;
+			ScrollConsoleScreenBufferW(console->out, &scroll_rect, &clip_rect, origin, &fill_char);
+		}
+	}
+}
+
+static void delete_line(int count)
+{
+	if (is_inside_scroll_area())
+	{
+		if (console->y + count > console->scroll_bottom)
+			erase_screen_lines(console->y, console->scroll_bottom);
+		else
+		{
+			CHAR_INFO fill_char;
+			fill_char.Attributes = DEFAULT_ATTRIBUTE;
+			fill_char.Char.UnicodeChar = L' ';
+			SMALL_RECT scroll_rect;
+			scroll_rect.Left = 0;
+			scroll_rect.Right = console->width - 1;
+			scroll_rect.Top = console->top + console->y + count;
+			scroll_rect.Bottom = console->top + console->scroll_bottom;
+			SMALL_RECT clip_rect;
+			clip_rect.Left = console->x;
+			clip_rect.Right = console->width - 1;
+			clip_rect.Top = console->top + console->y;
+			clip_rect.Bottom = console->top + console->scroll_bottom;
+			COORD origin;
+			origin.X = 0;
+			origin.Y = console->top + console->y;
+			ScrollConsoleScreenBufferW(console->out, &scroll_rect, &clip_rect, origin, &fill_char);
+		}
+	}
+}
+
 static void insert_character(int count)
 {
 	if (is_inside_scroll_area())
@@ -629,16 +687,16 @@ static void insert_character(int count)
 			SMALL_RECT scroll_rect;
 			scroll_rect.Left = console->x;
 			scroll_rect.Right = console->width - 1 - count;
-			scroll_rect.Top = console->y;
-			scroll_rect.Bottom = console->y;
+			scroll_rect.Top = console->top + console->y;
+			scroll_rect.Bottom = console->top + console->y;
 			SMALL_RECT clip_rect;
 			clip_rect.Left = console->x;
 			clip_rect.Right = console->width - 1;
-			clip_rect.Top = console->y;
-			clip_rect.Bottom = console->y;
+			clip_rect.Top = console->top + console->y;
+			clip_rect.Bottom = console->top + console->y;
 			COORD origin;
 			origin.X = console->x + count;
-			origin.Y = console->y;
+			origin.Y = console->top + console->y;
 			ScrollConsoleScreenBufferW(console->out, &scroll_rect, &clip_rect, origin, &fill_char);
 		}
 	}
@@ -658,16 +716,16 @@ static void delete_character(int count)
 			SMALL_RECT scroll_rect;
 			scroll_rect.Left = console->x + count;
 			scroll_rect.Right = console->width - 1;
-			scroll_rect.Top = console->y;
-			scroll_rect.Bottom = console->y;
+			scroll_rect.Top = console->top + console->y;
+			scroll_rect.Bottom = console->top + console->y;
 			SMALL_RECT clip_rect;
 			clip_rect.Left = console->x;
 			clip_rect.Right = console->width - 1;
-			clip_rect.Top = console->y;
-			clip_rect.Bottom = console->y;
+			clip_rect.Top = console->top + console->y;
+			clip_rect.Bottom = console->top + console->y;
 			COORD origin;
 			origin.X = console->x;
-			origin.Y = console->y;
+			origin.Y = console->top + console->y;
 			ScrollConsoleScreenBufferW(console->out, &scroll_rect, &clip_rect, origin, &fill_char);
 		}
 	}
@@ -828,6 +886,16 @@ static void control_escape_csi(char ch)
 			change_private_mode(console->params[0], 0);
 		else
 			change_mode(console->params[0], 0);
+		console->processor = NULL;
+		break;
+
+	case 'L': /* IL */
+		insert_line(console->params[0]? console->params[0]: 1);
+		console->processor = NULL;
+		break;
+
+	case 'M': /* DL */
+		delete_line(console->params[0]? console->params[0]: 1);
 		console->processor = NULL;
 		break;
 
