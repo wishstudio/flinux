@@ -477,7 +477,8 @@ static int winfs_getdents(struct file *f, void *dirent, size_t count, getdents_c
 		winfile->restart_scan = 0;
 		if (!NT_SUCCESS(status))
 		{
-			log_error("NtQueryDirectoryFile() failed, status: %x\n", status);
+			if (status != STATUS_NO_MORE_FILES)
+				log_error("NtQueryDirectoryFile() failed, status: %x\n", status);
 			break;
 		}
 		if (status_block.Information == 0)
