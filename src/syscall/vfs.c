@@ -880,7 +880,7 @@ DEFINE_SYSCALL(renameat2, int, olddirfd, const char *, oldpath, int, newdirfd, c
 DEFINE_SYSCALL(renameat, int, olddirfd, const char *, oldpath, int, newdirfd, const char *, newpath)
 {
 	log_info("renameat(%d, \"%s\", %d, \"%s\")\n", olddirfd, oldpath, newdirfd, newpath);
-	return sys_renameat(olddirfd, oldpath, newdirfd, newpath, 0);
+	return sys_renameat2(olddirfd, oldpath, newdirfd, newpath, 0);
 }
 
 DEFINE_SYSCALL(rename, const char *, oldpath, const char *, newpath)
