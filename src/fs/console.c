@@ -550,7 +550,7 @@ static void erase_line(int mode)
 	{
 		/* Erase to end */
 		start.X = console->x;
-		count = console->width - console->x + 1;
+		count = console->width - console->x;
 	}
 	else if (mode == 1)
 	{
