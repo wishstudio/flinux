@@ -610,25 +610,48 @@ static void control_escape_csi(char ch)
 			console->param_count++;
 		break;
 
-	case 'A':
+	case 'A': /* CUU */
 		move_up(console->params[0]? console->params[0]: 1);
 		console->processor = NULL;
 		break;
 
-	case 'B':
+	case 'B': /* CUD */
+	case 'e': /* VPR */
 		move_down(console->params[0]? console->params[0]: 1);
 		console->processor = NULL;
 		break;
 
-	case 'C':
+	case 'C': /* CUF */
+	case 'a': /* HPR */
 		move_right(console->params[0]? console->params[0]: 1);
 		console->processor = NULL;
 		break;
 
-	case 'D':
+	case 'D': /* CUB */
 		move_left(console->params[0]? console->params[0]: 1);
 		console->processor = NULL;
 		break;
+
+	case 'd': /* VPA */
+	{
+		int y = console->params[0]? console->params[0]: 1;
+		if (y > console->height)
+			y = console->height;
+		set_pos(console->x, y - 1);
+		console->processor = NULL;
+		break;
+	}
+
+	case 'G': /* CHA */
+	case '`': /* HPA */
+	{
+		int x = console->params[0] ? console->params[0] : 1;
+		if (x > console->width)
+			x = console->width;
+		set_pos(x - 1, console->y);
+		console->processor = NULL;
+		break;
+	}
 
 	case 'H':
 	case 'f':
