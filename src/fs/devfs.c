@@ -33,8 +33,13 @@ static int devfs_open(const char *path, int flags, int mode, struct file **fp, c
 {
 	if (*path == 0 || !strcmp(path, "."))
 	{
-		log_error("Opening /dev not handled.\n");
-		return -ENOENT;
+		if (fp)
+		{
+			log_error("Opening /dev not handled.\n");
+			return -ENOENT;
+		}
+		else
+			return 0;
 	}
 	else if (!strcmp(path, "null"))
 	{
