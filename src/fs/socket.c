@@ -33,6 +33,7 @@
 #include <malloc.h>
 #include <WinSock2.h>
 #include <mstcpip.h>
+#include <MSWSock.h>
 
 #pragma comment(lib, "ws2_32.lib")
 
@@ -111,11 +112,8 @@ static void socket_ensure_initialized()
 			log_error("WSAStartup() failed, error code: %d\n", r);
 			ExitProcess(1);
 		}
-		else
-		{
-			socket_inited = 1;
-			log_info("WinSock2 initialized, version: %d.%d\n", LOBYTE(wsa_data.wVersion), HIBYTE(wsa_data.wVersion));
-		}
+		socket_inited = 1;
+		log_info("WinSock2 initialized, version: %d.%d\n", LOBYTE(wsa_data.wVersion), HIBYTE(wsa_data.wVersion));
 	}
 }
 
@@ -135,6 +133,7 @@ struct socket_file
 	struct file base_file;
 	SOCKET socket;
 	HANDLE event_handle;
+	int type;
 	int events, connect_error;
 };
 
@@ -284,6 +283,62 @@ static int socket_recvfrom(struct socket_file *f, void *buf, size_t len, int fla
 	return r;
 }
 
+static int socket_recvmsg(struct socket_file *f, struct msghdr *msg, int flags)
+{
+	if (flags & ~LINUX_MSG_DONTWAIT)
+		log_error("socket_sendmsg(): flags (0x%x) contains unsupported bits.\n", flags);
+
+	typedef int(*PFNWSARECVMSG)(
+		_In_		SOCKET s,
+		_Inout_		LPWSAMSG lpMsg,
+		_Out_		LPDWORD lpdwNumberOfBytesRecvd,
+		_In_		LPWSAOVERLAPPED lpOverlapped,
+		_In_		LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine
+		);
+	static PFNWSARECVMSG WSARecvMsg;
+	if (!WSARecvMsg)
+	{
+		GUID guid = WSAID_WSARECVMSG;
+		DWORD bytes;
+		if (WSAIoctl(f->socket, SIO_GET_EXTENSION_FUNCTION_POINTER, &guid, sizeof(guid), &WSARecvMsg, sizeof(WSARecvMsg), &bytes, NULL, NULL) == SOCKET_ERROR)
+		{
+			log_error("WSAIoctl(WSARecvMsg) failed, error code: %d\n", WSAGetLastError());
+			return -EIO;
+		}
+	}
+
+	WSABUF *buffers = (WSABUF *)alloca(sizeof(struct iovec) * msg->msg_iovlen);
+	for (int i = 0; i < msg->msg_iovlen; i++)
+	{
+		buffers[i].len = msg->msg_iov[i].iov_len;
+		buffers[i].buf = msg->msg_iov[i].iov_base;
+	}
+	WSAMSG wsamsg;
+	wsamsg.name = msg->msg_name;
+	wsamsg.namelen = msg->msg_namelen;
+	wsamsg.lpBuffers = buffers;
+	wsamsg.dwBufferCount = msg->msg_iovlen;
+	wsamsg.Control.buf = msg->msg_control;
+	wsamsg.Control.len = msg->msg_controllen;
+	wsamsg.dwFlags = 0;
+
+	int r;
+	while ((r = socket_wait_event(f, FD_READ, flags)) == 0)
+	{
+		if (WSARecvMsg(f->socket, &wsamsg, &r, NULL, NULL) != SOCKET_ERROR)
+			break;
+		int err = WSAGetLastError();
+		if (err != WSAEWOULDBLOCK)
+		{
+			log_warning("WSARecvMsg() failed, error code: %d\n", err);
+			return translate_socket_error(err);
+		}
+		f->events &= ~FD_READ;
+	}
+	/* TODO: Translate WSAMSG output to msghdr */
+	return r;
+}
+
 static int socket_close(struct file *f)
 {
 	struct socket_file *socket_file = (struct socket_file *) f;
@@ -350,6 +405,8 @@ static int mm_check_read_msghdr(const struct msghdr *msg)
 {
 	if (!mm_check_read(msg, sizeof(struct msghdr)))
 		return 0;
+	if (msg->msg_namelen && !mm_check_read(msg->msg_name, msg->msg_namelen))
+		return 0;
 	if (msg->msg_iovlen && !mm_check_read(msg->msg_iov, sizeof(struct iovec) * msg->msg_iovlen))
 		return 0;
 	if (msg->msg_controllen && !mm_check_read(msg->msg_control, msg->msg_controllen))
@@ -358,6 +415,25 @@ static int mm_check_read_msghdr(const struct msghdr *msg)
 	{
 		log_info("iov %d: [%p, %p)\n", i, msg->msg_iov[i].iov_base, (uintptr_t)msg->msg_iov[i].iov_base + msg->msg_iov[i].iov_len);
 		if (!mm_check_read(msg->msg_iov[i].iov_base, msg->msg_iov[i].iov_len))
+			return 0;
+	}
+	return 1;
+}
+
+static int mm_check_write_msghdr(struct msghdr *msg)
+{
+	if (!mm_check_write(msg, sizeof(struct msghdr)))
+		return 0;
+	if (msg->msg_namelen && !mm_check_write(msg->msg_name, msg->msg_namelen))
+		return 0;
+	if (msg->msg_iovlen && !mm_check_write(msg->msg_iov, sizeof(struct iovec) * msg->msg_iovlen))
+		return 0;
+	if (msg->msg_controllen & !mm_check_write(msg->msg_control, msg->msg_controllen))
+		return 0;
+	for (int i = 0; i < msg->msg_iovlen; i++)
+	{
+		log_info("iov %d: [%p, %p)\n", i, msg->msg_iov[i].iov_base, (uintptr_t)msg->msg_iov[i].iov_base + msg->msg_iov[i].iov_len);
+		if (!mm_check_write(msg->msg_iov[i].iov_base, msg->msg_iov[i].iov_len))
 			return 0;
 	}
 	return 1;
@@ -405,6 +481,7 @@ DEFINE_SYSCALL(socket, int, domain, int, type, int, protocol)
 	f->base_file.ref = 1;
 	f->socket = sock;
 	f->event_handle = event_handle;
+	f->type = (type & LINUX_SOCK_TYPE_MASK);
 	f->events = 0;
 	f->connect_error = 0;
 	f->base_file.flags = O_RDWR;
@@ -545,6 +622,30 @@ DEFINE_SYSCALL(recvfrom, int, sockfd, void *, buf, size_t, len, int, flags, stru
 	return socket_recvfrom(f, buf, len, flags, src_addr, addrlen);
 }
 
+DEFINE_SYSCALL(shutdown, int, sockfd, int, how)
+{
+	log_info("shutdown(%d, %d)\n", sockfd, how);
+	struct socket_file *f;
+	int r = get_sockfd(sockfd, &f);
+	if (r < 0)
+		return r;
+	int win32_how;
+	if (how == SHUT_RD)
+		win32_how = SD_RECEIVE;
+	else if (how == SHUT_WR)
+		win32_how = SD_SEND;
+	else if (how == SHUT_RDWR)
+		win32_how = SD_BOTH;
+	else
+		return -EINVAL;
+	if (shutdown(f->socket, win32_how) == SOCKET_ERROR)
+	{
+		log_warning("shutdown() failed, error code: %d\n", WSAGetLastError());
+		return translate_socket_error(WSAGetLastError());
+	}
+	return 0;
+}
+
 static int socket_get_set_sockopt(int call, struct socket_file *f, int level, int optname, const void *set_optval, int set_optlen, void *get_optval, int *get_optlen)
 {
 	int in_level = level, in_optname = optname;
@@ -621,7 +722,7 @@ DEFINE_SYSCALL(getsockopt, int, sockfd, int, level, int, optname, void *, optval
 
 DEFINE_SYSCALL(sendmsg, int, sockfd, const struct msghdr *, msg, int, flags)
 {
-	log_info("sendmsg(%d, %p)\n", sockfd, msg);
+	log_info("sendmsg(%d, %p, %x)\n", sockfd, msg, flags);
 	if (!mm_check_read_msghdr(msg))
 		return -EFAULT;
 	struct socket_file *f;
@@ -629,6 +730,18 @@ DEFINE_SYSCALL(sendmsg, int, sockfd, const struct msghdr *, msg, int, flags)
 	if (r)
 		return r;
 	return socket_sendmsg(f, msg, flags);
+}
+
+DEFINE_SYSCALL(recvmsg, int, sockfd, struct msghdr *, msg, int, flags)
+{
+	log_info("recvmsg(%d, %p, %x)\n", sockfd, msg, flags);
+	if (!mm_check_write_msghdr(msg))
+		return -EFAULT;
+	struct socket_file *f;
+	int r = get_sockfd(sockfd, &f);
+	if (r < 0)
+		return r;
+	return socket_recvmsg(f, msg, flags);
 }
 
 DEFINE_SYSCALL(sendmmsg, int, sockfd, struct mmsghdr *, msgvec, unsigned int, vlen, unsigned int, flags)
@@ -707,6 +820,9 @@ DEFINE_SYSCALL(socketcall, int, call, uintptr_t *, args)
 	case SYS_RECVFROM:
 		return sys_recvfrom(args[0], (void *)args[1], args[2], args[3], (struct sockaddr *)args[4], (int *)args[5]);
 
+	case SYS_SHUTDOWN:
+		return sys_shutdown(args[0], args[1]);
+
 	case SYS_SETSOCKOPT:
 		return sys_setsockopt(args[0], args[1], args[2], (const void *)args[3], args[4]);
 
@@ -715,6 +831,9 @@ DEFINE_SYSCALL(socketcall, int, call, uintptr_t *, args)
 
 	case SYS_SENDMSG:
 		return sys_sendmsg(args[0], (const struct msghdr *)args[1], args[2]);
+
+	case SYS_RECVMSG:
+		return sys_recvmsg(args[0], (struct msghdr *)args[1], args[2]);
 
 	case SYS_SENDMMSG:
 		return sys_sendmmsg(args[0], (struct mmsghdr *)args[1], args[2], args[3]);

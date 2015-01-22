@@ -197,3 +197,7 @@ struct mmsghdr {
 	unsigned int msg_len;
 };
 
+/* For shutdown */
+#define SHUT_RD		0
+#define SHUT_WR		1
+#define SHUT_RDWR	2
