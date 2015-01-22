@@ -416,6 +416,48 @@ DEFINE_SYSCALL(pwritev, int, fd, const struct iovec *, iov, int, iovcnt, off_t, 
 		return -EBADF;
 }
 
+DEFINE_SYSCALL(truncate, const char *, path, off_t, length)
+{
+	log_info("truncate(\"%s\", %p)\n", path, length);
+	struct file *f;
+	int r = vfs_openat(AT_FDCWD, path, O_WRONLY, 0, &f);
+	if (r < 0)
+		return r;
+	r = f->op_vtable->truncate(f, length);
+	vfs_release(f);
+	return r;
+}
+
+DEFINE_SYSCALL(ftruncate, int, fd, off_t, length)
+{
+	log_info("ftruncate(%d, %p)\n", fd, length);
+	struct file *f = vfs_get(fd);
+	if (!f)
+		return -EBADF;
+	return f->op_vtable->truncate(f, length);
+}
+
+DEFINE_SYSCALL(truncate64, const char *, path, loff_t, length)
+{
+	log_info("truncate64(\"%s\", %lld)\n", path, length);
+	struct file *f;
+	int r = vfs_openat(AT_FDCWD, path, O_WRONLY, 0, &f);
+	if (r < 0)
+		return r;
+	r = f->op_vtable->truncate(f, length);
+	vfs_release(f);
+	return r;
+}
+
+DEFINE_SYSCALL(ftruncate64, int, fd, loff_t, length)
+{
+	log_info("ftruncate(%d, %lld)\n", fd, length);
+	struct file *f = vfs_get(fd);
+	if (!f)
+		return -EBADF;
+	return f->op_vtable->truncate(f, length);
+}
+
 DEFINE_SYSCALL(fsync, int, fd)
 {
 	log_info("fsync(%d)\n", fd);

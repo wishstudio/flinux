@@ -359,6 +359,23 @@ static size_t winfs_readlink(struct file *f, char *target, size_t buflen)
 	return winfs_read_symlink(winfile->handle, target, (int)buflen);
 }
 
+static int winfs_truncate(struct file *f, loff_t length)
+{
+	struct winfs_file *winfile = (struct winfs_file *) f;
+	/* TODO: Correct errno */
+	FILE_END_OF_FILE_INFORMATION info;
+	info.EndOfFile.QuadPart = length;
+	IO_STATUS_BLOCK status_block;
+	NTSTATUS status;
+	status = NtSetInformationFile(winfile->handle, &status_block, &info, sizeof(info), FileEndOfFileInformation);
+	if (!NT_SUCCESS(status))
+	{
+		log_warning("NtSetInformationFile(FileEndOfFileInformation) failed, status: %x\n", status);
+		return -EIO;
+	}
+	return 0;
+}
+
 static int winfs_fsync(struct file *f)
 {
 	struct winfs_file *winfile = (struct winfs_file *) f;
@@ -589,6 +606,7 @@ static struct file_ops winfs_ops =
 	.pread = winfs_pread,
 	.pwrite = winfs_pwrite,
 	.readlink = winfs_readlink,
+	.truncate = winfs_truncate,
 	.fsync = winfs_fsync,
 	.llseek = winfs_llseek,
 	.stat = winfs_stat,
