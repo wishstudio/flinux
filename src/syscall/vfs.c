@@ -1520,6 +1520,12 @@ DEFINE_SYSCALL(fcntl, int, fd, int, cmd, int, arg)
 		log_info("F_GETFL: %x\n", f->flags);
 		return f->flags;
 	}
+	case F_SETFL:
+	{
+		log_info("F_SETFL: %x\n", arg);
+		log_error("F_SETFL not supported.\n");
+		return 0;
+	}
 
 	default:
 		log_error("Unsupported command: %d\n", cmd);
