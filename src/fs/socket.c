@@ -17,6 +17,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <common/errno.h>
 #include <common/fcntl.h>
 #include <common/net.h>
 #include <common/socket.h>
@@ -26,7 +27,6 @@
 #include <syscall/mm.h>
 #include <syscall/syscall.h>
 #include <syscall/vfs.h>
-#include <errno.h>
 #include <heap.h>
 #include <log.h>
 

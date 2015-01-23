@@ -17,12 +17,12 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <common/errno.h>
 #include <common/ldt.h>
 #include <common/prctl.h>
 #include <syscall/mm.h>
 #include <syscall/syscall.h>
 #include <syscall/tls.h>
-#include <errno.h>
 #include <intrin.h>
 #include <log.h>
 #include <platform.h>

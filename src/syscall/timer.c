@@ -17,11 +17,11 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <common/errno.h>
 #include <syscall/mm.h>
 #include <syscall/syscall.h>
 #include <syscall/timer.h>
 #include <datetime.h>
-#include <errno.h>
 #include <log.h>
 
 #define WIN32_LEAN_AND_MEAN
