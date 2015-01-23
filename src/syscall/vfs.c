@@ -1522,8 +1522,11 @@ DEFINE_SYSCALL(fcntl, int, fd, int, cmd, int, arg)
 	}
 	case F_SETFL:
 	{
-		log_info("F_SETFL: %x\n", arg);
-		log_error("F_SETFL not supported.\n");
+		log_info("F_SETFL: 0%o\n", arg);
+		if ((arg & O_APPEND) || (arg & FASYNC) || (arg & O_DIRECT) || (arg & O_NOATIME))
+			log_error("flags contain unsupported bits.\n");
+		else
+			f->flags = (f->flags & ~O_NONBLOCK) | (arg & O_NONBLOCK);
 		return 0;
 	}
 
@@ -1533,9 +1536,9 @@ DEFINE_SYSCALL(fcntl, int, fd, int, cmd, int, arg)
 	}
 }
 
-DEFINE_SYSCALL(fcntl64, int, fd, int, cmd)
+DEFINE_SYSCALL(fcntl64, int, fd, int, cmd, int, arg)
 {
-	return sys_fcntl(fd, cmd, 0);
+	return sys_fcntl(fd, cmd, arg);
 }
 
 DEFINE_SYSCALL(faccessat, int, dirfd, const char *, pathname, int, mode, int, flags)
