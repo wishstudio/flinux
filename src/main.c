@@ -80,6 +80,8 @@ void main()
 	ENV("TERM=xterm");
 	char *env1 = envbuf;
 	ENV("HOME=/root");
+	char *env2 = envbuf;
+	ENV("DISPLAY=127.0.0.1:0");
 	int argc = 0;
 	const char **argv = (const char **)ALIGN_TO(envbuf, sizeof(void*));
 
@@ -104,10 +106,11 @@ void main()
 		}
 	argv[argc] = NULL;
 	const char **envp = argv + argc + 1;
-	int env_size = 2;
+	int env_size = 3;
 	envp[0] = env0;
 	envp[1] = env1;
-	envp[2] = NULL;
+	envp[2] = env2;
+	envp[3] = NULL;
 	char *buffer_base = (char*)(envp + env_size + 1);
 
 	const char *filename = NULL;
