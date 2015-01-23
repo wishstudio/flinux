@@ -261,7 +261,7 @@ static int socket_sendmsg(struct socket_file *f, const struct msghdr *msg, int f
 	return r;
 }
 
-static int socket_recvfrom(struct socket_file *f, void *buf, size_t len, int flags, struct sockaddr *src_addr, int addrlen)
+static int socket_recvfrom(struct socket_file *f, void *buf, size_t len, int flags, struct sockaddr *src_addr, int *addrlen)
 {
 	if (flags & ~(LINUX_MSG_PEEK | LINUX_MSG_DONTWAIT))
 		log_error("flags (0x%x) contains unsupported bits.\n", flags);
@@ -287,6 +287,20 @@ static int socket_recvmsg(struct socket_file *f, struct msghdr *msg, int flags)
 {
 	if (flags & ~LINUX_MSG_DONTWAIT)
 		log_error("socket_sendmsg(): flags (0x%x) contains unsupported bits.\n", flags);
+
+	if (f->type != LINUX_SOCK_DGRAM && f->type != LINUX_SOCK_RAW)
+	{
+		/* WSARecvMsg() only supports datagram and raw sockets
+		 * For other types we emulate using recvfrom()
+		 */
+		/* TODO: MSG_WAITALL
+		 * Per documentation, MSG_WAITALL should only return one type of message, i.e. only from one addr
+		 * But in this case (TCP) this should be true
+		 */
+		msg->msg_controllen = 0;
+		msg->msg_flags = 0; /* TODO */
+		return socket_recvfrom(f, msg->msg_iov[0].iov_base, msg->msg_iov[0].iov_len, flags, msg->msg_name, &msg->msg_namelen);
+	}
 
 	typedef int(*PFNWSARECVMSG)(
 		_In_		SOCKET s,
@@ -327,13 +341,13 @@ static int socket_recvmsg(struct socket_file *f, struct msghdr *msg, int flags)
 	{
 		if (WSARecvMsg(f->socket, &wsamsg, &r, NULL, NULL) != SOCKET_ERROR)
 			break;
+		f->events &= ~FD_READ;
 		int err = WSAGetLastError();
 		if (err != WSAEWOULDBLOCK)
 		{
 			log_warning("WSARecvMsg() failed, error code: %d\n", err);
 			return translate_socket_error(err);
 		}
-		f->events &= ~FD_READ;
 	}
 	/* TODO: Translate WSAMSG output to msghdr */
 	return r;
@@ -441,7 +455,7 @@ static int mm_check_write_msghdr(struct msghdr *msg)
 
 DEFINE_SYSCALL(socket, int, domain, int, type, int, protocol)
 {
-	log_info("socket(domain=%d, type=%d, protocol=%d)\n", domain, type, protocol);
+	log_info("socket(domain=%d, type=0%o, protocol=%d)\n", domain, type, protocol);
 	socket_ensure_initialized();
 
 	/* Translation constants to their Windows counterparts */
