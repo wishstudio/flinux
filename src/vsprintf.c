@@ -119,6 +119,13 @@ int kvsprintf(char *buffer, const char *format, va_list args)
 				continue;
 			}
 
+			case 'o':
+			{
+				format = f;
+				PRINT_NUM(buf, va_arg(args, uint32_t), uint32_t, uint32_t, 8, lowercase, width, fillchar);
+				continue;
+			}
+
 			case 'x':
 			{
 				format = f;
