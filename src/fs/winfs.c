@@ -358,7 +358,7 @@ static size_t winfs_readlink(struct file *f, char *target, size_t buflen)
 	int r = winfs_read_symlink(winfile->handle, target, (int)buflen);
 	if (r == 0)
 		return -EINVAL;
-	return 0;
+	return r;
 }
 
 static int winfs_truncate(struct file *f, loff_t length)
