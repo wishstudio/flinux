@@ -464,6 +464,8 @@ DEFINE_SYSCALL(fsync, int, fd)
 	struct file *f = vfs_get(fd);
 	if (!f)
 		return -EBADF;
+	if (!f->op_vtable->fsync)
+		return -EINVAL;
 	return f->op_vtable->fsync(f);
 }
 
@@ -473,6 +475,8 @@ DEFINE_SYSCALL(fdatasync, int, fd)
 	struct file *f = vfs_get(fd);
 	if (!f)
 		return -EBADF;
+	if (!f->op_vtable->fsync)
+		return -EINVAL;
 	return f->op_vtable->fsync(f);
 }
 
