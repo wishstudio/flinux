@@ -54,6 +54,7 @@ struct binfmt
 {
 	char *buffer_base;
 	const char *argv0, *argv1;
+	BOOL replace_argv0;
 	struct elf_header *executable, *interpreter;
 };
 
@@ -289,6 +290,7 @@ static int load_script(struct file *f, struct binfmt *binary)
 			*p = 0;
 		}
 	}
+	binary->replace_argv0 = TRUE;
 
 	struct file *fe;
 	int r = vfs_openat(AT_FDCWD, executable, O_RDONLY, 0, &fe);
@@ -326,6 +328,7 @@ int do_execve(const char *filename, int argc, char *argv[], int env_size, char *
 	struct binfmt binary;
 	binary.argv0 = NULL;
 	binary.argv1 = NULL;
+	binary.replace_argv0 = FALSE;
 	binary.buffer_base = buffer_base;
 	binary.executable = NULL;
 	binary.interpreter = NULL;
@@ -345,6 +348,8 @@ int do_execve(const char *filename, int argc, char *argv[], int env_size, char *
 		return r;
 
 	/* Execute file */
+	if (binary.replace_argv0)
+		argv[0] = filename;
 	run(&binary, argc, argv, env_size, envp);
 	return 0;
 }
