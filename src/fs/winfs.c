@@ -355,8 +355,10 @@ static size_t winfs_pwrite(struct file *f, const char *buf, size_t count, loff_t
 static size_t winfs_readlink(struct file *f, char *target, size_t buflen)
 {
 	struct winfs_file *winfile = (struct winfs_file *) f;
-	/* TODO: Correct errno */
-	return winfs_read_symlink(winfile->handle, target, (int)buflen);
+	int r = winfs_read_symlink(winfile->handle, target, (int)buflen);
+	if (r == 0)
+		return -EINVAL;
+	return 0;
 }
 
 static int winfs_truncate(struct file *f, loff_t length)
