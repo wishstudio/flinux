@@ -24,6 +24,7 @@ PUBLIC mm_check_read_begin, mm_check_read_end, mm_check_read_fail
 mm_check_read PROC check_addr, check_size
 	mov edx, check_addr
 	mov ecx, check_size
+	jecxz SUCC
 
 mm_check_read_begin LABEL PTR
 	mov al, byte ptr [edx]
@@ -82,6 +83,7 @@ PUBLIC mm_check_write_begin, mm_check_write_end, mm_check_write_fail
 mm_check_write PROC check_addr, check_size
 	mov edx, check_addr
 	mov ecx, check_size
+	jecxz SUCC
 	
 mm_check_write_begin LABEL PTR
 	mov al, byte ptr [edx]

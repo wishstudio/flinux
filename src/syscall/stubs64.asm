@@ -145,6 +145,7 @@ mm_check_read PROC ; check_addr: QWORD, check_size: QWORD
 	xchg rcx, rdx
 	; rcx = check_size
 	; rdx = check_addr
+	jrcxz SUCC
 
 mm_check_read_begin LABEL PTR
 	mov al, byte ptr [rdx]
@@ -204,6 +205,7 @@ mm_check_write PROC ; check_addr: QWORD, check_size: QWORD
 	xchg rcx, rdx
 	; rcx = check_size
 	; rdx = check_addr
+	jrcxz SUCC
 	
 mm_check_write_begin LABEL PTR
 	mov al, byte ptr [rdx]
