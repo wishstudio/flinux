@@ -107,6 +107,23 @@ dbt_find_indirect_internal PROC
 	ret
 dbt_find_indirect_internal ENDP
 
+EXTERN dbt_cpuid:NEAR
+dbt_cpuid_internal PROC
+	; Allocate buffer
+	lea esp, [esp-4*4]
+	; Push arguments
+	push esp
+	push ecx
+	push eax
+	call dbt_cpuid
+	mov eax, [esp+4*3 + 0]
+	mov ebx, [esp+4*3 + 4]
+	mov ecx, [esp+4*3 + 8]
+	mov edx, [esp+4*3 + 12]
+	lea esp, [esp+4*7]
+	ret
+dbt_cpuid_internal ENDP
+
 EXTERN sys_unimplemented_imp:NEAR
 sys_unimplemented PROC
 	push eax

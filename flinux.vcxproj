@@ -54,6 +54,7 @@
     <ClInclude Include="src\core\core.h" />
     <ClInclude Include="src\core\forward_list.h" />
     <ClInclude Include="src\datetime.h" />
+    <ClInclude Include="src\dbt\cpuid.h" />
     <ClInclude Include="src\dbt\x86.h" />
     <ClInclude Include="src\dbt\x86_inst.h" />
     <ClInclude Include="src\fs\console.h" />
@@ -85,6 +86,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\datetime.c" />
+    <ClCompile Include="src\dbt\cpuid.c" />
     <ClCompile Include="src\dbt\x86.c" />
     <ClCompile Include="src\fs\console.c" />
     <ClCompile Include="src\fs\devfs.c" />

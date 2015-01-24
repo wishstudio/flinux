@@ -584,6 +584,7 @@ static struct dbt_block *dbt_translate(size_t pc)
 	extern void dbt_restore_simd_state();
 
 	extern void dbt_find_indirect_internal();
+	extern void dbt_cpuid_internal();
 
 	struct dbt_block *block = alloc_block();
 	if (!block) /* The cache is full */
@@ -1052,6 +1053,12 @@ done_prefix:
 			/* mov temp_reg, fs:[scratch] */
 			gen_fs_prefix(&out);
 			gen_mov_r_rm_32(&out, temp_reg, modrm_rm_disp(dbt->tls_scratch_offset));
+			break;
+		}
+		
+		case INST_CPUID:
+		{
+			gen_call(&out, &dbt_cpuid_internal);
 			break;
 		}
 		}

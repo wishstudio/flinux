@@ -51,6 +51,7 @@
 #define INST_INT				(INST_TYPE_SPECIAL + 24)
 #define INST_MOV_FROM_SEG		(INST_TYPE_SPECIAL + 25)
 #define INST_MOV_TO_SEG			(INST_TYPE_SPECIAL + 26)
+#define INST_CPUID				(INST_TYPE_SPECIAL + 27)
 
 #define REG_AX			0x00000001 /* AL, AH, AX, EAX, RAX register */
 #define REG_CX			0x00000002 /* CL, CH, CX, ECX, RCX register */
@@ -1109,7 +1110,7 @@ static const struct instruction_desc two_byte_inst[256] =
 	/* 0x9F: SETG/SETNLE r/m8 */ INST(MODRM(), WRITE(MODRM_RM))
 	/* 0xA0: ??? */ UNKNOWN()
 	/* 0xA1: POP FS */ UNSUPPORTED()
-	/* 0xA2: CPUID */ INST(READ(REG_AX | REG_BX | REG_CX | REG_DX), WRITE(REG_AX | REG_BX | REG_CX | REG_DX))
+	/* 0xA2: CPUID */ SPECIAL(INST_CPUID, READ(REG_AX | REG_BX | REG_CX | REG_DX), WRITE(REG_AX | REG_BX | REG_CX | REG_DX))
 	/* 0xA3: BT r/m?, r? */ INST(MODRM(), READ(MODRM_R | MODRM_RM))
 	/* 0xA4: SHLD r/m?, r?, imm8 */ INST(MODRM(), IMM(1), READ(MODRM_RM | MODRM_R), WRITE(MODRM_RM))
 	/* 0xA5: SHLD r/m?, r?, CL */ INST(MODRM(), READ(MODRM_RM | MODRM_R | REG_CX), WRITE(MODRM_RM))

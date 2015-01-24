@@ -196,6 +196,9 @@
     <ClInclude Include="src\common\sysinfo.h">
       <Filter>common</Filter>
     </ClInclude>
+    <ClInclude Include="src\dbt\cpuid.h">
+      <Filter>dbt</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
@@ -257,6 +260,9 @@
     </ClCompile>
     <ClCompile Include="src\fs\random.c">
       <Filter>fs</Filter>
+    </ClCompile>
+    <ClCompile Include="src\dbt\cpuid.c">
+      <Filter>dbt</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
