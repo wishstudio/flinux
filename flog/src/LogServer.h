@@ -19,7 +19,7 @@
 
 #pragma once
 
-#define LOG_BUFFER_SIZE	4096
+#define LOG_BUFFER_SIZE	65536
 
 #define WM_NEWCLIENT	WM_USER + 1
 #define WM_LOGRECEIVE	WM_USER + 2
