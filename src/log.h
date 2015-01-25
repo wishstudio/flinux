@@ -19,24 +19,17 @@
 
 #pragma once
 
-#ifdef _DEBUG
-
 void log_init();
 void log_shutdown();
-void log_raw(const char *format, ...);
-void log_debug(const char *format, ...);
-void log_info(const char *format, ...);
-void log_warning(const char *format, ...);
-void log_error(const char *format, ...);
+void log_raw_internal(const char *format, ...);
+void log_debug_internal(const char *format, ...);
+void log_info_internal(const char *format, ...);
+void log_warning_internal(const char *format, ...);
+void log_error_internal(const char *format, ...);
 
-#else
-
-#define log_init() ((void*)0)
-#define log_shutdown() ((void*)0)
-#define log_raw(format, ...) ((void*)0)
-#define log_debug(format, ...) ((void*)0)
-#define log_info(format, ...) ((void*)0)
-#define log_warning(format, ...) ((void*)0)
-#define log_error(format, ...) ((void*)0)
-
-#endif
+extern int logger_attached;
+#define log_raw(format, ...) do { if (logger_attached) log_raw_internal(format, __VA_ARGS__); } while (0)
+#define log_debug(format, ...) do { if (logger_attached) log_debug_internal(format, __VA_ARGS__); } while (0)
+#define log_info(format, ...) do { if (logger_attached) log_info_internal(format, __VA_ARGS__); } while (0)
+#define log_warning(format, ...) do { if (logger_attached) log_warning_internal(format, __VA_ARGS__); } while (0)
+#define log_error(format, ...) do { if (logger_attached) log_error_internal(format, __VA_ARGS__); } while (0)

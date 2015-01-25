@@ -164,6 +164,8 @@ int kvsprintf(char *buffer, const char *format, va_list args)
 			}
 			}
 		}
+		else if (*format == '\n')
+			*buf++ = '\r';
 		*buf++ = *format++;
 	}
 	return (int)(buf - buffer);

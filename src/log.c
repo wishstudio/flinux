@@ -17,6 +17,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <common/types.h>
 #include <log.h>
 #include <vsprintf.h>
 
@@ -24,36 +25,71 @@
 #include <Windows.h>
 #include <stdarg.h>
 
-#ifdef _DEBUG
+int logger_attached;
+static HANDLE hLoggerPipe;
+static char buffer[1024];
 
-#define BUFFER_SIZE 1024
-static HANDLE hFile;
-static char buffer[BUFFER_SIZE];
+#define PROTOCOL_VERSION	1
+#define PROTOCOL_MAGIC		'flog'
+struct request
+{
+	uint32_t magic;
+	uint32_t version;
+	uint32_t pid;
+	uint32_t tid;
+};
+
 
 void log_init()
 {
-	char filename[13] = "flinux-?.log";
-	for (char i = '0'; i <= '9'; i++)
+	LPCWSTR pipeName = L"\\\\.\\pipe\\flog_server";
+	for (;;)
 	{
-		filename[7] = i;
-		hFile = CreateFileA(filename, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_DELETE, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-		if (hFile != INVALID_HANDLE_VALUE)
+		hLoggerPipe = CreateFileW(pipeName, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+		if (hLoggerPipe != INVALID_HANDLE_VALUE)
+		{
+			/* Send initial request */
+			struct request request;
+			request.magic = PROTOCOL_MAGIC;
+			request.version = PROTOCOL_VERSION;
+			request.pid = GetProcessId(GetCurrentProcess());
+			request.tid = GetThreadId(GetCurrentThread());
+			DWORD written;
+			if (!WriteFile(hLoggerPipe, &request, sizeof(request), &written, NULL))
+			{
+				CloseHandle(hLoggerPipe);
+				logger_attached = 0;
+			}
+			else
+				logger_attached = 1;
 			break;
+		}
+		/* Non critical error code, just wait and try connecting again */
+		if (GetLastError() != ERROR_PIPE_BUSY || !WaitNamedPipeW(pipeName, NMPWAIT_WAIT_FOREVER))
+		{
+			logger_attached = 0;
+			break;
+		}
 	}
 }
 
 void log_shutdown()
 {
-	CloseHandle(hFile);
+	if (logger_attached)
+		CloseHandle(hLoggerPipe);
 }
 
-void log_raw(const char *format, ...)
+void log_raw_internal(const char *format, ...)
 {
 	va_list ap;
 	va_start(ap, format);
 	int size = kvsprintf(buffer, format, ap);
 	DWORD bytes_written;
-	WriteFile(hFile, buffer, size, &bytes_written, NULL);
+	if (!WriteFile(hLoggerPipe, buffer, size, &bytes_written, NULL))
+	{
+		CloseHandle(hLoggerPipe);
+		logger_attached = 0;
+	}
 }
 
 static void log_internal(char *type, const char *format, va_list ap)
@@ -65,35 +101,37 @@ static void log_internal(char *type, const char *format, va_list ap)
 	buffer[4] = ' ';
 	int size = 5 + kvsprintf(buffer + 5, format, ap);
 	DWORD bytes_written;
-	WriteFile(hFile, buffer, size, &bytes_written, NULL);
+	if (!WriteFile(hLoggerPipe, buffer, size, &bytes_written, NULL))
+	{
+		CloseHandle(hLoggerPipe);
+		logger_attached = 0;
+	}
 }
 
-void log_debug(const char *format, ...)
+void log_debug_internal(const char *format, ...)
 {
 	va_list ap;
 	va_start(ap, format);
 	log_internal('D', format, ap);
 }
 
-void log_info(const char *format, ...)
+void log_info_internal(const char *format, ...)
 {
 	va_list ap;
 	va_start(ap, format);
 	log_internal('I', format, ap);
 }
 
-void log_warning(const char *format, ...)
+void log_warning_internal(const char *format, ...)
 {
 	va_list ap;
 	va_start(ap, format);
 	log_internal('W', format, ap);
 }
 
-void log_error(const char *format, ...)
+void log_error_internal(const char *format, ...)
 {
 	va_list ap;
 	va_start(ap, format);
 	log_internal('E', format, ap);
 }
-
-#endif
