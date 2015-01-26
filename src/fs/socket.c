@@ -107,21 +107,26 @@ static int translate_socket_addr_to_winsock(const struct linux_sockaddr_storage 
 		return SOCKET_ERROR;
 	switch (from->ss_family)
 	{
+	case LINUX_AF_UNSPEC:
+		memset(to, 0, addrlen);
+		return addrlen;
+
 	case LINUX_AF_INET:
-		if (addrlen != sizeof(struct sockaddr_in))
+		if (addrlen < sizeof(struct sockaddr_in))
 			return SOCKET_ERROR;
 		memcpy(to, from, addrlen);
 		return addrlen;
 
 	case LINUX_AF_INET6:
-		if (addrlen != sizeof(struct sockaddr_in6))
+		if (addrlen < sizeof(struct sockaddr_in6))
 			return SOCKET_ERROR;
 		memcpy(to, from, addrlen);
 		to->ss_family = AF_INET6;
 		return addrlen;
 		
 	default:
-		return addrlen;
+		log_error("Unknown address family: %d\n", from->ss_family);
+		return SOCKET_ERROR;
 	}
 }
 
