@@ -394,28 +394,28 @@ DEFINE_SYSCALL(prctl, int, option, uintptr_t, arg2, uintptr_t, arg3, uintptr_t, 
 {
 	log_info("prctl(%d)\n", option);
 	log_error("prctl() not implemented.\n");
-	return -ENOSYS;
+	return 0;
 }
 
 DEFINE_SYSCALL(capget, void *, header, void *, data)
 {
 	log_info("capget(%p, %p)\n", header, data);
 	log_error("capget() not implemented.\n");
-	return -ENOSYS;
+	return 0;
 }
 
 DEFINE_SYSCALL(capset, void *, header, const void *, data)
 {
 	log_info("capset(%p, %p)\n", header, data);
 	log_error("capset() not implemented.\n");
-	return -ENOSYS;
+	return 0;
 }
 
 DEFINE_SYSCALL(prlimit64, pid_t, pid, int, resource, const struct rlimit64 *, new_limit, struct rlimit64 *, old_limit)
 {
 	log_info("prlimit64(pid=%d, resource=%d, new_limit=%p, old_limit=%p)\n", pid, resource, new_limit, old_limit);
 	log_error("prlimit64() not implemented.\n");
-	return -ENOSYS;
+	return 0;
 }
 
 DEFINE_SYSCALL(getcpu, unsigned int *, cpu, unsigned int *, node, void *, tcache)
