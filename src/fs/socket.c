@@ -101,6 +101,42 @@ static int translate_socket_error(int error)
 	}
 }
 
+static int translate_socket_addr_to_winsock(const struct linux_sockaddr_storage *from, struct linux_sockaddr_storage *to, int addrlen)
+{
+	if (addrlen < sizeof(from->ss_family))
+		return SOCKET_ERROR;
+	switch (from->ss_family)
+	{
+	case LINUX_AF_INET:
+		if (addrlen != sizeof(struct sockaddr_in))
+			return SOCKET_ERROR;
+		memcpy(to, from, addrlen);
+		return addrlen;
+
+	case LINUX_AF_INET6:
+		if (addrlen != sizeof(struct sockaddr_in6))
+			return SOCKET_ERROR;
+		memcpy(to, from, addrlen);
+		to->ss_family = AF_INET6;
+		return addrlen;
+		
+	default:
+		return addrlen;
+	}
+}
+
+/* Caller ensures the input is correct */
+static int translate_socket_addr_to_linux(struct linux_sockaddr_storage *addr, int addrlen)
+{
+	switch (addr->ss_family)
+	{
+	case AF_INET6:
+		addr->ss_family = LINUX_AF_INET6;
+		break;
+	}
+	return addrlen;
+}
+
 static int socket_inited;
 
 static void socket_ensure_initialized()
@@ -211,6 +247,15 @@ static int socket_sendto(struct socket_file *f, const void *buf, size_t len, int
 {
 	if (flags & ~LINUX_MSG_DONTWAIT)
 		log_error("flags (0x%x) contains unsupported bits.\n", flags);
+	struct sockaddr_storage addr_storage;
+	if (addrlen)
+	{
+		if ((addrlen = translate_socket_addr_to_winsock(dest_addr, &addr_storage, addrlen)) == SOCKET_ERROR)
+			return -EINVAL;
+		dest_addr = (const struct sockaddr *)&addr_storage;
+	}
+	else
+		dest_addr = NULL;
 	int r;
 	while ((r = socket_wait_event(f, FD_WRITE, flags)) == 0)
 	{
@@ -238,9 +283,19 @@ static int socket_sendmsg(struct socket_file *f, const struct msghdr *msg, int f
 		buffers[i].len = msg->msg_iov[i].iov_len;
 		buffers[i].buf = msg->msg_iov[i].iov_base;
 	}
+	struct sockaddr_storage addr_storage;
 	WSAMSG wsamsg;
-	wsamsg.name = msg->msg_name;
-	wsamsg.namelen = msg->msg_namelen;
+	if (wsamsg.namelen)
+	{
+		if ((wsamsg.namelen = translate_socket_addr_to_winsock(msg->msg_name, &addr_storage, msg->msg_namelen)) == SOCKET_ERROR)
+			return -EINVAL;
+		wsamsg.name = &addr_storage;
+	}
+	else
+	{
+		wsamsg.name = NULL;
+		wsamsg.namelen = 0;
+	}
 	wsamsg.lpBuffers = buffers;
 	wsamsg.dwBufferCount = msg->msg_iovlen;
 	wsamsg.Control.buf = msg->msg_control;
@@ -267,12 +322,14 @@ static int socket_recvfrom(struct socket_file *f, void *buf, size_t len, int fla
 {
 	if (flags & ~(LINUX_MSG_PEEK | LINUX_MSG_DONTWAIT))
 		log_error("flags (0x%x) contains unsupported bits.\n", flags);
+	struct sockaddr_storage addr_storage;
+	int addr_storage_len = sizeof(struct sockaddr_storage);
 	int r;
 	while ((r = socket_wait_event(f, FD_READ, flags)) == 0)
 	{
 		if (!(flags & LINUX_MSG_PEEK))
 			f->events &= ~FD_READ;
-		r = recvfrom(f->socket, buf, len, flags, src_addr, addrlen);
+		r = recvfrom(f->socket, buf, len, flags, &addr_storage, &addr_storage_len);
 		if (r != SOCKET_ERROR)
 			break;
 		int err = WSAGetLastError();
@@ -281,6 +338,13 @@ static int socket_recvfrom(struct socket_file *f, void *buf, size_t len, int fla
 			log_warning("recvfrom() failed, error code: %d\n", err);
 			return translate_socket_error(err);
 		}
+	}
+	if (addrlen)
+	{
+		addr_storage_len = translate_socket_addr_to_linux(&addr_storage, addr_storage_len);
+		int copylen = min(*addrlen, addr_storage_len);
+		memcpy(src_addr, &addr_storage, copylen);
+		*addrlen = addr_storage_len;
 	}
 	return r;
 }
@@ -329,9 +393,11 @@ static int socket_recvmsg(struct socket_file *f, struct msghdr *msg, int flags)
 		buffers[i].len = msg->msg_iov[i].iov_len;
 		buffers[i].buf = msg->msg_iov[i].iov_base;
 	}
+	struct sockaddr_storage addr_storage;
+	int addr_storage_len = sizeof(struct sockaddr_storage);
 	WSAMSG wsamsg;
-	wsamsg.name = msg->msg_name;
-	wsamsg.namelen = msg->msg_namelen;
+	wsamsg.name = &addr_storage;
+	wsamsg.namelen = addr_storage_len;
 	wsamsg.lpBuffers = buffers;
 	wsamsg.dwBufferCount = msg->msg_iovlen;
 	wsamsg.Control.buf = msg->msg_control;
@@ -351,7 +417,18 @@ static int socket_recvmsg(struct socket_file *f, struct msghdr *msg, int flags)
 			return translate_socket_error(err);
 		}
 	}
-	/* TODO: Translate WSAMSG output to msghdr */
+	/* Translate WSAMSG back to msghdr */
+	addr_storage_len = translate_socket_addr_to_linux(&addr_storage, wsamsg.namelen);
+	int copylen = min(msg->msg_namelen, addr_storage_len);
+	memcpy(msg->msg_name, &addr_storage, copylen);
+	msg->msg_namelen = addr_storage_len;
+	msg->msg_controllen = wsamsg.Control.len;
+	msg->msg_flags = 0;
+	if (wsamsg.dwFlags & MSG_TRUNC)
+		msg->msg_flags |= LINUX_MSG_TRUNC;
+	if (wsamsg.dwFlags & MSG_CTRUNC)
+		msg->msg_flags |= LINUX_MSG_CTRUNC;
+	/* TODO: MSG_EOR, MSG_OOB, and MSG_ERRQUEUE */
 	return r;
 }
 
@@ -521,8 +598,11 @@ DEFINE_SYSCALL(connect, int, sockfd, const struct sockaddr *, addr, size_t, addr
 	int r = get_sockfd(sockfd, &f);
 	if (r)
 		return r;
-	/* WinSock2 sockaddr struct is compatible with the Linux one */
-	if (connect(f->socket, addr, addrlen) == SOCKET_ERROR)
+	struct linux_sockaddr_storage addr_storage;
+	int addr_storage_len;
+	if ((addr_storage_len = translate_socket_addr_to_winsock(addr, &addr_storage, addrlen)) == SOCKET_ERROR)
+		return -EINVAL;
+	if (connect(f->socket, &addr_storage, addr_storage_len) == SOCKET_ERROR)
 	{
 		int err = WSAGetLastError();
 		if (err != WSAEWOULDBLOCK)
@@ -555,7 +635,11 @@ DEFINE_SYSCALL(getsockname, int, sockfd, struct sockaddr *, addr, int *, addrlen
 	int r = get_sockfd(sockfd, &f);
 	if (r)
 		return r;
-	if (getsockname(f->socket, addr, addrlen) == SOCKET_ERROR)
+	struct sockaddr_storage addr_storage;
+	int addr_storage_len = sizeof(struct sockaddr_storage);
+	if (getsockname(f->socket, &addr_storage, &addr_storage_len) != SOCKET_ERROR)
+		addr_storage_len = translate_socket_addr_to_linux(&addr_storage, addr_storage_len);
+	else
 	{
 		if (GetLastError() == WSAEINVAL)
 		{
@@ -564,17 +648,24 @@ DEFINE_SYSCALL(getsockname, int, sockfd, struct sockaddr *, addr, int *, addrlen
 			 */
 			switch (f->af)
 			{
-			case AF_INET:
-				addr->sa_family = AF_INET;
-				memset(addr->sa_data, 0, sizeof(addr->sa_data));
-				*addrlen = sizeof(struct sockaddr_in);
+			case LINUX_AF_INET:
+			{
+				struct sockaddr_in *addr_in = (struct sockaddr_in *)&addr_storage;
+				memset(addr_in, 0, sizeof(struct sockaddr_in));
+				addr_storage_len = sizeof(struct sockaddr_in);
 				break;
+			}
 
-			case AF_INET6:
-				addr->sa_family = AF_INET6;
-				memset(addr->sa_data, 0, sizeof(addr->sa_data));
-				*addrlen = sizeof(struct sockaddr_in6);
+			case LINUX_AF_INET6:
+			{
+				struct sockaddr_in6 *addr_in6 = (struct sockaddr_in6 *)&addr_storage;
+				memset(addr_in6, 0, sizeof(struct sockaddr_in6));
+				addr_storage_len = sizeof(struct sockaddr_in6);
 				break;
+			}
+
+			default:
+				return -EOPNOTSUPP;
 			}
 		}
 		else
@@ -583,6 +674,9 @@ DEFINE_SYSCALL(getsockname, int, sockfd, struct sockaddr *, addr, int *, addrlen
 			return translate_socket_error(WSAGetLastError());
 		}
 	}
+	int copylen = min(*addrlen, addr_storage_len);
+	memcpy(addr, &addr_storage, copylen);
+	*addrlen = addr_storage_len;
 	return 0;
 }
 
@@ -597,11 +691,17 @@ DEFINE_SYSCALL(getpeername, int, sockfd, struct sockaddr *, addr, int *, addrlen
 	int r = get_sockfd(sockfd, &f);
 	if (r)
 		return r;
-	if (getpeername(f->socket, addr, addrlen) == SOCKET_ERROR)
+	struct sockaddr_storage addr_storage;
+	int addr_storage_len = sizeof(struct sockaddr_storage);
+	if (getpeername(f->socket, &addr_storage, &addr_storage_len) == SOCKET_ERROR)
 	{
 		log_warning("getsockname() failed, error code: %d\n", WSAGetLastError());
 		return translate_socket_error(WSAGetLastError());
 	}
+	addr_storage_len = translate_socket_addr_to_linux(&addr_storage, addr_storage_len);
+	int copylen = min(*addrlen, addr_storage_len);
+	memcpy(addr, &addr_storage, copylen);
+	*addrlen = addr_storage_len;
 	return 0;
 }
 

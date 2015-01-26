@@ -180,6 +180,11 @@
 #define LINUX_SO_MAX_PACING_RATE	47
 #define LINUX_SO_BPF_EXTENSIONS		48
 
+struct linux_sockaddr_storage {
+	unsigned short ss_family;
+	char __data[128];
+};
+
 /* For recvmsg/sendmsg */
 struct msghdr {
 	void *msg_name;			/* ptr to socket address structure */
