@@ -484,11 +484,17 @@ static size_t dbt_get_direct_trampoline(size_t pc, size_t patch_addr)
 	return (size_t)dbt->end;
 }
 
+#define PREFIX_CS		0x2E
+#define PREFIX_SS		0x36
+#define PREFIX_DS		0x3E
+#define PREFIX_ES		0x26
+#define PREFIX_FS		0x64
+#define PREFIX_GS		0x65
 struct instruction_t
 {
 	uint8_t opcode;
 	uint8_t opsize_prefix, rep_prefix;
-	int gs_prefix;
+	int segment_prefix;
 	int lock_prefix;
 	int escape_0x0f;
 	uint8_t escape_byte2; /* 0x38 or 0x3A */
@@ -534,6 +540,8 @@ static void dbt_copy_instruction(uint8_t **out, uint8_t **code, struct instructi
 		gen_byte(out, ins->opsize_prefix);
 	if (ins->rep_prefix)
 		gen_byte(out, ins->rep_prefix);
+	if (ins->segment_prefix && ins->segment_prefix != PREFIX_GS)
+		gen_byte(out, ins->segment_prefix);
 	if (ins->escape_0x0f)
 	{
 		gen_byte(out, 0x0f);
@@ -607,13 +615,14 @@ static struct dbt_block *dbt_translate(size_t pc)
 		struct instruction_t ins;
 		ins.rep_prefix = 0;
 		ins.opsize_prefix = 0;
-		ins.gs_prefix = 0;
+		ins.segment_prefix = 0;
 		ins.lock_prefix = 0;
 		/* Handle prefixes. According to x86 doc, they can appear in any order */
 		for (;;)
 		{
 			ins.opcode = parse_byte(&code);
 			/* TODO: Can we migrate this switch to a table driven approach? */
+			/* TODO: Detect invalid multiple segment prefixes */
 			switch (ins.opcode)
 			{
 			case 0xF0: /* LOCK */
@@ -629,23 +638,19 @@ static struct dbt_block *dbt_translate(size_t pc)
 				break;
 
 			case 0x2E: /* CS segment override*/
-				log_error("CS segment override not supported\n");
-				__debugbreak();
+				ins.segment_prefix = 0x2E;
 				break;
 
 			case 0x36: /* SS segment override */
-				log_error("SS segment override not supported\n");
-				__debugbreak();
+				ins.segment_prefix = 0x36;
 				break;
 
 			case 0x3E: /* DS segment override */
-				log_error("DS segment override not supported\n");
-				__debugbreak();
+				ins.segment_prefix = 0x3E;
 				break;
 
 			case 0x26: /* ES segment override */
-				log_error("ES segment override not supported\n");
-				__debugbreak();
+				ins.segment_prefix = 0x26;
 				break;
 
 			case 0x64: /* FS segment override */
@@ -654,7 +659,7 @@ static struct dbt_block *dbt_translate(size_t pc)
 				break;
 
 			case 0x65: /* GS segment override */
-				ins.gs_prefix = 1;
+				ins.segment_prefix = 0x65;
 				break;
 
 			case 0x66: /* Operand size prefix */
@@ -767,7 +772,7 @@ done_prefix:
 
 		case INST_TYPE_NORMAL:
 		{
-			if (ins.gs_prefix && ins.desc->has_modrm && modrm_rm_is_m(ins.rm)
+			if (ins.segment_prefix == PREFIX_GS && ins.desc->has_modrm && modrm_rm_is_m(ins.rm)
 				&& !(!ins.escape_0x0f && ins.opcode == 0x8D)) /* LEA */
 			{
 				/* Instruction with effective gs segment override */
@@ -809,7 +814,7 @@ done_prefix:
 
 		case INST_MOV_MOFFSET:
 		{
-			if (ins.gs_prefix)
+			if (ins.segment_prefix == PREFIX_GS)
 			{
 				/* mov moffs with effective gs segment override */
 				int temp_reg = find_unused_register(&ins);
@@ -865,14 +870,18 @@ done_prefix:
 			if (ins.rm.base == 4) /* ESP-related address */
 				ins.rm.disp += 4;
 
-			if (ins.gs_prefix && ins.desc->has_modrm && modrm_rm_is_m(ins.rm))
+			if (ins.segment_prefix == PREFIX_GS && ins.desc->has_modrm && modrm_rm_is_m(ins.rm))
 			{
 				/* call with effective gs segment override */
 				int temp_reg = find_unused_register(&ins);
 				dbt_gen_push_gs_rm(&out, temp_reg, ins.rm);
 			}
 			else
+			{
+				if (ins.segment_prefix && ins.segment_prefix != PREFIX_GS)
+					gen_byte(&out, ins.segment_prefix);
 				gen_push_rm(&out, ins.rm);
+			}
 			gen_jmp(&out, &dbt_find_indirect_internal);
 			goto end_block;
 		}
@@ -907,14 +916,18 @@ done_prefix:
 
 		case INST_JMP_INDIRECT:
 		{
-			if (ins.gs_prefix && ins.desc->has_modrm && modrm_rm_is_m(ins.rm))
+			if (ins.segment_prefix == PREFIX_GS && ins.desc->has_modrm && modrm_rm_is_m(ins.rm))
 			{
 				/* jmp with effective gs segment override */
 				int temp_reg = find_unused_register(&ins);
 				dbt_gen_push_gs_rm(&out, temp_reg, ins.rm);
 			}
 			else
+			{
+				if (ins.segment_prefix && ins.segment_prefix != PREFIX_GS)
+					gen_byte(&out, ins.segment_prefix);
 				gen_push_rm(&out, ins.rm);
+			}
 			gen_jmp(&out, &dbt_find_indirect_internal);
 			goto end_block;
 		}
