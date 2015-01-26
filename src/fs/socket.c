@@ -19,6 +19,7 @@
 
 #include <common/errno.h>
 #include <common/fcntl.h>
+#include <common/in.h>
 #include <common/net.h>
 #include <common/socket.h>
 #include <common/tcp.h>
@@ -34,6 +35,7 @@
 #include <WinSock2.h>
 #include <mstcpip.h>
 #include <MSWSock.h>
+#include <WS2tcpip.h>
 
 #pragma comment(lib, "ws2_32.lib")
 
@@ -133,7 +135,7 @@ struct socket_file
 	struct file base_file;
 	SOCKET socket;
 	HANDLE event_handle;
-	int type;
+	int af, type;
 	int events, connect_error;
 };
 
@@ -495,6 +497,7 @@ DEFINE_SYSCALL(socket, int, domain, int, type, int, protocol)
 	f->base_file.ref = 1;
 	f->socket = sock;
 	f->event_handle = event_handle;
+	f->af = domain;
 	f->type = (type & LINUX_SOCK_TYPE_MASK);
 	f->events = 0;
 	f->connect_error = 0;
@@ -554,8 +557,31 @@ DEFINE_SYSCALL(getsockname, int, sockfd, struct sockaddr *, addr, int *, addrlen
 		return r;
 	if (getsockname(f->socket, addr, addrlen) == SOCKET_ERROR)
 	{
-		log_warning("getsockname() failed, error code: %d\n", WSAGetLastError());
-		return translate_socket_error(WSAGetLastError());
+		if (GetLastError() == WSAEINVAL)
+		{
+			/* Winsock returns WSAEINVAL if the socket is unbound, but in Linux this is okay.
+			 * We fake a result and return
+			 */
+			switch (f->af)
+			{
+			case AF_INET:
+				addr->sa_family = AF_INET;
+				memset(addr->sa_data, 0, sizeof(addr->sa_data));
+				*addrlen = sizeof(struct sockaddr_in);
+				break;
+
+			case AF_INET6:
+				addr->sa_family = AF_INET6;
+				memset(addr->sa_data, 0, sizeof(addr->sa_data));
+				*addrlen = sizeof(struct sockaddr_in6);
+				break;
+			}
+		}
+		else
+		{
+			log_warning("getsockname() failed, error code: %d\n", WSAGetLastError());
+			return translate_socket_error(WSAGetLastError());
+		}
 	}
 	return 0;
 }
@@ -665,12 +691,21 @@ static int socket_get_set_sockopt(int call, struct socket_file *f, int level, in
 	int in_level = level, in_optname = optname;
 	switch (level)
 	{
+	case LINUX_SOL_IP:
+	{
+		level = IPPROTO_IP;
+		switch (optname)
+		{
+		case LINUX_IP_HDRINCL: optname = IP_HDRINCL; goto get_set_sockopt;
+		}
+	}
 	case LINUX_SOL_SOCKET:
 	{
 		level = SOL_SOCKET;
 		switch (optname)
 		{
 		case LINUX_SO_ERROR: optname = SO_ERROR; goto get_set_sockopt;
+		case LINUX_SO_BROADCAST: optname = SO_BROADCAST; goto get_set_sockopt;
 		case LINUX_SO_KEEPALIVE: optname = SO_KEEPALIVE; goto get_set_sockopt;
 		}
 	}

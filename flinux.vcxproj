@@ -27,6 +27,7 @@
     <ClInclude Include="src\common\fcntl.h" />
     <ClInclude Include="src\common\fs.h" />
     <ClInclude Include="src\common\futex.h" />
+    <ClInclude Include="src\common\in.h" />
     <ClInclude Include="src\common\ioctls.h" />
     <ClInclude Include="src\common\ldt.h" />
     <ClInclude Include="src\common\net.h" />

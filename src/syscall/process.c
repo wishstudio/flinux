@@ -202,6 +202,12 @@ DEFINE_SYSCALL(getuid)
 	return 0;
 }
 
+DEFINE_SYSCALL(setgid, gid_t, gid)
+{
+	log_info("setgid(%d)\n", gid);
+	return 0;
+}
+
 DEFINE_SYSCALL(getgid)
 {
 	log_info("getgid(): %d\n", 0);
@@ -223,7 +229,7 @@ DEFINE_SYSCALL(getegid)
 DEFINE_SYSCALL(setuid, uid_t, uid)
 {
 	log_info("setuid(%d)\n", uid);
-	return -EPERM;
+	return 0;
 }
 
 DEFINE_SYSCALL(exit, int, status)

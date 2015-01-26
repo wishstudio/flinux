@@ -199,6 +199,9 @@
     <ClInclude Include="src\dbt\cpuid.h">
       <Filter>dbt</Filter>
     </ClInclude>
+    <ClInclude Include="src\common\in.h">
+      <Filter>common</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
