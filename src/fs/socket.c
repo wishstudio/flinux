@@ -290,7 +290,7 @@ static int socket_sendmsg(struct socket_file *f, const struct msghdr *msg, int f
 	}
 	struct sockaddr_storage addr_storage;
 	WSAMSG wsamsg;
-	if (wsamsg.namelen)
+	if (msg->msg_namelen)
 	{
 		if ((wsamsg.namelen = translate_socket_addr_to_winsock(msg->msg_name, &addr_storage, msg->msg_namelen)) == SOCKET_ERROR)
 			return -EINVAL;
