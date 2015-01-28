@@ -21,13 +21,11 @@
 
 #include <stdint.h>
 
-#define TLS_KERNEL_ENTRY_COUNT	5
+#define TLS_KERNEL_ENTRY_COUNT	3
 /* Used by dbt */
-#define TLS_ENTRY_SP			0
-#define TLS_ENTRY_INDIRECT_DEST	1
-#define TLS_ENTRY_SCRATCH		2
-#define TLS_ENTRY_GS			3
-#define TLS_ENTRY_GS_ADDR		4
+#define TLS_ENTRY_SCRATCH		0
+#define TLS_ENTRY_GS			1
+#define TLS_ENTRY_GS_ADDR		2
 
 void tls_init();
 void tls_reset();

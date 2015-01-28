@@ -17,8 +17,6 @@
 ; along with this program. If not, see <http://www.gnu.org/licenses/>.
 ;
 
-; NOTE: This code is old and not working, don't touch it
-
 .code
 M128A			STRUCT
 _Low			QWORD	?

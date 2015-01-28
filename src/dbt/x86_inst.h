@@ -518,7 +518,7 @@ static const struct instruction_desc one_byte_inst[256] =
 	/* 0xFB: STI */ INST()
 	/* 0xFC: CLD */ INST()
 	/* 0xFD: STD */ INST()
-	/* [GRP4]: 0/INC, 1/DEC */
+	/* [GRP4]: 0/INC, /DEC */
 	/* 0xFE: [GRP4] r/m8 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_RM))
 	/* 0xFF */ EXTENSION(FF)
 };
