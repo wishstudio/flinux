@@ -19,4 +19,19 @@
 
 #pragma once
 
+#include <common/types.h>
+
+struct syscall_context
+{
+	/* Note: should be kept consistent with syscall trampoline in x86_trampoline.asm */
+	uint32_t ebx;
+	uint32_t ecx;
+	uint32_t edx;
+	uint32_t esi;
+	uint32_t edi;
+	uint32_t ebp;
+	uint32_t esp;
+	uint32_t eip;
+};
+
 void fork_init();

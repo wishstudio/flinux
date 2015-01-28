@@ -32,6 +32,11 @@
 #include <winternl.h>
 #include <stddef.h>
 
+/* NOTE: This documentation is partially outdated but kept as reference
+ * Instead of emulating individual TLS related instructions, we go forward
+ * and do a full dynamic binary translation
+ */
+
 /* Linux thread local storage (TLS) support emulation
  *
  * Q: Why we need emulation?

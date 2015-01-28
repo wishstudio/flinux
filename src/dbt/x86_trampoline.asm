@@ -20,6 +20,8 @@
 .MODEL FLAT, C
 .CODE
 
+ASSUME FS:NOTHING
+
 CONTEXT STRUCT
 _Ebx	DWORD ?
 _Ecx	DWORD ?
@@ -31,7 +33,9 @@ _Esp	DWORD ?
 _Eip	DWORD ?
 CONTEXT ENDS
 
-restore_fork_context PROC ctx
+dbt_restore_fork_context_internal PROC ctx, tls_sp_offset
+	mov eax, tls_sp_offset
+	mov fs:[eax], esp
 	mov eax, ctx
 	assume eax:ptr CONTEXT
 	mov ecx, [eax]._Ecx
@@ -39,16 +43,18 @@ restore_fork_context PROC ctx
 	mov ebx, [eax]._Ebx
 	mov esi, [eax]._Esi
 	mov edi, [eax]._Edi
-	mov esp, [eax]._Esp
 	mov ebp, [eax]._Ebp
+	mov esp, [eax]._Esp
+	; TODO: This tampers the user stack
 	push [eax]._Eip
 	assume eax:nothing
 	xor eax, eax
-	jmp dbt_find_indirect_internal
 	retn
-restore_fork_context ENDP
+dbt_restore_fork_context_internal ENDP
 
-dbt_run_internal PROC pc, stackp
+dbt_run_internal PROC pc, stackp, tls_sp_offset
+	mov eax, tls_sp_offset
+	mov fs:[eax], esp
 	mov eax, pc
 	mov esp, stackp
 	push eax
@@ -64,48 +70,6 @@ dbt_run_internal ENDP
 
 OPTION PROLOGUE: NONE
 OPTION EPILOGUE: NONE
-EXTERN dbt_find_direct:NEAR
-dbt_find_direct_internal PROC ; pc, patch_addr
-	; save context
-	push eax
-	push ecx
-	push edx
-	pushfd
-	; copy pc and patch_addr
-	mov ecx, [esp+20]
-	mov edx, [esp+16]
-	push ecx
-	push edx
-	call dbt_find_direct
-	mov [esp+24], eax
-	; restore context
-	add esp, 8
-	popfd
-	pop edx
-	pop ecx
-	pop eax
-	retn 4 ; we have one extra argument garbage at the stack
-dbt_find_direct_internal ENDP
-
-EXTERN dbt_find_next:NEAR
-dbt_find_indirect_internal PROC
-	; save context
-	push eax
-	push ecx
-	push edx
-	pushfd
-	mov ecx, [esp+16] ; original address
-	push ecx
-	call dbt_find_next
-	add esp, 4
-	mov [esp+16], eax ; translated address
-	; restore context
-	popfd
-	pop edx
-	pop ecx
-	pop eax
-	ret
-dbt_find_indirect_internal ENDP
 
 EXTERN dbt_cpuid:NEAR
 dbt_cpuid_internal PROC
@@ -164,6 +128,10 @@ sys_clone ENDP
 
 EXTERN syscall_table: DWORD
 syscall_handler PROC
+	; caller stack layout
+	; | eip
+	; | esp
+	; | return address
 	; save context
 	push ecx
 	push edx
@@ -171,11 +139,9 @@ syscall_handler PROC
 	cmp eax, 354
 	jae out_of_range
 
-	; push esp and eip context in case of fork()
-	push [esp + 8]
-	lea edx, [esp + 16]
-	push edx
-	mov edx, [esp + 8]
+	; push eip and esp context in case of fork()
+	push [esp + 4*4]
+	push [esp + 4*4]
 	; push arguments
 	push ebp
 	push edi
@@ -186,17 +152,17 @@ syscall_handler PROC
 	; call syscall
 	call [syscall_table + eax * 4]
 syscall_done::
-	add esp, 32
+	add esp, 4*8
 	; restore context
 	pop edx
 	pop ecx
-	jmp dbt_find_indirect_internal
+	ret
 
 out_of_range:
 	call sys_unimplemented
 	pop edx
 	pop ecx
-	jmp dbt_find_indirect_internal
+	ret
 syscall_handler ENDP
 
 ; TODO: Thread safety
