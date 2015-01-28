@@ -176,7 +176,7 @@
 /* Higher bound of the virtual address space */
 #define ADDRESS_SPACE_HIGH		0x80000000U
 /* The lowest non fixed allocation address we can make */
-#define ADDRESS_ALLOCATION_LOW	0x10000000U
+#define ADDRESS_ALLOCATION_LOW	0x04000000U
 /* The highest non fixed allocation address we can make */
 #define ADDRESS_ALLOCATION_HIGH	0x70000000U
 /* The lowest address of reserved kernel data */
@@ -1242,7 +1242,7 @@ DEFINE_SYSCALL(brk, void *, addr)
 	addr = ALIGN_TO_PAGE(addr);
 	if (addr > 0 && addr < mm->brk)
 	{
-		if (mm_munmap(brk, addr, (size_t)brk - (size_t)addr) < 0)
+		if (sys_munmap(brk, addr, (size_t)brk - (size_t)addr) < 0)
 		{
 			log_error("Shrink brk failed.\n");
 			return -ENOMEM;
@@ -1251,8 +1251,7 @@ DEFINE_SYSCALL(brk, void *, addr)
 	}
 	else if (addr > mm->brk)
 	{
-		/* TODO: Use fixed address mmap() will overwrite any existing mappings there */
-		if (mm_mmap(brk, (size_t)addr - (size_t)brk, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, NULL, 0) < 0)
+		if (sys_mmap(brk, (size_t)addr - (size_t)brk, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, -1, 0) < 0)
 		{
 			log_error("Enlarge brk failed.\n");
 			return -ENOMEM;
