@@ -28,6 +28,10 @@
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
+#define DBT_USE_SIEVE
+
+#define ALIGN_TO(x, a) ((uintptr_t)((x) + (a) - 1) & -(a))
+
 #define GET_MODRM_MOD(c)	(((c) >> 6) & 7)
 #define GET_MODRM_R(c)		(((c) >> 3) & 7)
 #define GET_MODRM_RM(c)		((c) & 7)
@@ -41,6 +45,20 @@
 #define GET_REX_R(r)		(((r) >> 2) & 1)
 #define GET_REX_X(r)		(((r) >> 1) & 1)
 #define GET_REX_B(r)		(r & 1)
+
+#define MODRM_SCALE_1		0
+#define MODRM_SCALE_2		1
+#define MODRM_SCALE_4		2
+#define MDDRM_SCALE_8		3
+
+#define EAX		0
+#define ECX		1
+#define EDX		2
+#define EBX		3
+#define ESP		4
+#define EBP		5
+#define ESI		6
+#define EDI		7
 
 /* ModR/M flags */
 #define MODRM_PURE_REGISTER	1
@@ -315,6 +333,13 @@ static __forceinline void gen_mov_rm_r_32(uint8_t **out, struct modrm_rm_t rm, i
 	gen_modrm_sib(out, r, rm);
 }
 
+static __forceinline void gen_movzx_r32_rm16(uint8_t **out, int r32, struct modrm_rm_t rm16)
+{
+	gen_byte(out, 0x0F);
+	gen_byte(out, 0xB7);
+	gen_modrm_sib(out, r32, rm16);
+}
+
 static __forceinline void gen_shr_rm_32(uint8_t **out, struct modrm_rm_t rm, uint8_t imm8)
 {
 	gen_byte(out, 0xC1);
@@ -370,12 +395,24 @@ static __forceinline void gen_jmp(uint8_t **out, size_t dest)
 	gen_dword(out, rel);
 }
 
+static __forceinline void gen_jmp_rm(uint8_t **out, struct modrm_rm_t rm)
+{
+	gen_byte(out, 0xFF);
+	gen_modrm_sib(out, 4, rm);
+}
+
 static __forceinline void gen_jcc(uint8_t **out, int cond, size_t dest)
 {
 	int32_t rel = (int32_t)(dest - (((size_t)*out) + 6));
 	gen_byte(out, 0x0F);
 	gen_byte(out, 0x80 + cond);
 	gen_dword(out, rel);
+}
+
+static __forceinline void gen_jecxz_rel(uint8_t **out, int8_t rel)
+{
+	gen_byte(out, 0xE3);
+	gen_byte(out, rel);
 }
 
 struct dbt_block
@@ -389,6 +426,8 @@ struct dbt_block
 #define DBT_BLOCK_HASH_BUCKETS	4096
 #define DBT_BLOCK_MAXSIZE		1024 /* Maximum size of a translated basic block */
 #define MAX_DBT_BLOCKS			(DBT_BLOCKS_SIZE / sizeof(struct dbt_block))
+
+#define DBT_SIEVE_ENTRIES		65536 /* Do not modify */
 struct dbt_data
 {
 	FORWARD_LIST(struct dbt_block) block_hash[DBT_BLOCK_HASH_BUCKETS];
@@ -399,10 +438,70 @@ struct dbt_data
 	int tls_scratch_offset; /* scratch variable */
 	int tls_gs_offset; /* gs value */
 	int tls_gs_addr_offset; /* gs base address */
+	/* Sieve */
+#ifdef DBT_USE_SIEVE
+	uint8_t **sieve_table;
+	uint8_t *sieve_dispatch_trampoline;
+#endif
 };
 
 static struct dbt_data *const dbt = DBT_DATA_BASE;
 static uint8_t *const dbt_cache = DBT_CACHE_BASE;
+
+#define SIEVE_HASH(x)		((x) & 0xFFFF)
+static void dbt_gen_sieve_dispatch()
+{
+	extern void dbt_sieve_fallback();
+
+	uint8_t *out = ALIGN_TO(dbt->out, DBT_OUT_ALIGN);
+	dbt->sieve_dispatch_trampoline = out;
+
+	/* The destination address should be pushed on the stack */
+	gen_push_rm(&out, modrm_rm_reg(ECX));
+	gen_movzx_r32_rm16(&out, ECX, modrm_rm_mreg(ESP, 4));
+	gen_jmp_rm(&out, modrm_rm_mscale(-1, ECX, MODRM_SCALE_4, dbt->sieve_table));
+
+	dbt->out = out;
+
+	/* Fill out sieve_table */
+	for (int i = 0; i < DBT_SIEVE_ENTRIES; i++)
+		dbt->sieve_table[i] = &dbt_sieve_fallback;
+}
+
+#define DBT_SIEVE_NEXT_BUCKET_OFFSET		13
+static size_t dbt_gen_sieve(size_t original_pc, size_t target)
+{
+	extern void dbt_sieve_fallback();
+
+	/* The destination address should be pushed on the stack */
+	/* Caution: we must ensure that this stub fits in DBT_OUT_ALIGN*2(32) bytes */
+	dbt->end -= DBT_OUT_ALIGN * 2;
+	uint8_t *out = dbt->end;
+	/* mov ecx, [esp + 4] */
+	gen_mov_r_rm_32(&out, ECX, modrm_rm_mreg(ESP, 4)); /* 4 bytes */
+	/* lea ecx, [ecx - original_pc] */
+	/* we cannot use gen_lea() here because it does not have fixed size */
+	gen_byte(&out, 0x8D); /* lea */
+	gen_byte(&out, 0x89); /* ECX, [ECX+disp32] */
+	gen_dword(&out, -original_pc);
+	/* 6 bytes */
+
+	gen_jecxz_rel(&out, 5); /* 2 bytes */
+	gen_jmp(&out, &dbt_sieve_fallback); /* 5 bytes */
+	/* patch offset: 4+6+2+1=13 bytes */
+
+	/* match: */
+	gen_pop_rm(&out, modrm_rm_reg(ECX));
+	gen_lea(&out, ESP, modrm_rm_mreg(ESP, 4));
+	gen_jmp(&out, target);
+
+	return (size_t)dbt->end;
+}
+
+void dbt_gen_trampolines()
+{
+	dbt_gen_sieve_dispatch();
+}
 
 void dbt_init()
 {
@@ -420,6 +519,15 @@ void dbt_init()
 	dbt->tls_scratch_offset = tls_kernel_entry_to_offset(TLS_ENTRY_SCRATCH);
 	dbt->tls_gs_offset = tls_kernel_entry_to_offset(TLS_ENTRY_GS);
 	dbt->tls_gs_addr_offset = tls_kernel_entry_to_offset(TLS_ENTRY_GS_ADDR);
+
+	/* Allocate ancillary data structure */
+#ifdef DBT_USE_SIEVE
+	dbt->sieve_table = (uint8_t**)dbt->out;
+	dbt->out += sizeof(uint8_t*) * DBT_SIEVE_ENTRIES;
+#endif
+
+	/* Generate trampolines */
+	dbt_gen_trampolines();
 	log_info("dbt subsystem initialized.\n");
 }
 
@@ -436,6 +544,15 @@ static void dbt_flush()
 	dbt->blocks_count = 0;
 	dbt->out = dbt_cache;
 	dbt->end = dbt_cache + DBT_CACHE_SIZE;
+
+	/* Allocate ancillary data structure */
+#ifdef DBT_USE_SIEVE
+	dbt->sieve_table = (uint8_t**)dbt->out;
+	dbt->out += sizeof(uint8_t*) * DBT_SIEVE_ENTRIES;
+#endif
+
+	/* Generate trampolines */
+	dbt_gen_trampolines();
 	log_info("dbt code cache flushed.\n");
 }
 
@@ -882,13 +999,21 @@ done_prefix:
 					gen_byte(&out, ins.segment_prefix);
 				gen_push_rm(&out, ins.rm);
 			}
+			#ifdef DBT_USE_SIEVE
+			gen_jmp(&out, dbt->sieve_dispatch_trampoline);
+			#else
 			gen_jmp(&out, &dbt_find_indirect_internal);
+			#endif
 			goto end_block;
 		}
 
 		case INST_RET:
 		{
+			#ifdef DBT_USE_SIEVE
+			gen_jmp(&out, dbt->sieve_dispatch_trampoline);
+			#else
 			gen_jmp(&out, &dbt_find_indirect_internal);
+			#endif
 			goto end_block;
 		}
 
@@ -901,7 +1026,11 @@ done_prefix:
 			gen_pop_rm(&out, rm);
 			/* lea esp, [esp - 4 + count] */
 			gen_lea(&out, 4, rm);
+			#ifdef DBT_USE_SIEVE
+			gen_jmp(&out, dbt->sieve_dispatch_trampoline);
+			#else
 			gen_jmp(&out, &dbt_find_indirect_internal);
+			#endif
 			goto end_block;
 		}
 
@@ -928,7 +1057,11 @@ done_prefix:
 					gen_byte(&out, ins.segment_prefix);
 				gen_push_rm(&out, ins.rm);
 			}
+			#ifdef DBT_USE_SIEVE
+			gen_jmp(&out, dbt->sieve_dispatch_trampoline);
+			#else
 			gen_jmp(&out, &dbt_find_indirect_internal);
+			#endif
 			goto end_block;
 		}
 
@@ -1096,6 +1229,33 @@ size_t dbt_find_next(size_t pc)
 	block = dbt_translate(pc);
 	forward_list_add(&dbt->block_hash[bucket], block);
 	return block->start;
+}
+
+size_t dbt_find_next_sieve(size_t pc)
+{
+	extern void dbt_sieve_fallback();
+	size_t target = dbt_find_next(pc);
+	uint8_t *sieve = (uint8_t*)dbt_gen_sieve(pc, target);
+
+	/* Patch sieve table */
+	int hash = SIEVE_HASH(pc);
+	if (dbt->sieve_table[hash] == &dbt_sieve_fallback)
+		dbt->sieve_table[hash] = sieve;
+	else
+	{
+		uint8_t *current = dbt->sieve_table[hash];
+		for (;;)
+		{
+			uint8_t *next_bucket_rel = *(uint8_t**)&current[DBT_SIEVE_NEXT_BUCKET_OFFSET];
+			uint8_t *next_bucket = next_bucket_rel + (size_t)(current + DBT_SIEVE_NEXT_BUCKET_OFFSET + sizeof(size_t));
+			if (next_bucket == &dbt_sieve_fallback)
+				break;
+			current = next_bucket;
+		}
+		uint8_t *next_bucket_rel = sieve - (size_t)(current + DBT_SIEVE_NEXT_BUCKET_OFFSET + sizeof(size_t));
+		*(uint8_t**)&current[DBT_SIEVE_NEXT_BUCKET_OFFSET] = next_bucket_rel;
+	}
+	return target;
 }
 
 size_t dbt_find_direct(size_t pc, size_t patch_addr)

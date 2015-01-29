@@ -107,6 +107,26 @@ dbt_find_indirect_internal PROC
 	ret
 dbt_find_indirect_internal ENDP
 
+EXTERN dbt_find_next_sieve:NEAR
+dbt_sieve_fallback PROC
+	; stack: address
+	; stack: ecx
+	push eax
+	push edx
+	pushfd
+	mov ecx, [esp+4*4] ; original address
+	push ecx
+	call dbt_find_next_sieve
+	add esp, 4
+	mov [esp+4*4], eax ; translated address
+	; restore context
+	popfd
+	pop edx
+	pop eax
+	pop ecx
+	ret
+dbt_sieve_fallback ENDP
+
 EXTERN dbt_cpuid:NEAR
 dbt_cpuid_internal PROC
 	; Allocate buffer
