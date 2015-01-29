@@ -448,6 +448,7 @@ struct dbt_data
 static struct dbt_data *const dbt = DBT_DATA_BASE;
 static uint8_t *const dbt_cache = DBT_CACHE_BASE;
 
+#ifdef DBT_USE_SIEVE
 #define SIEVE_HASH(x)		((x) & 0xFFFF)
 static void dbt_gen_sieve_dispatch()
 {
@@ -497,10 +498,13 @@ static size_t dbt_gen_sieve(size_t original_pc, size_t target)
 
 	return (size_t)dbt->end;
 }
+#endif
 
 void dbt_gen_trampolines()
 {
+#ifdef DBT_USE_SIEVE
 	dbt_gen_sieve_dispatch();
+#endif
 }
 
 void dbt_init()
@@ -1233,6 +1237,7 @@ size_t dbt_find_next(size_t pc)
 
 size_t dbt_find_next_sieve(size_t pc)
 {
+#ifdef DBT_USE_SIEVE
 	extern void dbt_sieve_fallback();
 	size_t target = dbt_find_next(pc);
 	uint8_t *sieve = (uint8_t*)dbt_gen_sieve(pc, target);
@@ -1256,6 +1261,8 @@ size_t dbt_find_next_sieve(size_t pc)
 		*(uint8_t**)&current[DBT_SIEVE_NEXT_BUCKET_OFFSET] = next_bucket_rel;
 	}
 	return target;
+#endif
+	return 0;
 }
 
 size_t dbt_find_direct(size_t pc, size_t patch_addr)
