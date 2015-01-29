@@ -1082,26 +1082,16 @@ static size_t console_read(struct file *f, char *buf, size_t count)
 		buf[bytes_read++] = console->input_buffer[console->input_buffer_tail];
 		console->input_buffer_tail = (console->input_buffer_tail + 1) % MAX_INPUT;
 	}
-	if (!(console->termios.c_lflag & ICANON))
+	if (console->termios.c_lflag & ICANON)
 	{
-		if (console->termios.c_cc[VTIME])
-			log_error("termios.c_cc[VTIME] not supported.\n");
-		if (console->termios.c_cc[VMIN] == 0)
-			log_error("termios.c_cc[VMIN] == 0 not supported\n");
-	}
-	char line[MAX_CANON + 1]; /* One more for storing CR or LF */
-	size_t len = 0;
-	while (count > 0)
-	{
-		if (!(console->termios.c_lflag & ICANON) && bytes_read >= console->termios.c_cc[VMIN])
-			break;
-		INPUT_RECORD ir;
-		DWORD read;
-		ReadConsoleInputA(console->in, &ir, 1, &read);
-		if (ir.EventType == KEY_EVENT && ir.Event.KeyEvent.bKeyDown)
+		char line[MAX_CANON + 1]; /* One more for storing CR or LF */
+		size_t len = 0;
+		while (count > 0)
 		{
-			char ch = ir.Event.KeyEvent.uChar.AsciiChar;
-			if (console->termios.c_lflag & ICANON)
+			INPUT_RECORD ir;
+			DWORD read;
+			ReadConsoleInputA(console->in, &ir, 1, &read);
+			if (ir.EventType == KEY_EVENT && ir.Event.KeyEvent.bKeyDown)
 			{
 				switch (ir.Event.KeyEvent.wVirtualKeyCode)
 				{
@@ -1133,6 +1123,8 @@ static size_t console_read(struct file *f, char *buf, size_t count)
 					}
 				}
 				default:
+				{
+					char ch = ir.Event.KeyEvent.uChar.AsciiChar;
 					if (ch >= 0x20)
 					{
 						if (len < MAX_CANON)
@@ -1143,40 +1135,54 @@ static size_t console_read(struct file *f, char *buf, size_t count)
 						}
 					}
 				}
+				}
 			}
-			else /* ICANON */
+		}
+	}
+	else /* Non canonical mode */
+	{
+		if (console->termios.c_cc[VTIME])
+			log_error("termios.c_cc[VTIME] not supported.\n");
+		if (console->termios.c_cc[VMIN] == 0)
+			log_error("termios.c_cc[VMIN] == 0 not supported\n");
+		while (count > 0)
+		{
+			INPUT_RECORD ir;
+			DWORD read;
+			ReadConsoleInputA(console->in, &ir, 1, &read);
+			if (ir.EventType == KEY_EVENT && ir.Event.KeyEvent.bKeyDown)
 			{
 				switch (ir.Event.KeyEvent.wVirtualKeyCode)
 				{
 				case VK_UP:
-					console_buffer_add_string(buf, &bytes_read, &count, console->cursor_key_mode? "\x1BOA": "\x1B[A", 3);
+					console_buffer_add_string(buf, &bytes_read, &count, console->cursor_key_mode ? "\x1BOA" : "\x1B[A", 3);
 					break;
 
 				case VK_DOWN:
-					console_buffer_add_string(buf, &bytes_read, &count, console->cursor_key_mode? "\x1BOB": "\x1B[B", 3);
+					console_buffer_add_string(buf, &bytes_read, &count, console->cursor_key_mode ? "\x1BOB" : "\x1B[B", 3);
 					break;
 
 				case VK_RIGHT:
-					console_buffer_add_string(buf, &bytes_read, &count, console->cursor_key_mode? "\x1BOC": "\x1B[C", 3);
+					console_buffer_add_string(buf, &bytes_read, &count, console->cursor_key_mode ? "\x1BOC" : "\x1B[C", 3);
 					break;
 
 				case VK_LEFT:
-					console_buffer_add_string(buf, &bytes_read, &count, console->cursor_key_mode? "\x1BOD": "\x1B[D", 3);
+					console_buffer_add_string(buf, &bytes_read, &count, console->cursor_key_mode ? "\x1BOD" : "\x1B[D", 3);
 					break;
-					
+
 				case VK_HOME:
-					console_buffer_add_string(buf, &bytes_read, &count, console->cursor_key_mode? "\x1BOH": "\x1B[H", 3);
+					console_buffer_add_string(buf, &bytes_read, &count, console->cursor_key_mode ? "\x1BOH" : "\x1B[H", 3);
 					break;
 
 				case VK_END:
-					console_buffer_add_string(buf, &bytes_read, &count, console->cursor_key_mode? "\x1BOF": "\x1B[F", 3);
+					console_buffer_add_string(buf, &bytes_read, &count, console->cursor_key_mode ? "\x1BOF" : "\x1B[F", 3);
 					break;
 
 				case VK_INSERT: console_buffer_add_string(buf, &bytes_read, &count, "\x1B[2~", 4); break;
 				case VK_DELETE: console_buffer_add_string(buf, &bytes_read, &count, "\x1B[3~", 4); break;
 				case VK_PRIOR: console_buffer_add_string(buf, &bytes_read, &count, "\x1B[5~", 4); break;
 				case VK_NEXT: console_buffer_add_string(buf, &bytes_read, &count, "\x1B[6~", 4); break;
-					
+
 				case VK_F1: console_buffer_add_string(buf, &bytes_read, &count, "\x1BOP", 3); break;
 				case VK_F2: console_buffer_add_string(buf, &bytes_read, &count, "\x1BOQ", 3); break;
 				case VK_F3: console_buffer_add_string(buf, &bytes_read, &count, "\x1BOR", 3); break;
@@ -1197,8 +1203,10 @@ static size_t console_read(struct file *f, char *buf, size_t count)
 				case VK_F18: console_buffer_add_string(buf, &bytes_read, &count, "\x1B[32~", 5); break;
 				case VK_F19: console_buffer_add_string(buf, &bytes_read, &count, "\x1B[33~", 5); break;
 				case VK_F20: console_buffer_add_string(buf, &bytes_read, &count, "\x1B[34~", 5); break;
-					
+
 				default:
+				{
+					char ch = ir.Event.KeyEvent.uChar.AsciiChar;
 					if (ch == '\r' && console->termios.c_iflag & IGNCR)
 						break;
 					if (ch == '\r' && console->termios.c_iflag & ICRNL)
@@ -1213,11 +1221,12 @@ static size_t console_read(struct file *f, char *buf, size_t count)
 							write_normal(&ch, 1);
 					}
 				}
+				}
 			}
-		}
-		else
-		{
-			/* TODO */
+			else
+			{
+				/* TODO: Other types of input */
+			}
 		}
 	}
 read_done:
