@@ -32,6 +32,7 @@
 #include <Windows.h>
 
 #pragma comment(linker,"/entry:main")
+#pragma comment(lib,"delayimp")
 
 /*
  * Startup data is divided into two parts
