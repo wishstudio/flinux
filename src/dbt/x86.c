@@ -453,6 +453,7 @@ struct dbt_data
 #ifdef DBT_USE_SIEVE
 	uint8_t **sieve_table;
 	uint8_t *sieve_dispatch_trampoline;
+	uint8_t *sieve_indirect_call_dispatch_trampoline;
 #endif
 	/* Return cache */
 	uint8_t **return_cache;
@@ -474,11 +475,22 @@ static uint8_t *const dbt_cache = DBT_CACHE_BASE;
 #ifdef DBT_USE_SIEVE
 static void dbt_gen_sieve_dispatch()
 {
-	uint8_t *out = ALIGN_TO(dbt->out, DBT_OUT_ALIGN);
+	uint8_t *out;
+	out = ALIGN_TO(dbt->out, DBT_OUT_ALIGN);
 	dbt->sieve_dispatch_trampoline = out;
 
 	/* The destination address should be pushed on the stack */
 	gen_push_rm(&out, modrm_rm_reg(ECX));
+	gen_movzx_r32_rm16(&out, ECX, modrm_rm_mreg(ESP, 4));
+	gen_jmp_rm(&out, modrm_rm_mscale(-1, ECX, MODRM_SCALE_4, dbt->sieve_table));
+
+	dbt->out = out;
+
+	out = ALIGN_TO(dbt->out, DBT_OUT_ALIGN);
+	dbt->sieve_indirect_call_dispatch_trampoline = out;
+
+	/* there is a dummy return address on stack, replace it */
+	gen_mov_rm_r_32(&out, modrm_rm_mreg(ESP, 0), ECX);
 	gen_movzx_r32_rm16(&out, ECX, modrm_rm_mreg(ESP, 4));
 	gen_jmp_rm(&out, modrm_rm_mscale(-1, ECX, MODRM_SCALE_4, dbt->sieve_table));
 
@@ -632,6 +644,17 @@ static size_t dbt_get_direct_trampoline(size_t pc, size_t patch_addr)
 	return (size_t)dbt->end;
 }
 
+static size_t dbt_get_call_trampoline(size_t pc)
+{
+	dbt->end -= DBT_OUT_ALIGN;
+	size_t entry = (size_t)dbt->end;
+	uint8_t *out = dbt->end;
+	gen_lea(&out, ESP, modrm_rm_mreg(ESP, 4));
+	size_t patch_addr = (size_t)out + 1;
+	gen_jmp(&out, dbt_get_direct_trampoline(pc, patch_addr));
+	return entry;
+}
+
 #define PREFIX_CS		0x2E
 #define PREFIX_SS		0x36
 #define PREFIX_DS		0x3E
@@ -751,7 +774,8 @@ static void dbt_gen_ret_trampoline(uint8_t **out)
 {
 	gen_push_rm(out, modrm_rm_reg(ECX));
 	gen_movzx_r32_rm16(out, ECX, modrm_rm_mreg(ESP, 4));
-	gen_jmp_rm(out, modrm_rm_mscale(-1, ECX, MODRM_SCALE_4, dbt->return_cache));
+	gen_push_rm(out, modrm_rm_mscale(-1, ECX, MODRM_SCALE_4, dbt->return_cache));
+	gen_byte(out, 0xC3);
 }
 
 /* CAUTION
@@ -1035,7 +1059,7 @@ done_prefix:
 			gen_mov_rm_imm32(&out, modrm_rm_disp(&dbt->return_cache[RETURN_CACHE_HASH((size_t)code)]), 0);
 			*(size_t*)(out - 4) = (size_t)out + 5;
 			size_t patch_addr = (size_t)out + 1;
-			gen_jmp(&out, dbt_get_direct_trampoline(dest, patch_addr));
+			gen_call(&out, dbt_get_call_trampoline(dest, patch_addr));
 			dbt_gen_call_postamble(&out, code);
 			break;
 		}
@@ -1062,7 +1086,7 @@ done_prefix:
 			gen_mov_rm_imm32(&out, modrm_rm_disp(&dbt->return_cache[RETURN_CACHE_HASH((size_t)code)]), 0);
 			*(size_t*)(out - 4) = (size_t)out + 5;
 			#ifdef DBT_USE_SIEVE
-			gen_jmp(&out, dbt->sieve_dispatch_trampoline);
+			gen_call(&out, dbt->sieve_indirect_call_dispatch_trampoline);
 			#else
 			gen_jmp(&out, &dbt_find_indirect_internal);
 			#endif
