@@ -118,13 +118,13 @@ static LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
 	mm_dump_stack_trace(ep->ContextRecord);
 #ifdef _WIN64
 	log_info("RAX: 0x%p\n", ep->ContextRecord->Rax);
-	log_info("RBX: 0x%p\n", ep->ContextRecord->Rbx);
 	log_info("RCX: 0x%p\n", ep->ContextRecord->Rcx);
 	log_info("RDX: 0x%p\n", ep->ContextRecord->Rdx);
+	log_info("RBX: 0x%p\n", ep->ContextRecord->Rbx);
+	log_info("RSP: 0x%p\n", ep->ContextRecord->Rsp);
+	log_info("RBP: 0x%p\n", ep->ContextRecord->Rbp);
 	log_info("RSI: 0x%p\n", ep->ContextRecord->Rsi);
 	log_info("RDI: 0x%p\n", ep->ContextRecord->Rdi);
-	log_info("RBP: 0x%p\n", ep->ContextRecord->Rbp);
-	log_info("RSP: 0x%p\n", ep->ContextRecord->Rsp);
 	log_info("R8:  0x%p\n", ep->ContextRecord->R8);
 	log_info("R9:  0x%p\n", ep->ContextRecord->R9);
 	log_info("R10: 0x%p\n", ep->ContextRecord->R10);
@@ -135,13 +135,13 @@ static LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
 	log_info("R15: 0x%p\n", ep->ContextRecord->R15);
 #else
 	log_info("EAX: 0x%p\n", ep->ContextRecord->Eax);
-	log_info("EBX: 0x%p\n", ep->ContextRecord->Ebx);
 	log_info("ECX: 0x%p\n", ep->ContextRecord->Ecx);
 	log_info("EDX: 0x%p\n", ep->ContextRecord->Edx);
+	log_info("EBX: 0x%p\n", ep->ContextRecord->Ebx);
+	log_info("ESP: 0x%p\n", ep->ContextRecord->Esp);
+	log_info("EBP: 0x%p\n", ep->ContextRecord->Ebp);
 	log_info("ESI: 0x%p\n", ep->ContextRecord->Esi);
 	log_info("EDI: 0x%p\n", ep->ContextRecord->Edi);
-	log_info("EBP: 0x%p\n", ep->ContextRecord->Eax);
-	log_info("ESP: 0x%p\n", ep->ContextRecord->Esp);
 #endif
 	/* If we come here we're sure to crash, so gracefully close logging */
 	log_shutdown();
