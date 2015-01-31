@@ -28,8 +28,6 @@
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
-#define DBT_USE_SIEVE
-
 #define ALIGN_TO(x, a) ((uintptr_t)((x) + (a) - 1) & -(a))
 
 #define GET_MODRM_MOD(c)	(((c) >> 6) & 7)
@@ -450,11 +448,9 @@ struct dbt_data
 	int tls_gs_offset; /* gs value */
 	int tls_gs_addr_offset; /* gs base address */
 	/* Sieve */
-#ifdef DBT_USE_SIEVE
 	uint8_t **sieve_table;
 	uint8_t *sieve_dispatch_trampoline;
 	uint8_t *sieve_indirect_call_dispatch_trampoline;
-#endif
 	/* Return cache */
 	uint8_t **return_cache;
 };
@@ -472,7 +468,6 @@ extern void syscall_handler();
 static struct dbt_data *const dbt = DBT_DATA_BASE;
 static uint8_t *const dbt_cache = DBT_CACHE_BASE;
 
-#ifdef DBT_USE_SIEVE
 static void dbt_gen_sieve_dispatch()
 {
 	uint8_t *out;
@@ -528,18 +523,12 @@ static size_t dbt_gen_sieve(size_t original_pc, size_t target)
 
 	return (size_t)dbt->end;
 }
-#endif
 
 void dbt_gen_trampolines()
 {
-#ifdef DBT_USE_SIEVE
 	dbt_gen_sieve_dispatch();
 	for (int i = 0; i < DBT_RETURN_CACHE_ENTRIES; i++)
 		dbt->return_cache[i] = &dbt_sieve_fallback;
-#else
-	for (int i = 0; i < DBT_RETURN_CACHE_ENTRIES; i++)
-		dbt->return_cache[i] = &dbt_find_indirect_internal;
-#endif
 }
 
 void dbt_init()
@@ -560,11 +549,8 @@ void dbt_init()
 	dbt->tls_gs_addr_offset = tls_kernel_entry_to_offset(TLS_ENTRY_GS_ADDR);
 
 	/* Allocate ancillary data structure */
-#ifdef DBT_USE_SIEVE
 	dbt->sieve_table = (uint8_t**)dbt->out;
 	dbt->out += sizeof(uint8_t*) * DBT_SIEVE_ENTRIES;
-#endif
-
 	dbt->return_cache = (uint8_t**)dbt->out;
 	dbt->out += sizeof(uint8_t*) * DBT_RETURN_CACHE_ENTRIES;
 
@@ -588,11 +574,8 @@ static void dbt_flush()
 	dbt->end = dbt_cache + DBT_CACHE_SIZE;
 
 	/* Allocate ancillary data structure */
-#ifdef DBT_USE_SIEVE
 	dbt->sieve_table = (uint8_t**)dbt->out;
 	dbt->out += sizeof(uint8_t*) * DBT_SIEVE_ENTRIES;
-#endif
-	
 	dbt->return_cache = (uint8_t**)dbt->out;
 	dbt->out += sizeof(uint8_t*) * DBT_RETURN_CACHE_ENTRIES;
 
@@ -690,12 +673,12 @@ static int find_unused_register(struct instruction_t *ins)
 		used_regs |= REG_MASK(ins->rm.index);
 #define TEST_REG(r) do { if ((used_regs & REG_MASK(r)) == 0) return r; } while (0)
 	/* We really don't want to use esp or ebp as a temporary register */
-	TEST_REG(0); /* Eax */
-	TEST_REG(1); /* Ecx */
-	TEST_REG(2); /* Edx */
-	TEST_REG(3); /* Ebx */
-	TEST_REG(6); /* Esi */
-	TEST_REG(7); /* Edi */
+	TEST_REG(EAX);
+	TEST_REG(ECX);
+	TEST_REG(EDX);
+	TEST_REG(EBX);
+	TEST_REG(ESI);
+	TEST_REG(EDI);
 #undef TEST_REG
 	log_error("find_unused_register: No usable register found. There must be a bug in our implementation.\n");
 	__debugbreak();
@@ -756,14 +739,8 @@ static void dbt_gen_call_postamble(uint8_t **out, size_t source_pc)
 	/* stack: ecx */
 	gen_mov_r_rm_32(out, ECX, modrm_rm_mreg(ESP, 4));
 	gen_lea(out, ECX, modrm_rm_mreg(ECX, -source_pc));
-#ifdef DBT_USE_SIEVE
 	gen_jecxz_rel(out, 5);
 	gen_jmp(out, &dbt_sieve_fallback);
-#else
-	gen_jecxz_rel(out, 7);
-	gen_pop_rm(out, modrm_rm_reg(ECX));
-	gen_jmp(out, &dbt_find_indirect_internal);
-#endif
 	
 	/* match: */
 	gen_pop_rm(out, modrm_rm_reg(ECX));
@@ -1085,11 +1062,7 @@ done_prefix:
 			}
 			gen_mov_rm_imm32(&out, modrm_rm_disp(&dbt->return_cache[RETURN_CACHE_HASH((size_t)code)]), 0);
 			*(size_t*)(out - 4) = (size_t)out + 5;
-			#ifdef DBT_USE_SIEVE
 			gen_call(&out, dbt->sieve_indirect_call_dispatch_trampoline);
-			#else
-			gen_jmp(&out, &dbt_find_indirect_internal);
-			#endif
 			dbt_gen_call_postamble(&out, code);
 			break;
 		}
@@ -1136,11 +1109,7 @@ done_prefix:
 					gen_byte(&out, ins.segment_prefix);
 				gen_push_rm(&out, ins.rm);
 			}
-			#ifdef DBT_USE_SIEVE
 			gen_jmp(&out, dbt->sieve_dispatch_trampoline);
-			#else
-			gen_jmp(&out, &dbt_find_indirect_internal);
-			#endif
 			goto end_block;
 		}
 
@@ -1311,7 +1280,6 @@ size_t dbt_find_next(size_t pc)
 
 size_t dbt_find_next_sieve(size_t pc)
 {
-#ifdef DBT_USE_SIEVE
 	size_t target = dbt_find_next(pc);
 	uint8_t *sieve = (uint8_t*)dbt_gen_sieve(pc, target);
 
@@ -1334,8 +1302,6 @@ size_t dbt_find_next_sieve(size_t pc)
 		*(uint8_t**)&current[DBT_SIEVE_NEXT_BUCKET_OFFSET] = next_bucket_rel;
 	}
 	return target;
-#endif
-	return 0;
 }
 
 size_t dbt_find_direct(size_t pc, size_t patch_addr)
