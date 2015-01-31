@@ -1,22 +1,23 @@
 Foreign LINUX
 ======
 
-Foreign LINUX is a Linux system call translator for the Windows platform. It is capable of running *unmodified* Linux binaries on Windows without any drivers or modifications to the system.
+Foreign LINUX is a dynamic binary translator and a Linux system call interface emulator for the Windows platform. It is capable of running *unmodified* Linux binaries on Windows without any drivers or modifications to the system. This provides another way of running Linux applications under Windows in constrast to Cygwin and other tools. See [Comparison](https://github.com/wishstudio/flinux/wiki/Comparison) for more details.
 
-This project is still in heavy development. It's still buggy and not meant for everyday use. On the other hand it already runs a lot of Linux utilities, including *bash*, *coreutils*, *nano*, *python*, *wget*, *gcc*, etc.
+This project is in heavy development. It is currently capable of running many Linux utilities. Including but not limited to *bash*, *vim*, *python*, and *gcc*. I have also bootstrapped a working [ArchLinux](http://www.archlinux.org/) chroot environment with the package manager *pacman* working. Benefited by xterm-like terminal emulation, terminal based games like [vitetris](www.victornils.net/tetris/) and [nethack](http://www.nethack.org) are also playable. Socket handling is currently not feature complete, but is capable of running small HTTP utilities like *wget* and *curl*, and some basic X applications like *xeyes*, *xclock*, and *glxgears*, with the help of a native Windows X server like [Vcxsrv](sourceforge.net/projects/vcxsrv/).
+
+Some major missing functions are file permissions, process management, signals, multi-threading, and more. Applications depending on these technologies will not work properly. Before trying Foreign Linux you should be warned that this is still in early stage, bad things like ***crashing your system*** or ***eating your harddisk*** may happen. Please back up your data in case. If you find any bugs, feel free to create an issue or contribute a patch.
 
 Feature highlights
 ======
+* Run unmodified Linux applications in a pure user-mode application, no privileged code or drivers or virtual machines
+* Support both dynamically and statically compiled executables
+* Support NTFS native hardlinks and emulated symbolic links
+* Xterm-like terminal emulation on Win32 console
+* Client-side networking (sockets) support
 
-* Pure user-mode application, no privileged code or drivers
-* Copy-on-Write fork() implementattion
-* On-demand paging to save memory and improve fork performance
-* Dynamically and statically compiled executables
-* NTFS native hardlink
-* Emulated symlink
-* Interprocess pipes
-* vt100 terminal emulation on Win32 console
-* Sockets
+License
+======
+GNU General Public License version 3 or above (GPLv3+)
 
 Implemenation details
 ======
@@ -24,18 +25,6 @@ Foreign LINUX serves as a low level emulator (LLE) unlike WINE or cygwin which i
 
 
 Foreign LINUX dynamically translates Linux system calls to their Windows equivalents, or emulates them if not directly available natively (notably fork). This is like [WINE](http://www.winehq.org). But due to some incompatiblities between the two systems and the limitations of Windows, the binary cannot be directly run like in WINE. Instead I implemented a dynamic binary translator to process the binaries and transform the incompatible bits before it is run.
-
-Comparison
-======
-Here is a quick comparison between previous similar projects. All these projects are dead now and some still doesn't work for Win8 x64 and that's the main reason I started Foreign Linux.
-
-* [Cooperative Linux](http://colinux.org): Cooperative Linux is a patchset for the Linux kernel. It allows the kernel to run in VMX mode alongside Windows. Thus it is more like a lightweight virtual machine but with minimal overhead. The biggest issue of coLinux is the need to use a kernel mode driver. It works fine for x86. But the driver hasn't been ported to x64 for many years.
-
-* [atratus](http://atratus.org): atratus uses a server-client architecture. The "kernel" process manages all "client" data and acts as a debugger of the client processes. The benefit of this approach is that clients can get a very clean memory layout which is useful for fork(), and the file sharing semantics can be easy to implement. But the downsides are the need to do process scheduling manually, and true multithreading will hardly work as one debug event will pause the whole process.
-
-* [LBW](http://lbw.sourceforge.net): Linux Binaries on Windows uses Interix to implmenet many POSIX functions, notably fork(). As Interix is now deprecated, LBW is no longer useful.
-
-* [Line](http://sourceforge.net/projects/line): Linux Is Not an Emulator is a very early project to run linux binaries on Windows. It sill work on Win8 x64 as I tested. It uses Cygwin for POSIX layer thus no efficient fork().
 
 Development
 ======
