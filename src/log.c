@@ -39,37 +39,37 @@ struct request
 	uint32_t tid;
 };
 
-
 void log_init()
 {
 	LPCWSTR pipeName = L"\\\\.\\pipe\\flog_server";
 	for (;;)
 	{
 		hLoggerPipe = CreateFileW(pipeName, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
-		if (hLoggerPipe != INVALID_HANDLE_VALUE)
+		if (hLoggerPipe == INVALID_HANDLE_VALUE)
 		{
-			/* Send initial request */
-			struct request request;
-			request.magic = PROTOCOL_MAGIC;
-			request.version = PROTOCOL_VERSION;
-			request.pid = GetProcessId(GetCurrentProcess());
-			request.tid = GetThreadId(GetCurrentThread());
-			DWORD written;
-			if (!WriteFile(hLoggerPipe, &request, sizeof(request), &written, NULL))
+			/* Non critical error code, just wait and try connecting again */
+			if (GetLastError() != ERROR_PIPE_BUSY || !WaitNamedPipeW(pipeName, NMPWAIT_WAIT_FOREVER))
 			{
-				CloseHandle(hLoggerPipe);
 				logger_attached = 0;
+				break;
 			}
-			else
-				logger_attached = 1;
-			break;
+			continue;
 		}
-		/* Non critical error code, just wait and try connecting again */
-		if (GetLastError() != ERROR_PIPE_BUSY || !WaitNamedPipeW(pipeName, NMPWAIT_WAIT_FOREVER))
+		/* Send initial request */
+		struct request request;
+		request.magic = PROTOCOL_MAGIC;
+		request.version = PROTOCOL_VERSION;
+		request.pid = GetProcessId(GetCurrentProcess());
+		request.tid = GetThreadId(GetCurrentThread());
+		DWORD written;
+		if (!WriteFile(hLoggerPipe, &request, sizeof(request), &written, NULL))
 		{
+			CloseHandle(hLoggerPipe);
 			logger_attached = 0;
-			break;
 		}
+		else
+			logger_attached = 1;
+		break;
 	}
 }
 
