@@ -1141,12 +1141,18 @@ static size_t console_read(struct file *f, char *buf, size_t count)
 	}
 	else /* Non canonical mode */
 	{
-		if (console->termios.c_cc[VTIME])
-			log_error("termios.c_cc[VTIME] not supported.\n");
-		if (console->termios.c_cc[VMIN] == 0)
-			log_error("termios.c_cc[VMIN] == 0 not supported\n");
+		int vtime = console->termios.c_cc[VTIME];
+		int vmin = console->termios.c_cc[VMIN];
 		while (count > 0)
 		{
+			if (bytes_read > 0 && bytes_read >= vmin)
+				break;
+			/* If vmin > 0 and vtime == 0, it is a blocking read, otherwise we need to poll first */
+			if (vtime > 0 || (vmin == 0 && vtime == 0))
+			{
+				if (WaitForSingleObject(console->in, 0) == WAIT_TIMEOUT)
+					break;
+			}
 			INPUT_RECORD ir;
 			DWORD read;
 			ReadConsoleInputA(console->in, &ir, 1, &read);
