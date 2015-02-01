@@ -1150,7 +1150,7 @@ static size_t console_read(struct file *f, char *buf, size_t count)
 			/* If vmin > 0 and vtime == 0, it is a blocking read, otherwise we need to poll first */
 			if (vtime > 0 || (vmin == 0 && vtime == 0))
 			{
-				if (WaitForSingleObject(console->in, 0) == WAIT_TIMEOUT)
+				if (WaitForSingleObject(console->in, vtime * 100) == WAIT_TIMEOUT)
 					break;
 			}
 			INPUT_RECORD ir;
