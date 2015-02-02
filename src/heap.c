@@ -53,7 +53,7 @@ static struct heap_data *const heap = MM_HEAP_BASE;
 void heap_init()
 {
 	log_info("heap subsystem initializating...\n");
-	mm_mmap(MM_HEAP_BASE, sizeof(struct heap_data), PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, NULL, 0);
+	mm_mmap(MM_HEAP_BASE, sizeof(struct heap_data), PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, 0, NULL, 0);
 	heap->pools[0].objsize = 16;   heap->pools[0].first = NULL;
 	heap->pools[1].objsize = 32;   heap->pools[1].first = NULL;
 	heap->pools[2].objsize = 64;   heap->pools[2].first = NULL;
@@ -73,7 +73,7 @@ void heap_shutdown()
 #define ALIGN(x, align) (((x) + ((align) - 1)) & -(align))
 static struct bucket *alloc_bucket(int objsize)
 {
-	struct bucket *b = mm_mmap(0, BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE | __MAP_HEAP, NULL, 0);
+	struct bucket *b = mm_mmap(0, BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, INTERNAL_MAP_HEAP, NULL, 0);
 	b->ref_cnt = 0;
 	b->next_bucket = NULL;
 

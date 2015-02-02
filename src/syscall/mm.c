@@ -874,7 +874,7 @@ int mm_fork(HANDLE process)
 	return 1;
 }
 
-void *mm_mmap(void *addr, size_t length, int prot, int flags, struct file *f, off_t offset_pages)
+void *mm_mmap(void *addr, size_t length, int prot, int flags, int internal_flags, struct file *f, off_t offset_pages)
 {
 	if (length == 0)
 		return -EINVAL;
@@ -903,7 +903,7 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, struct file *f, of
 	if (!(flags & MAP_FIXED))
 	{
 		size_t alloc_page;
-		if (flags & __MAP_HEAP)
+		if (internal_flags & INTERNAL_MAP_HEAP)
 			alloc_page = find_free_pages(GET_PAGE(ALIGN_TO_PAGE(length)), ADDRESS_HEAP_LOW, ADDRESS_HEAP_HIGH);
 		else
 			alloc_page = find_free_pages(GET_PAGE(ALIGN_TO_PAGE(length)), ADDRESS_ALLOCATION_LOW, ADDRESS_ALLOCATION_HIGH);
@@ -927,11 +927,26 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, struct file *f, of
 	size_t end_block = GET_BLOCK((size_t)addr + length - 1);
 
 	/*
-	If address are fixed, unmap conflicting pages,
-	Otherwise the pages are found by find_free_pages() thus are guaranteed free.
-	*/
+	 * If address are fixed, unmap conflicting pages,
+	 * Otherwise the pages are found by find_free_pages() thus are guaranteed free.
+	 */
 	if ((flags & MAP_FIXED))
-		mm_munmap(addr, length);
+	{
+		if (internal_flags & INTERNAL_MAP_NOOVERWRITE)
+		{
+			/* The caller does not want to overwrite existing pages
+			 * Check whether it is possible before doing anything
+			 */
+			struct map_entry *p, *e;
+			forward_list_iterate(&mm->map_list, p, e)
+				if (end_page < e->start_page)
+					break;
+				else if (start_page <= e->end_page && e->start_page <= end_page)
+					return -ENOMEM;
+		}
+		else
+			mm_munmap(addr, length);
+	}
 
 	/* Set up all kinds of flags */
 	struct map_entry *entry = new_map_entry();
@@ -1058,7 +1073,7 @@ DEFINE_SYSCALL(mmap, void *, addr, size_t, length, int, prot, int, flags, int, f
 	/* TODO: Initialize mapped area to zero */
 	if (!IS_ALIGNED(offset, PAGE_SIZE))
 		return -EINVAL;
-	return mm_mmap(addr, length, prot, flags, vfs_get(fd), offset / PAGE_SIZE);
+	return mm_mmap(addr, length, prot, flags, 0, vfs_get(fd), offset / PAGE_SIZE);
 }
 
 DEFINE_SYSCALL(oldmmap, void *, _args)
@@ -1080,7 +1095,7 @@ DEFINE_SYSCALL(oldmmap, void *, _args)
 DEFINE_SYSCALL(mmap2, void *, addr, size_t, length, int, prot, int, flags, int, fd, off_t, offset)
 {
 	log_info("mmap2(%p, %p, %x, %x, %d, %p)\n", addr, length, prot, flags, fd, offset);
-	return mm_mmap(addr, length, prot, flags, vfs_get(fd), offset);
+	return mm_mmap(addr, length, prot, flags, 0, vfs_get(fd), offset);
 }
 
 DEFINE_SYSCALL(munmap, void *, addr, size_t, length)
@@ -1245,20 +1260,22 @@ DEFINE_SYSCALL(brk, void *, addr)
 		if (mm_munmap(addr, (size_t)brk - (size_t)addr) < 0)
 		{
 			log_error("Shrink brk failed.\n");
-			return -ENOMEM;
+			goto out;
 		}
 		mm->brk = addr;
 	}
 	else if (addr > mm->brk)
 	{
-		/* TODO: Use fixed address mmap() will overwrite any existing mappings there */
-		if (mm_mmap(brk, (size_t)addr - (size_t)brk, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, NULL, 0) < 0)
+		int r = (int)mm_mmap(brk, (size_t)addr - (size_t)brk, PROT_READ | PROT_WRITE | PROT_EXEC,
+			MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, INTERNAL_MAP_NOOVERWRITE, NULL, 0);
+		if (r < 0)
 		{
 			log_error("Enlarge brk failed.\n");
-			return -ENOMEM;
+			goto out;
 		}
 		mm->brk = addr;
 	}
+out:
 	log_info("New brk: %p\n", mm->brk);
 	return mm->brk;
 }

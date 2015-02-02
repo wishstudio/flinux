@@ -212,11 +212,12 @@ static int load_elf(struct file *f, struct binfmt *binary)
 				prot |= PROT_WRITE;
 			if (ph->p_flags & PF_X)
 				prot |= PROT_EXEC;
-			mm_mmap(elf->load_base + addr, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED, NULL, 0);
+			mm_mmap(elf->load_base + addr, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED, 0, NULL, 0);
 			void *vaddr = (char *)(elf->load_base + ph->p_vaddr);
 			mm_check_write(vaddr, ph->p_filesz); /* TODO */
 			f->op_vtable->pread(f, vaddr, ph->p_filesz, ph->p_offset);
-			mm_update_brk((size_t)addr + size);
+			if (!binary->interpreter) /* This is not an interpreter */
+				mm_update_brk(elf->load_base + addr + size);
 		}
 	}
 
@@ -226,7 +227,7 @@ static int load_elf(struct file *f, struct binfmt *binary)
 		Elf_Phdr *ph = (Elf_Phdr *)&elf->pht[eh.e_phentsize * i];
 		if (ph->p_type == PT_INTERP)
 		{
-			if (binary->interpreter)
+			if (binary->interpreter) /* This is already an interpreter */
 				return -EACCES; /* Bad interpreter */
 			char path[MAX_PATH];
 			f->op_vtable->pread(f, path, ph->p_filesz, ph->p_offset); /* TODO */

@@ -102,6 +102,10 @@
 
 #endif
 
+/* Internal flags for mm_mmap() */
+#define INTERNAL_MAP_HEAP			1	/* Find an address in heap address space range */
+#define INTERNAL_MAP_NOOVERWRITE	2	/* Don't automatically overwrite existing mappings, report error in such case */
+
 void mm_init();
 void mm_reset();
 void mm_shutdown();
@@ -121,5 +125,5 @@ int mm_fork(HANDLE process);
 
 size_t mm_find_free_pages(size_t count_bytes);
 struct file;
-void *mm_mmap(void *addr, size_t len, int prot, int flags, struct file *f, off_t offset_pages);
+void *mm_mmap(void *addr, size_t len, int prot, int flags, int internal_flags, struct file *f, off_t offset_pages);
 int mm_munmap(void *addr, size_t len);

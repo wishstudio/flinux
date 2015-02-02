@@ -72,7 +72,7 @@ void main()
 		ExitProcess(1);
 	}
 
-	mm_mmap(STARTUP_DATA_BASE, BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, NULL, 0);
+	mm_mmap(STARTUP_DATA_BASE, BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, 0, NULL, 0);
 	*(uintptr_t*) startup = 1;
 	char *current_startup_base = startup + sizeof(uintptr_t);
 	memcpy(current_startup_base, cmdline, len + 1);

@@ -100,7 +100,7 @@ void vfs_close(int fd)
 void vfs_init()
 {
 	log_info("vfs subsystem initializing...\n");
-	mm_mmap(VFS_DATA_BASE, sizeof(struct vfs_data), PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, NULL, 0);
+	mm_mmap(VFS_DATA_BASE, sizeof(struct vfs_data), PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, 0, NULL, 0);
 	struct file *console_in, *console_out;
 	console_init();
 	struct file *console = console_alloc();
