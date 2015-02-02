@@ -125,6 +125,6 @@ void main()
 	}
 	if (filename)
 		do_execve(filename, argc - 1, argv + 1, env_size, envp, buffer_base);
-	kprintf("Execution failed.\n");
+	kprintf("Usage: flinux <executable> [arguments]\n");
 	ExitProcess(1);
 }
