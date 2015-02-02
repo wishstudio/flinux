@@ -103,11 +103,11 @@ void vfs_init()
 	mm_mmap(VFS_DATA_BASE, sizeof(struct vfs_data), PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, NULL, 0);
 	struct file *console_in, *console_out;
 	console_init();
-	console_alloc(&console_in, &console_out);
-	console_out->ref++;
-	vfs->fds[0] = console_in;
-	vfs->fds[1] = console_out;
-	vfs->fds[2] = console_out;
+	struct file *console = console_alloc();
+	console->ref += 2;
+	vfs->fds[0] = console;
+	vfs->fds[1] = console;
+	vfs->fds[2] = console;
 	vfs_add(winfs_alloc());
 	vfs_add(devfs_alloc());
 	/* Initialize CWD */

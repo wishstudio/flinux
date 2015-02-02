@@ -27,4 +27,4 @@
 void console_init();
 int console_fork(HANDLE process);
 
-int console_alloc(struct file **in_file, struct file **out_file);
+struct file *console_alloc();

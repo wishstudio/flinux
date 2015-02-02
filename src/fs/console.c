@@ -1419,18 +1419,11 @@ static const struct file_ops console_ops = {
 	.ioctl = console_ioctl,
 };
 
-static struct file *console_alloc_file()
+struct file *console_alloc()
 {
 	struct console_file *f = (struct console_file *)kmalloc(sizeof(struct console_file));
 	f->base_file.op_vtable = &console_ops;
 	f->base_file.ref = 1;
 	f->base_file.flags = O_LARGEFILE | O_RDWR;
-	return (struct file*)f;
-}
-
-int console_alloc(struct file **in_file, struct file **out_file)
-{
-	*in_file = console_alloc_file();
-	*out_file = console_alloc_file();
-	return 0;
+	return (struct file *)f;
 }
