@@ -18,6 +18,7 @@
  */
 
 #include <common/errno.h>
+#include <fs/console.h>
 #include <fs/devfs.h>
 #include <fs/null.h>
 #include <fs/random.h>
@@ -54,6 +55,16 @@ static int devfs_open(const char *path, int flags, int mode, struct file **fp, c
 	else if (!strcmp(path, "urandom"))
 	{
 		*fp = urandom_dev_alloc();
+		return 0;
+	}
+	else if (!strcmp(path, "console"))
+	{
+		*fp = console_alloc();
+		return 0;
+	}
+	else if (!strcmp(path, "tty"))
+	{
+		*fp = console_alloc();
 		return 0;
 	}
 	else
