@@ -19,7 +19,7 @@ For a more technical perspective, see [this](https://github.com/wishstudio/flinu
 
 User Guide
 =====
-To be documented until release. For developers, use [this guide]().
+To be documented until release. For developers, use [this guide](https://github.com/wishstudio/flinux/wiki/ArchLinux-installation-steps) for installation steps of an ArchLinux chroot.
 
 Comparison
 =====
