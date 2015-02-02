@@ -15,17 +15,20 @@ Feature highlights
 * Xterm-like terminal emulation on Win32 console
 * Client-side networking (sockets) support
 
-License
-======
-GNU General Public License version 3 or above (GPLv3+)
+For a more technical perspective, see [this](https://github.com/wishstudio/flinux/wiki/Features).
 
-Implemenation details
-======
-Foreign LINUX serves as a low level emulator (LLE) unlike WINE or cygwin which is an HLE (high leval emulator). We only implement kernel system calls and use the original unmodified system librareis to provide common ABIs. This greatly reduces the amount of work and improves emulation accuracy.
+User Guide
+=====
+To be documented until release. For developers, use [this guide]().
 
-
-Foreign LINUX dynamically translates Linux system calls to their Windows equivalents, or emulates them if not directly available natively (notably fork). This is like [WINE](http://www.winehq.org). But due to some incompatiblities between the two systems and the limitations of Windows, the binary cannot be directly run like in WINE. Instead I implemented a dynamic binary translator to process the binaries and transform the incompatible bits before it is run.
+Comparison
+=====
+See [this](https://github.com/wishstudio/flinux/wiki/Comparison) for a comparison between other similar projects.
 
 Development
 ======
-You need dlltool.exe from mingw for generating the import library for ntdll.dll. Add it to your PATH and you should be able to compile the Visual Studio project.
+See [this guide](https://github.com/wishstudio/flinux/wiki/Development) on how to compile this project.
+
+License
+======
+GNU General Public License version 3 or above (GPLv3+)
