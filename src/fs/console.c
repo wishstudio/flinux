@@ -207,7 +207,6 @@ static void console_unlock()
 struct console_file
 {
 	struct file base_file;
-	int is_read;
 };
 
 static WORD get_text_attribute()
@@ -1018,13 +1017,10 @@ static void console_buffer_add_string(char *buf, size_t *bytes_read, size_t *cou
 
 static int console_get_poll_status(struct file *f)
 {
+	/* Writing is always ready */
 	struct console_file *console_file = (struct console_file *) f;
-	/* A writing fd, always ready */
-	if (!console_file->is_read)
-		return LINUX_POLLOUT;
-
 	if (console->input_buffer_head != console->input_buffer_tail)
-		return LINUX_POLLIN;
+		return LINUX_POLLIN | LINUX_POLLOUT;
 
 	console_lock();
 	INPUT_RECORD ir;
@@ -1035,29 +1031,21 @@ static int console_get_poll_status(struct file *f)
 		if (ir.EventType == KEY_EVENT && ir.Event.KeyEvent.bKeyDown)
 		{
 			console_unlock();
-			return LINUX_POLLIN;
+			return LINUX_POLLIN | LINUX_POLLOUT;
 		}
 		/* Discard the event */
 		ReadConsoleInputW(console->in, &ir, 1, &num_read);
 	}
 	/* We don't find any readable events */
 	console_unlock();
-	return 0;
+	return LINUX_POLLOUT;
 }
 
 static HANDLE console_get_poll_handle(struct file *f, int *poll_events)
 {
 	struct console_file *console_file = (struct console_file *)f;
-	if (console_file->is_read)
-	{
-		*poll_events = LINUX_POLLIN;
-		return console->in;
-	}
-	else
-	{
-		*poll_events = LINUX_POLLOUT;
-		return console->out;
-	}
+	*poll_events = LINUX_POLLIN | LINUX_POLLOUT;
+	return console->in;
 }
 
 static int console_close(struct file *f)
@@ -1069,8 +1057,6 @@ static int console_close(struct file *f)
 static size_t console_read(struct file *f, char *buf, size_t count)
 {
 	struct console_file *console_file = (struct console_file *)f;
-	if (!console_file->is_read)
-		return -EBADF;
 
 	console_lock();
 	console_retrieve_state();
@@ -1245,8 +1231,6 @@ read_done:
 static size_t console_write(struct file *f, const char *buf, size_t count)
 {
 	struct console_file *console_file = (struct console_file *)f;
-	if (console_file->is_read)
-		return -EBADF;
 
 	console_lock();
 	console_retrieve_state();
@@ -1435,19 +1419,18 @@ static const struct file_ops console_ops = {
 	.ioctl = console_ioctl,
 };
 
-static struct file *console_alloc_file(int is_read)
+static struct file *console_alloc_file()
 {
 	struct console_file *f = (struct console_file *)kmalloc(sizeof(struct console_file));
 	f->base_file.op_vtable = &console_ops;
 	f->base_file.ref = 1;
 	f->base_file.flags = O_LARGEFILE | O_RDWR;
-	f->is_read = is_read;
 	return (struct file*)f;
 }
 
 int console_alloc(struct file **in_file, struct file **out_file)
 {
-	*in_file = console_alloc_file(1);
-	*out_file = console_alloc_file(0);
+	*in_file = console_alloc_file();
+	*out_file = console_alloc_file();
 	return 0;
 }
