@@ -34,6 +34,7 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
+#include <malloc.h>
 
 #ifdef _WIN64
 #define Elf_Ehdr Elf64_Ehdr
@@ -62,7 +63,7 @@ __declspec(noreturn) void goto_entrypoint(const char *stack, void *entrypoint);
 
 /* Macros for easier initial stack mangling */
 #define PTR(ptr) *(void**)(stack -= sizeof(void*)) = (void*)(ptr)
-#define AUX_VEC(id, value) PTR(value); PTR(id)
+#define AUX_VEC(id, value) do { PTR(value); PTR(id); } while (0)
 #define ALLOC(size) (stack -= (size))
 
 static void run(struct binfmt *binary, int argc, char *argv[], int env_size, char *envp[])
@@ -83,10 +84,13 @@ static void run(struct binfmt *binary, int argc, char *argv[], int env_size, cha
 	AUX_VEC(AT_SECURE, 0);
 	AUX_VEC(AT_RANDOM, random_bytes);
 	AUX_VEC(AT_PAGESZ, PAGE_SIZE);
-	AUX_VEC(AT_PHDR, executable->pht);
+	AUX_VEC(AT_PHDR, executable->load_base + executable->eh.e_phoff);
 	AUX_VEC(AT_PHENT, executable->eh.e_phentsize);
 	AUX_VEC(AT_PHNUM, executable->eh.e_phnum);
-	AUX_VEC(AT_ENTRY, executable->load_base + executable->eh.e_entry);
+	if (executable->eh.e_type == ET_DYN)
+		AUX_VEC(AT_ENTRY, executable->load_base + executable->eh.e_entry);
+	else
+		AUX_VEC(AT_ENTRY, executable->eh.e_entry);
 	AUX_VEC(AT_BASE, (interpreter ? interpreter->load_base - interpreter->low : NULL));
 
 	/* environment variables */
@@ -151,7 +155,7 @@ static int load_elf(struct file *f, struct binfmt *binary)
 
 	/* Load program header table */
 	size_t phsize = (size_t)eh.e_phentsize * (size_t)eh.e_phnum;
-	struct elf_header *elf = kmalloc(sizeof(struct elf_header) + phsize); /* TODO: Free it at execve */
+	struct elf_header *elf = alloca(sizeof(struct elf_header) + phsize);
 	if (binary->executable)
 		binary->interpreter = elf;
 	else
@@ -196,6 +200,7 @@ static int load_elf(struct file *f, struct binfmt *binary)
 
 	/* Map executable segments */
 	/* TODO: Directly use mmap() */
+	int load_base_set = 0;
 	for (int i = 0; i < eh.e_phnum; i++)
 	{
 		Elf_Phdr *ph = (Elf_Phdr *)&elf->pht[eh.e_phentsize * i];
@@ -205,6 +210,9 @@ static int load_elf(struct file *f, struct binfmt *binary)
 			size_t size = ph->p_memsz + (ph->p_vaddr & 0x00000FFF);
 			off_t offset_pages = ph->p_offset / PAGE_SIZE;
 
+			/* Note: In ET_DYN executables, all address are based upon elf->load_base.
+			 * But in ET_EXEC executables, all address are absolute.
+			 */
 			int prot = 0;
 			if (ph->p_flags & PF_R)
 				prot |= PROT_READ;
@@ -212,12 +220,23 @@ static int load_elf(struct file *f, struct binfmt *binary)
 				prot |= PROT_WRITE;
 			if (ph->p_flags & PF_X)
 				prot |= PROT_EXEC;
-			mm_mmap(elf->load_base + addr, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED, 0, NULL, 0);
-			void *vaddr = (char *)(elf->load_base + ph->p_vaddr);
-			mm_check_write(vaddr, ph->p_filesz); /* TODO */
+			if (eh.e_type == ET_DYN)
+				addr += elf->load_base;
+			mm_mmap(addr, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED, 0, NULL, 0);
+			char *vaddr = (char *)ph->p_vaddr;
+			if (eh.e_type == ET_DYN)
+				vaddr += elf->load_base;
+			mm_check_write(vaddr, ph->p_filesz); /* Populate the memory, otherwise pread() will fail */
 			f->op_vtable->pread(f, vaddr, ph->p_filesz, ph->p_offset);
-			if (!binary->interpreter) /* This is not an interpreter */
-				mm_update_brk(elf->load_base + addr + size);
+			if (!binary->interpreter) /* This is not interpreter */
+				mm_update_brk(addr + size);
+			if (eh.e_type == ET_EXEC && !load_base_set)
+			{
+				/* Record load base of first segment in ET_EXEC
+				 * load_base will be used in run() to calculate various auxiliary vector pointers */
+				load_base_set = 1;
+				elf->load_base = addr;
+			}
 		}
 	}
 
@@ -232,6 +251,7 @@ static int load_elf(struct file *f, struct binfmt *binary)
 			char path[MAX_PATH];
 			f->op_vtable->pread(f, path, ph->p_filesz, ph->p_offset); /* TODO */
 			path[ph->p_filesz] = 0;
+			log_info("interpreter: %s\n", path);
 
 			struct file *fi;
 			int r = vfs_openat(AT_FDCWD, path, O_RDONLY, 0, &fi);
