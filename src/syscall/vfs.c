@@ -1550,14 +1550,12 @@ DEFINE_SYSCALL(faccessat, int, dirfd, const char *, pathname, int, mode, int, fl
 	log_info("faccessat(%d, \"%s\", %d, %x)\n", dirfd, pathname, mode, flags);
 	if (!mm_check_read_string(pathname))
 		return -EFAULT;
-	if (flags)
-	{
-		log_error("flags not supported.\n");
-		return -EINVAL;
-	}
+	int openflags = O_PATH;
+	if (flags & AT_SYMLINK_NOFOLLOW)
+		openflags |= O_NOFOLLOW;
 	/* Currently emulate access behaviour by testing whether the file exists */
 	struct file *f;
-	int r = vfs_openat(dirfd, pathname, O_PATH, mode, &f);
+	int r = vfs_openat(dirfd, pathname, openflags, mode, &f);
 	if (r < 0)
 		return r;
 	vfs_release(f);
