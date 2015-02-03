@@ -232,6 +232,12 @@ DEFINE_SYSCALL(setuid, uid_t, uid)
 	return 0;
 }
 
+DEFINE_SYSCALL(setresuid, uid_t, ruid, uid_t, guid, uid_t, suid)
+{
+	log_info("setresuid(%d, %d, %d)\n", ruid, guid, suid);
+	return 0;
+}
+
 DEFINE_SYSCALL(exit, int, status)
 {
 	log_info("exit(%d)\n", status);
