@@ -1800,14 +1800,14 @@ DEFINE_SYSCALL(select, int, nfds, struct fdset *, readfds, struct fdset *, write
 		LINUX_FD_ZERO(nfds, writefds);
 	if (exceptfds)
 		LINUX_FD_ZERO(nfds, exceptfds);
-	for (int i = 0; i < nfds; i++)
+	for (int i = 0; i < cnt; i++)
 	{
 		if (readfds && (fds[i].revents & LINUX_POLLIN))
-			LINUX_FD_SET(i, readfds);
+			LINUX_FD_SET(fds[i].fd, readfds);
 		if (writefds && (fds[i].revents & LINUX_POLLOUT))
-			LINUX_FD_SET(i, writefds);
+			LINUX_FD_SET(fds[i].fd, writefds);
 		if (exceptfds && (fds[i].revents & LINUX_POLLERR))
-			LINUX_FD_SET(i, exceptfds);
+			LINUX_FD_SET(fds[i].fd, exceptfds);
 	}
 	return r;
 }
