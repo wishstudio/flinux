@@ -803,6 +803,10 @@ static void control_escape_csi(char ch)
 				console->reverse = 1;
 				break;
 
+			case 27:
+				console->reverse = 0;
+				break;
+
 			case 30:
 			case 31:
 			case 32:
