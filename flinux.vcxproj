@@ -91,6 +91,7 @@
     <ClCompile Include="src\dbt\x86.c" />
     <ClCompile Include="src\fs\console.c" />
     <ClCompile Include="src\fs\devfs.c" />
+    <ClCompile Include="src\fs\file.c" />
     <ClCompile Include="src\fs\null.c" />
     <ClCompile Include="src\fs\pipe.c" />
     <ClCompile Include="src\fs\random.c" />

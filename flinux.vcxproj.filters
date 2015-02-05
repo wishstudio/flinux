@@ -267,6 +267,9 @@
     <ClCompile Include="src\dbt\cpuid.c">
       <Filter>dbt</Filter>
     </ClCompile>
+    <ClCompile Include="src\fs\file.c">
+      <Filter>fs</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="src\ntdll.def" />

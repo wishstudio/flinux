@@ -70,3 +70,5 @@ struct file_system
 	int (*mkdir)(const char *pathname, int mode);
 	int (*rmdir)(const char *pathname);
 };
+
+int fhelper_get_poll_status_inout(struct file *f); /* get_poll_status: Always POLLIN | POLLOUT */

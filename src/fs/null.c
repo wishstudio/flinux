@@ -62,6 +62,7 @@ static int null_dev_stat(struct file *f, struct newstat *buf)
 
 static const struct file_ops null_dev_ops =
 {
+	.get_poll_status = fhelper_get_poll_status_inout,
 	.close = null_dev_close,
 	.read = null_dev_read,
 	.write = null_dev_write,

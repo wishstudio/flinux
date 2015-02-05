@@ -1676,9 +1676,9 @@ DEFINE_SYSCALL(poll, struct linux_pollfd *, fds, int, nfds, int, timeout)
 			num_result++;
 			continue;
 		}
-		if (!f->op_vtable->get_poll_handle)
+		if (!f->op_vtable->get_poll_handle && !f->op_vtable->get_poll_status)
 		{
-			log_error("get_poll_handled() not implemented for file %d\n", fds[i].fd);
+			log_error("polling not implemented for file %d\n", fds[i].fd);
 			continue;
 		}
 		if (f->op_vtable->get_poll_status)
@@ -1693,13 +1693,16 @@ DEFINE_SYSCALL(poll, struct linux_pollfd *, fds, int, nfds, int, timeout)
 				continue;
 			}
 		}
-		int e;
-		HANDLE handle = f->op_vtable->get_poll_handle(f, &e);
-		if ((fds[i].events & e) > 0)
+		if (f->op_vtable->get_poll_handle)
 		{
-			handles[cnt] = handle;
-			indices[cnt] = i;
-			cnt++;
+			int e;
+			HANDLE handle = f->op_vtable->get_poll_handle(f, &e);
+			if ((fds[i].events & e) > 0)
+			{
+				handles[cnt] = handle;
+				indices[cnt] = i;
+				cnt++;
+			}
 		}
 	}
 	if (cnt && !done)
