@@ -1249,6 +1249,15 @@ DEFINE_SYSCALL(mremap, void *, old_address, size_t, old_size, size_t, new_size, 
 	return -ENOSYS;
 }
 
+DEFINE_SYSCALL(madvise, void *, addr, size_t, length, int, advise)
+{
+	log_info("madvise(%p, %p, %x)\n", addr, length, advise);
+	/* Notes behaviour-changing advices, other non-critical advises are ignored for now */
+	if (advise & MADV_DONTFORK)
+		log_error("MADV_DONTFORK not supported.\n");
+	return 0;
+}
+
 DEFINE_SYSCALL(brk, void *, addr)
 {
 	log_info("brk(%p)\n", addr);
