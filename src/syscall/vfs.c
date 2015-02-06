@@ -696,7 +696,7 @@ int vfs_openat(int dirfd, const char *pathname, int flags, int mode, struct file
 	if ((flags & O_DIRECT)
 		|| (flags & O_DSYNC)
 		|| (flags & O_LARGEFILE) || (flags & O_NOATIME) || (flags & O_NOCTTY)
-		|| (flags & O_NONBLOCK) || (flags & O_SYNC) || (flags & O_TMPFILE))
+		|| (flags & O_NONBLOCK) || (flags & __O_SYNC) || (flags & __O_TMPFILE))
 	{
 		log_error("Unsupported flag combination found.\n");
 		//return -EINVAL;
