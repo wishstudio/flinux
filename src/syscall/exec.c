@@ -118,7 +118,12 @@ static void run(struct binfmt *binary, int argc, char *argv[], int env_size, cha
 	PTR(argc);
 
 	/* Call executable entrypoint */
-	size_t entrypoint = interpreter? interpreter->load_base + interpreter->eh.e_entry: executable->load_base + executable->eh.e_entry;
+	size_t entrypoint;
+	struct elf_header *start = interpreter? interpreter: executable;
+	if (start->eh.e_type == ET_DYN)
+		entrypoint = start->load_base + start->eh.e_entry;
+	else
+		entrypoint = start->eh.e_entry;
 	log_info("Entrypoint: %p\n", entrypoint);
 
 	/* TODO: The current way isn't bullet-proof
