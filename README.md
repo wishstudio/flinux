@@ -34,4 +34,5 @@ See [this guide](https://github.com/wishstudio/flinux/wiki/Development) on how t
 License
 ======
 Copyright (C) 2014, 2015 Xiangyan Sun <wishstudio@gmail.com>
-GNU General Public License version 3 or above (GPLv3+)
+
+The source code is licensed under GNU General Public License version 3 or above (GPLv3+)
