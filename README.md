@@ -3,7 +3,7 @@ Foreign LINUX
 
 Foreign LINUX is a dynamic binary translator and a Linux system call interface emulator for the Windows platform. It is capable of running *unmodified* Linux binaries on Windows without any drivers or modifications to the system. This provides another way of running Linux applications under Windows in constrast to Cygwin and other tools. See [Comparison](https://github.com/wishstudio/flinux/wiki/Comparison) for more details.
 
-This project is in heavy development. It is currently capable of running many Linux utilities. Including but not limited to *bash*, *vim*, *python*, and *gcc*. I have also bootstrapped a working [ArchLinux](http://www.archlinux.org/) chroot environment with the package manager *pacman* working. Benefited by xterm-like terminal emulation, terminal based games like [vitetris](www.victornils.net/tetris/) and [nethack](http://www.nethack.org) are also playable. Socket handling is currently not feature complete, but is capable of running small HTTP utilities like *wget* and *curl*, and some basic X applications like *xeyes*, *xclock*, and *glxgears*, with the help of a native Windows X server like [Vcxsrv](sourceforge.net/projects/vcxsrv/).
+This project is in heavy development. It is currently capable of running many Linux utilities. Including but not limited to *bash*, *vim*, *python*, and *gcc*. I have also bootstrapped a working [ArchLinux](http://www.archlinux.org/) chroot environment with the package manager *pacman* working. Benefited by xterm-like terminal emulation, terminal based games like [vitetris](www.victornils.net/tetris/) and [nethack](http://www.nethack.org) are also playable. Socket handling is currently not feature complete, but is capable of running some HTTP utilities like *wget*, *curl* and *ssh*, and some basic X applications like *xeyes*, *xclock*, and *glxgears*, with the help of a native Windows X server like [Vcxsrv](sourceforge.net/projects/vcxsrv/).
 
 Some major missing functions are file permissions, process management, signals, multi-threading, and more. Applications depending on these technologies will not work properly. Before trying Foreign Linux you should be warned that this is still in early stage, bad things like ***crashing your system*** or ***eating your harddisk*** may happen. Please back up your data in case. If you find any bugs, feel free to create an issue or contribute a patch.
 
@@ -19,7 +19,9 @@ For a more technical perspective, see [this](https://github.com/wishstudio/flinu
 
 User Guide
 =====
-To be documented until release. For developers, use [this guide](https://github.com/wishstudio/flinux/wiki/ArchLinux-installation-steps) for installation steps of an ArchLinux chroot.
+For users who just want to give it a try, visit [Beginner's Guide](https://github.com/wishstudio/flinux/wiki/Beginnner's-Guide).
+
+For developers, you can also visit [this guide](https://github.com/wishstudio/flinux/wiki/ArchLinux-installation-steps) for detailed bootstrapping steps of an ArchLinux chroot.
 
 Comparison
 =====
@@ -31,4 +33,5 @@ See [this guide](https://github.com/wishstudio/flinux/wiki/Development) on how t
 
 License
 ======
+Copyright (C) 2014, 2015 Xiangyan Sun <wishstudio@gmail.com>
 GNU General Public License version 3 or above (GPLv3+)
