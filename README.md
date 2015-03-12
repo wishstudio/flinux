@@ -1,11 +1,32 @@
 Foreign LINUX
 ======
 
-Foreign LINUX is a dynamic binary translator and a Linux system call interface emulator for the Windows platform. It is capable of running *unmodified* Linux binaries on Windows without any drivers or modifications to the system. This provides another way of running Linux applications under Windows in constrast to Cygwin and other tools. See [Comparison](https://github.com/wishstudio/flinux/wiki/Comparison) for more details.
+Foreign LINUX is a dynamic binary translator and a Linux system call interface emulator for the Windows platform. It is capable of running *unmodified* Linux binaries on Windows without any drivers or modifications to the system. This provides another way of running Linux applications under Windows in constrast to Cygwin and other tools. There is a  [comparison](https://github.com/wishstudio/flinux/wiki/Comparison) over existing projects.
 
-This project is in heavy development. It is currently capable of running many Linux utilities. Including but not limited to *bash*, *vim*, *python*, and *gcc*. I have also bootstrapped a working [ArchLinux](http://www.archlinux.org/) chroot environment with the package manager *pacman* working. Benefited by xterm-like terminal emulation, terminal based games like [vitetris](www.victornils.net/tetris/) and [nethack](http://www.nethack.org) are also playable. Socket handling is currently not feature complete, but is capable of running some HTTP utilities like *wget*, *curl* and *ssh*, and some basic X applications like *xeyes*, *xclock*, and *glxgears*, with the help of a native Windows X server like [Vcxsrv](sourceforge.net/projects/vcxsrv/).
+This project is in heavy development. It is currently capable of running many Linux utilities. Including but not limiting to:
 
-Some major missing functions are file permissions, process management, signals, multi-threading, and more. Applications depending on these technologies will not work properly. Before trying Foreign Linux you should be warned that this is still in early stage, bad things like ***crashing your system*** or ***eating your harddisk*** may happen. Please back up your data in case. If you find any bugs, feel free to create an issue or contribute a patch.
+* Basic utilities: **bash**, **vim**, **nano**
+* Programming environments: **python**, **gcc**
+* Package managers: **pacman**
+* Terminal-based games: **vitetris**, **nethack**
+* Network utilities: **wget**, **curl**, **ssh**
+* X applications: **xeyes**, **xclock**, **glxgears**
+
+Some major missing functions are file permissions, process management, signals, multi-threading, and more. Applications depending on these technologies will not work properly.
+
+How to use
+=====
+Foreign LINUX is still in early stage, bad things like *crashing your system* or *eating your harddisk* may happen. **You have been warned.**
+
+For users who just want to give it a try. Download a premade Arch Linux environment [here](https://xysun.me/static/flinux-archlinux.7z). Then visit [Beginner's Guide](https://github.com/wishstudio/flinux/wiki/Beginnner's-Guide).
+
+For just the binary executables, visit [release page](https://github.com/wishstudio/flinux/releases).
+
+For developers, you can also visit [this guide](https://github.com/wishstudio/flinux/wiki/ArchLinux-installation-steps) for detailed bootstrapping steps of an ArchLinux chroot.
+
+Screenshots
+=====
+![Screenshot](https://xysun.me/static/flinux-screenshot.png)
 
 Feature highlights
 ======
@@ -16,16 +37,6 @@ Feature highlights
 * Client-side networking (sockets) support
 
 For a more technical perspective, see [this](https://github.com/wishstudio/flinux/wiki/Features).
-
-User Guide
-=====
-For users who just want to give it a try, visit [Beginner's Guide](https://github.com/wishstudio/flinux/wiki/Beginnner's-Guide).
-
-For developers, you can also visit [this guide](https://github.com/wishstudio/flinux/wiki/ArchLinux-installation-steps) for detailed bootstrapping steps of an ArchLinux chroot.
-
-Comparison
-=====
-See [this](https://github.com/wishstudio/flinux/wiki/Comparison) for a comparison between other similar projects.
 
 Development
 ======
