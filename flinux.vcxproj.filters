@@ -76,7 +76,6 @@
     <ClInclude Include="src\common\dirent.h">
       <Filter>common</Filter>
     </ClInclude>
-    <ClInclude Include="src\ntdll.h" />
     <ClInclude Include="src\common\signal.h">
       <Filter>common</Filter>
     </ClInclude>
@@ -270,9 +269,6 @@
     <ClCompile Include="src\fs\file.c">
       <Filter>fs</Filter>
     </ClCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <CustomBuild Include="src\ntdll.def" />
   </ItemGroup>
   <ItemGroup>
     <MASM Include="src\syscall\stubs64.asm">
