@@ -189,6 +189,13 @@ DEFINE_SYSCALL(gettid)
 	return tid;
 }
 
+DEFINE_SYSCALL(getsid)
+{
+	pid_t sid = GetCurrentProcessId();
+	log_info("getsid(): %d\n", sid);
+	return sid;
+}
+
 DEFINE_SYSCALL(setsid)
 {
 	log_info("setsid().\n");
