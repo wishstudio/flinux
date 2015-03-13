@@ -28,19 +28,14 @@ Screenshots
 =====
 ![Screenshot](https://xysun.me/static/flinux-screenshot.png)
 
-Feature highlights
-======
-* Run unmodified Linux applications in a pure user-mode application, no privileged code or drivers or virtual machines
-* Support both dynamically and statically compiled executables
-* Support NTFS native hardlinks and emulated symbolic links
-* Xterm-like terminal emulation on Win32 console
-* Client-side networking (sockets) support
-
-For a more technical perspective, see [this](https://github.com/wishstudio/flinux/wiki/Features).
-
 Development
 ======
-See [this guide](https://github.com/wishstudio/flinux/wiki/Development) on how to compile this project.
+See [development](https://github.com/wishstudio/flinux/wiki/Development).
+
+Contact
+======
+Mailing list: flinux@googlegroups.com
+Freenode IRC: #flinux
 
 License
 ======
