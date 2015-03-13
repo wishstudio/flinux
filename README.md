@@ -34,7 +34,8 @@ See [development](https://github.com/wishstudio/flinux/wiki/Development).
 
 Contact
 ======
-Mailing list: flinux@googlegroups.com
+Mailing list: flinux@googlegroups.com ([subscribe](https://groups.google.com/forum/#!forum/flinux))
+
 Freenode IRC: #flinux
 
 License
