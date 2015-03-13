@@ -272,9 +272,6 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <CustomBuild Include="src\ntdll.def" />
-  </ItemGroup>
-  <ItemGroup>
     <MASM Include="src\syscall\stubs64.asm">
       <Filter>syscall</Filter>
     </MASM>
