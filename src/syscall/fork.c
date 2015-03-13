@@ -112,7 +112,7 @@ void fork_init()
 			/* Not good, create a child process and hope this time we can do it better */
 			log_warning("The address %p is occupied, we have to create another process to proceed.\n", region_start);
 			wchar_t filename[MAX_PATH];
-			GetModuleFileNameW(NULL, filename, sizeof(filename));
+			GetModuleFileNameW(NULL, filename, sizeof(filename) / sizeof(filename[0]));
 			PROCESS_INFORMATION info;
 			STARTUPINFOW si = { 0 };
 			si.cb = sizeof(si);
@@ -165,7 +165,7 @@ void fork_init()
 static pid_t fork_process(struct syscall_context *context, unsigned long flags, void *ptid, void *ctid)
 {
 	wchar_t filename[MAX_PATH];
-	GetModuleFileNameW(NULL, filename, sizeof(filename));
+	GetModuleFileNameW(NULL, filename, sizeof(filename) / sizeof(filename[0]));
 
 	tls_beforefork();
 	
