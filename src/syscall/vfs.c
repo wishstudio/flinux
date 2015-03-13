@@ -20,6 +20,7 @@
 #include <common/errno.h>
 #include <common/fadvise.h>
 #include <common/fcntl.h>
+#include <common/ioctls.h>
 #include <fs/console.h>
 #include <fs/devfs.h>
 #include <fs/pipe.h>
@@ -1379,10 +1380,22 @@ DEFINE_SYSCALL(ioctl, int, fd, unsigned int, cmd, unsigned long, arg)
 {
 	log_info("ioctl(%d, %x, %x)\n", fd, cmd, arg);
 	struct file *f = vfs->fds[fd];
-	if (f && f->op_vtable->ioctl)
-		return f->op_vtable->ioctl(f, cmd, arg);
-	else
+	if (!f)
 		return -EBADF;
+	switch (cmd)
+	{
+	case FIOCLEX:
+		return sys_fcntl(fd, F_SETFD, FD_CLOEXEC);
+
+	case FIONCLEX:
+		return sys_fcntl(fd, F_SETFD, 0);
+
+	default:
+		if (f->op_vtable->ioctl)
+			return f->op_vtable->ioctl(f, cmd, arg);
+		else
+			return -EBADF;
+	}
 }
 
 DEFINE_SYSCALL(utime, const char *, filename, const struct utimbuf *, times)
