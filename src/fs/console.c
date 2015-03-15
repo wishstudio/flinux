@@ -1137,8 +1137,8 @@ static size_t console_read(struct file *f, char *buf, size_t count)
 		{
 			if (bytes_read > 0 && bytes_read >= vmin)
 				break;
-			/* If vmin > 0 and vtime == 0, it is a blocking read, otherwise we need to poll first */
-			if (vtime > 0 || (vmin == 0 && vtime == 0))
+			if ((vmin == 0 && vtime == 0)			/* Polling read */
+				|| (vtime > 0 && bytes_read > 0))	/* Read with interbyte timeout. Apply after reading first character */
 			{
 				if (WaitForSingleObject(console->in, vtime * 100) == WAIT_TIMEOUT)
 					break;
