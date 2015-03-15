@@ -735,9 +735,11 @@ static void control_escape_csi(char ch)
 
 	case 'h':
 		if (console->private_mode)
-			change_private_mode(console->params[0], 1);
+			for (int i = 0; i <= console->param_count; i++)
+				change_private_mode(console->params[i], 1);
 		else
-			change_mode(console->params[0], 1);
+			for (int i = 0; i <= console->param_count; i++)
+				change_mode(console->params[i], 1);
 		console->processor = NULL;
 		break;
 
@@ -753,9 +755,11 @@ static void control_escape_csi(char ch)
 
 	case 'l':
 		if (console->private_mode)
-			change_private_mode(console->params[0], 0);
+			for (int i = 0; i <= console->param_count; i++)
+				change_private_mode(console->params[i], 0);
 		else
-			change_mode(console->params[0], 0);
+			for (int i = 0; i <= console->param_count; i++)
+				change_mode(console->params[i], 0);
 		console->processor = NULL;
 		break;
 
