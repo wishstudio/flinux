@@ -33,13 +33,9 @@ DEFINE_SYSCALL(time, intptr_t *, c)
 	log_info("time(%p)\n", c);
 	if (c && !mm_check_write(c, sizeof(int)))
 		return -EFAULT;
-	SYSTEMTIME systime;
-	GetSystemTime(&systime);
-	uint64_t t = (uint64_t)systime.wSecond + (uint64_t)systime.wMinute * 60
-		+ (uint64_t)systime.wHour * 3600 + (uint64_t)systime.wDay * 86400
-		+ ((uint64_t)systime.wYear - 70) * 31536000 + (((uint64_t)systime.wYear - 69) / 4) * 86400
-		- (((uint64_t)systime.wYear - 1) / 100) * 86400 + (((uint64_t)systime.wYear + 299) / 400) * 86400;
-
+	FILETIME systime;
+	GetSystemTimeAsFileTime(&systime);
+	uint64_t t = filetime_to_unix_sec(&systime);
 	if (c)
 		*c = (intptr_t)t;
 	return t;
@@ -137,4 +133,11 @@ DEFINE_SYSCALL(clock_getres, int, clk_id, struct timespec *, res)
 	default:
 		return -EINVAL;
 	}
+}
+
+DEFINE_SYSCALL(setitimer, int, which, const struct itimerval *, new_value, struct itimerval *, old_value)
+{
+	log_info("setitimer(%d, %p, %p)\n", which, new_value, old_value);
+	log_error("setitimer() not implemented.\n");
+	return 0;
 }
