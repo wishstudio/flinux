@@ -148,7 +148,7 @@ void console_init()
 	console->out = out;
 	console->termios.c_iflag = INLCR | ICRNL;
 	console->termios.c_oflag = ONLCR | OPOST;
-	console->termios.c_cflag = 0;
+	console->termios.c_cflag = CREAD | CSIZE | B38400;
 	console->termios.c_lflag = ICANON | ECHO | ECHOCTL;
 	memset(console->termios.c_cc, 0, sizeof(console->termios.c_cc));
 	console->termios.c_cc[VINTR] = 3;
