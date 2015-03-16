@@ -404,6 +404,22 @@ static void execve_initialize_routine()
 	dbt_reset();
 }
 
+static char *flip_startup_base()
+{
+	if (*(uintptr_t*)startup)
+	{
+		*(uintptr_t*)startup = 0;
+		*(uintptr_t*)(startup + (BLOCK_SIZE / 2)) = 1;
+		return startup + (BLOCK_SIZE / 2) + sizeof(uintptr_t);
+	}
+	else
+	{
+		*(uintptr_t*)(startup + (BLOCK_SIZE / 2)) = 0;
+		*(uintptr_t*)startup = 1;
+		return startup + sizeof(uintptr_t);
+	}
+}
+
 DEFINE_SYSCALL(execve, const char *, filename, char **, argv, char **, envp)
 {
 	/* TODO: Deal with argv/envp == NULL */
@@ -411,19 +427,7 @@ DEFINE_SYSCALL(execve, const char *, filename, char **, argv, char **, envp)
 	log_info("execve(%s, %p, %p)\n", filename, argv, envp);
 
 	/* Copy argv[] and envp[] to startup data */
-	char *current_startup_base;
-	if (*(uintptr_t*)startup)
-	{
-		*(uintptr_t*)startup = 0;
-		*(uintptr_t*)(startup + (BLOCK_SIZE / 2)) = 1;
-		current_startup_base = startup + (BLOCK_SIZE / 2) + sizeof(uintptr_t);
-	}
-	else
-	{
-		*(uintptr_t*)(startup + (BLOCK_SIZE / 2)) = 0;
-		*(uintptr_t*)startup = 1;
-		current_startup_base = startup + sizeof(uintptr_t);
-	}
+	char *current_startup_base = flip_startup_base();
 
 	/* Save filename in startup data area */
 	int flen = strlen(filename);
@@ -434,17 +438,9 @@ DEFINE_SYSCALL(execve, const char *, filename, char **, argv, char **, envp)
 	char *base = current_startup_base;
 	int argc, env_size;
 	for (argc = 0; argv[argc]; argc++)
-	{
 		base += strlen(argv[argc]) + 1;
-		log_info("argv[%d] = \"%s\"\n", argc, argv[argc]);
-	}
-	log_info("argc = %d\n", argc);
 	for (env_size = 0; envp[env_size]; env_size++)
-	{
 		base += strlen(envp[env_size]) + 1;
-		log_info("envp[%d] = \"%s\"\n", env_size, envp[env_size]);
-	}
-	log_info("env_size = %d\n", env_size);
 
 	/* TODO: Test if we have enough size to hold the startup data */
 	
@@ -469,10 +465,18 @@ DEFINE_SYSCALL(execve, const char *, filename, char **, argv, char **, envp)
 	}
 	new_envp[env_size] = NULL;
 
+	for (int i = 0; i < argc; i++)
+		log_info("argv[%d] = \"%s\"\n", i, new_argv[i]);
+	for (int i = 0; i < env_size; i++)
+		log_info("envp[%d] = \"%s\"\n", i, new_envp[i]);
+
 	base = (char *)(new_envp + env_size + 1);
 
 	int r = do_execve(filename, argc, new_argv, env_size, new_envp, base, execve_initialize_routine);
 	if (r < 0) /* Should always be the case */
+	{
 		log_warning("execve() failed.\n");
+		flip_startup_base();
+	}
 	return r;
 }
