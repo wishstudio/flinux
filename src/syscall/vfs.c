@@ -1916,4 +1916,5 @@ DEFINE_SYSCALL(fallocate, int, fd, int, mode, loff_t, offset, loff_t, len)
 {
 	log_info("fallocate(%d, %d, %d, %d)\n", fd, mode, offset, len);
 	log_warning("fallocate() not implemented.\n");
+	return -EOPNOTSUPP;
 }
