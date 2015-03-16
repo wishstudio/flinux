@@ -50,6 +50,7 @@
 #define MAX_STRING			256
 #define DEFAULT_ATTRIBUTE	0
 
+typedef uint32_t (*charset_func)(uint32_t ch);
 struct console_data
 {
 	HANDLE section, mutex;
@@ -57,6 +58,8 @@ struct console_data
 	/* console mode settings */
 	struct termios termios;
 	int bright, reverse, foreground, background;
+	charset_func g0_charset, g1_charset;
+	int charset;
 	int insert_mode;
 	int cursor_key_mode;
 	int origin_mode;
@@ -88,6 +91,38 @@ struct console_data
 };
 
 static struct console_data *const console = (struct console_data *)CONSOLE_DATA_BASE;
+
+static uint32_t default_charset(uint32_t ch)
+{
+	return ch;
+}
+
+static uint32_t dec_special_graphics_charset(uint32_t ch)
+{
+	static const uint32_t table[32] = {
+		0x2666, 0x2591, 0x0000, 0x0000, 0x0000, 0x0000, 0x00B0, 0x00B1,
+		0x0000, 0x0000, 0x2518, 0x2510, 0x250C, 0x2514, 0x253C, 0x23BA,
+		0x23BB, 0x2500, 0x23BC, 0x23BD, 0x251C, 0x2524, 0x2534, 0x252C,
+		0x2502, 0x2264, 0x2265, 0x03C0, 0x2260, 0x00A3, 0x00B7, 0x00FF,
+	};
+if (ch >= 0x60 && ch <= 0x7F)
+	//if (ch == 'l')
+		return table[ch - 0x60];
+	//else if (ch == 'x')
+	//	return 0x2502;
+	else
+		return ch;
+}
+
+static charset_func parse_charset(char ch)
+{
+	switch (ch)
+	{
+	case '0': return dec_special_graphics_charset;
+	case 'B': return default_charset;
+	default: return NULL;
+	}
+}
 
 void console_init()
 {
@@ -161,6 +196,8 @@ void console_init()
 	console->reverse = 0;
 	console->foreground = 7;
 	console->background = 0;
+	console->g0_charset = console->g1_charset = default_charset;
+	console->charset = 0;
 	console->insert_mode = 0;
 	console->cursor_key_mode = 0;
 	console->origin_mode = 0;
@@ -480,6 +517,7 @@ static void write_normal(const char *buf, int size)
 	if (size == 0)
 		return;
 
+	charset_func charset = console->charset == 0? console->g0_charset: console->g1_charset;
 	WCHAR data[1024];
 	int len = 0, displen = 0;
 	int i = 0;
@@ -515,7 +553,7 @@ static void write_normal(const char *buf, int size)
 							break;
 						}
 						displen += l;
-						data[len++] = codepoint;
+						data[len++] = charset(codepoint);
 					}
 				}
 				console->utf8_buf_size = 0;
@@ -973,13 +1011,21 @@ static void control_escape_sharp(char ch)
 
 static void control_escape_set_default_character_set(char ch)
 {
-	log_warning("console: set default character set: %c, ignored.\n", ch);
+	charset_func c = parse_charset(ch);
+	if (c)
+		console->g0_charset = c;
+	else
+		log_warning("console: set default character set: %c, ignored.\n", ch);
 	console->processor = NULL;
 }
 
 static void control_escape_set_alternate_character_set(char ch)
 {
-	log_warning("console: set alternate character set: %c, ignored.\n", ch);
+	charset_func c = parse_charset(ch);
+	if (c)
+		console->g1_charset = c;
+	else
+		log_warning("console: set alternate character set: %c, ignored.\n", ch);
 	console->processor = NULL;
 }
 
@@ -1325,10 +1371,17 @@ static size_t console_write(struct file *f, const char *buf, size_t count)
 			else
 				nl();
 		}
-		else if (ch == 0x0E || ch == 0x0F)
+		else if (ch == 0x0E)
 		{
-			/* Shift In and Shift Out */
+			/* Shift In */
 			OUTPUT();
+			console->charset = 0;
+		}
+		else if (ch == 0x0F)
+		{
+			/* Shift Out */
+			OUTPUT();
+			console->charset = 1;
 		}
 		else if (console->processor)
 			console->processor(ch);
