@@ -124,7 +124,7 @@ void main()
 			filename = argv[i];
 	}
 	if (filename)
-		do_execve(filename, argc - 1, argv + 1, env_size, envp, buffer_base);
+		do_execve(filename, argc - 1, argv + 1, env_size, envp, buffer_base, NULL);
 	kprintf("Usage: flinux <executable> [arguments]\n");
 	ExitProcess(1);
 }

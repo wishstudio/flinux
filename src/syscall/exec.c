@@ -331,7 +331,8 @@ static int load_script(struct file *f, struct binfmt *binary)
 	return load_elf(fe, binary);
 }
 
-int do_execve(const char *filename, int argc, char *argv[], int env_size, char *envp[], char *buffer_base)
+int do_execve(const char *filename, int argc, char *argv[], int env_size, char *envp[], char *buffer_base,
+	void (*initialize_routine)())
 {
 	buffer_base = (char*)((uintptr_t)(buffer_base + sizeof(void*) - 1) & -sizeof(void*));
 
@@ -361,9 +362,19 @@ int do_execve(const char *filename, int argc, char *argv[], int env_size, char *
 
 	/* Load file */
 	if (magic[0] == ELFMAG0 && magic[1] == ELFMAG1 && magic[2] == ELFMAG2 && magic[3] == ELFMAG3)
+	{
+		log_info("It is an ELF file.\n");
+		if (initialize_routine)
+			initialize_routine();
 		r = load_elf(f, &binary);
+	}
 	else if (magic[0] == '#' && magic[1] == '!')
+	{
+		log_info("It is a script file.\n");
+		if (initialize_routine)
+			initialize_routine();
 		r = load_script(f, &binary);
+	}
 	else
 	{
 		log_error("Unknown binary magic: %c%c%c%c", magic[0], magic[1], magic[2], magic[3]);
@@ -371,23 +382,33 @@ int do_execve(const char *filename, int argc, char *argv[], int env_size, char *
 	}
 	vfs_release(f);
 	if (r < 0)
-		return r;
+	{
+		log_error("FATAL: Load executable failed, cannot continue.\n");
+		ExitProcess(1);
+	}
 
 	/* Execute file */
 	if (binary.replace_argv0)
 		argv[0] = filename;
 	run(&binary, argc, argv, env_size, envp);
-	return 0;
+	return 0; /* Would never reach here */
 }
 
 static char *const startup = (char *)STARTUP_DATA_BASE;
+
+static void execve_initialize_routine()
+{
+	vfs_reset();
+	mm_reset();
+	tls_reset();
+	dbt_reset();
+}
 
 DEFINE_SYSCALL(execve, const char *, filename, char **, argv, char **, envp)
 {
 	/* TODO: Deal with argv/envp == NULL */
 	/* TODO: Don't destroy things on failure */
 	log_info("execve(%s, %p, %p)\n", filename, argv, envp);
-	log_info("Reinitializing...\n");
 
 	/* Copy argv[] and envp[] to startup data */
 	char *current_startup_base;
@@ -450,14 +471,8 @@ DEFINE_SYSCALL(execve, const char *, filename, char **, argv, char **, envp)
 
 	base = (char *)(new_envp + env_size + 1);
 
-	vfs_reset();
-	mm_reset();
-	tls_reset();
-	dbt_reset();
-	if (do_execve(filename, argc, new_argv, env_size, new_envp, base) != 0)
-	{
+	int r = do_execve(filename, argc, new_argv, env_size, new_envp, base, execve_initialize_routine);
+	if (r < 0) /* Should always be the case */
 		log_warning("execve() failed.\n");
-		ExitProcess(0); /* TODO: Recover */
-	}
-	return 0;
+	return r;
 }
