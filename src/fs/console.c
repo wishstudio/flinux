@@ -43,7 +43,6 @@
  * to the same console simultaneously. The only thing we need to take care of is
  * when user changes the size of the window during application operation.
  */
-/* TODO: UTF-8 support */
 
 #define CONSOLE_MAX_PARAMS	16
 #define MAX_INPUT			256
@@ -74,6 +73,8 @@ struct console_data
 	int top; /* the row number of current emulated top line in buffer coordinate */
 	int scroll_top, scroll_bottom; /* the row numbers of the margins of the scroll region */
 	int scroll_full_screen; /* whether the scrolling region is the full screen */
+	char utf8_buf[4]; /* for storing unfinished utf-8 character */
+	int utf8_buf_size;
 	
 	/* escape sequence processor */
 	int params[CONSOLE_MAX_PARAMS];
@@ -169,6 +170,7 @@ void console_init()
 	console->at_right_margin = 0;
 	console->top = 0;
 	console->scroll_full_screen = 1;
+	console->utf8_buf_size = 0;
 
 	console->input_buffer_head = console->input_buffer_tail = 0;
 	console->processor = NULL;
@@ -478,24 +480,59 @@ static void write_normal(const char *buf, int size)
 	if (size == 0)
 		return;
 
-	while (size > 0)
+	WCHAR data[1024];
+	int len = 0, displen = 0;
+	int i = 0;
+	while (i < size)
 	{
 		if (console->at_right_margin && console->wraparound_mode)
 			crnl();
 		/* Write to line end at most */
-		int line_remain = min(size, console->width - console->x);
-		if (console->insert_mode && console->x + line_remain < console->width)
-			scroll(console->x, console->width - 1, console->y, console->y, line_remain, 0);
-		DWORD bytes_written;
-		WriteConsoleA(console->out, buf, line_remain, &bytes_written, NULL);
-		console->x += line_remain;
+		int line_remain = min(size - i, console->width - console->x);
+		len = 0;
+		displen = 0;
+		int seqlen = -1;
+		while (displen < line_remain && i < size)
+		{
+			console->utf8_buf[console->utf8_buf_size++] = buf[i++];
+			if (console->utf8_buf_size == 1)
+				seqlen = utf8_get_sequence_len(console->utf8_buf[0]);
+			if (seqlen < 0)
+				console->utf8_buf_size = 0;
+			if (seqlen == console->utf8_buf_size)
+			{
+				uint32_t codepoint = utf8_decode(console->utf8_buf);
+				if (codepoint >= 0 && codepoint <= 0x10FFFF)
+				{
+					/* TODO: Handle non BMP characters (not supported by conhost) */
+					int l = wcwidth(codepoint);
+					if (l > 0)
+					{
+						if (displen + l > line_remain && console->wraparound_mode)
+						{
+							i--;
+							console->utf8_buf_size--;
+							break;
+						}
+						displen += l;
+						data[len++] = codepoint;
+					}
+				}
+				console->utf8_buf_size = 0;
+			}
+		}
+
+		if (console->insert_mode && console->x + displen < console->width)
+			scroll(console->x, console->width - 1, console->y, console->y, displen, 0);
+		
+		DWORD chars_written;
+		WriteConsoleW(console->out, data, len, &chars_written, NULL);
+		console->x += displen;
 		if (console->x == console->width)
 		{
 			console->x--;
 			console->at_right_margin = 1;
 		}
-		buf += line_remain;
-		size -= line_remain;
 	}
 }
 
@@ -1252,7 +1289,7 @@ static size_t console_write(struct file *f, const char *buf, size_t count)
 	size_t i;
 	for (i = 0; i < count; i++)
 	{
-		char ch = buf[i];
+		unsigned char ch = buf[i];
 		if (ch == 0x1B) /* Escape */
 		{
 			OUTPUT();

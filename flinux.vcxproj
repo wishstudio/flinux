@@ -112,6 +112,7 @@
     <ClCompile Include="src\syscall\tls.c" />
     <ClCompile Include="src\syscall\vfs.c" />
     <ClCompile Include="src\vsprintf.c" />
+    <ClCompile Include="src\wcwidth.c" />
   </ItemGroup>
   <ItemGroup>
     <MASM Include="src\dbt\x86_trampoline.asm" />

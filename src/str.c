@@ -84,6 +84,34 @@ static const uint16_t filename_transform_chars[] =
 /* Grab low "bits" bits of x */
 #define LOWBITS(x, bits) ((x) & ((1 << ((bits) + 1)) - 1))
 
+int utf8_get_sequence_len(char ch)
+{
+	if ((ch & 0x80) == 0)
+		return 1;
+	else if ((ch & 0xE0) == 0xC0)
+		return 2;
+	else if ((ch & 0xF0) == 0xE0)
+		return 3;
+	else if ((ch & 0xF8) == 0xF0)
+		return 4;
+	else
+		return -1;
+}
+
+uint32_t utf8_decode(const char *data)
+{
+	if ((data[0] & 0x80) == 0)
+		return (uint32_t)data[0];
+	else if ((data[0] & 0xE0) == 0xC0)
+		return (uint32_t)(LOWBITS(data[0], 5) << 6) + LOWBITS(data[1], 6);
+	else if ((data[0] & 0xF0) == 0xE0)
+		return (uint32_t)(LOWBITS(data[0], 4) << 12) + (LOWBITS(data[1], 6) << 6) + LOWBITS(data[2], 6);
+	else if ((data[0] & 0xF8) == 0xF0)
+		return (uint32_t)(LOWBITS(data[0], 3) << 18) + (LOWBITS(data[1], 6) << 12) + (LOWBITS(data[2], 6) << 6) + LOWBITS(data[3], 6);
+	else
+		return -1;
+}
+
 static __forceinline uint32_t utf8_read_increment(const char **data, const char *last)
 {
 	if ((**data & 0x80) == 0 && *data + 1 <= last) // 0xxxxxxx
@@ -110,7 +138,7 @@ static __forceinline uint32_t utf8_read_increment(const char **data, const char 
 		codepoint += LOWBITS(*(*data)++, 6) << 12;
 		codepoint += LOWBITS(*(*data)++, 6) << 6;
 		codepoint += LOWBITS(*(*data)++, 6);
-		return 0;
+		return codepoint;
 	}
 	else
 		return -1;
