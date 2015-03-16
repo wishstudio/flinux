@@ -768,6 +768,9 @@ DEFINE_SYSCALL(creat, const char *, pathname, int, mode)
 DEFINE_SYSCALL(close, int, fd)
 {
 	log_info("close(%d)\n", fd);
+	if (fd < 0) {
+		return -EBADF;
+	}
 	struct file *f = vfs->fds[fd];
 	if (!f)
 		return -EBADF;
