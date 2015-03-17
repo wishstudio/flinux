@@ -83,6 +83,8 @@ DEFINE_SYSCALL(clock_gettime, int, clk_id, struct timespec *, tp)
 		return 0;
 	}
 	case CLOCK_MONOTONIC:
+	case CLOCK_MONOTONIC_COARSE:
+	case CLOCK_MONOTONIC_RAW:
 	{
 		LARGE_INTEGER freq, counter;
 		QueryPerformanceFrequency(&freq);
@@ -114,6 +116,8 @@ DEFINE_SYSCALL(clock_getres, int, clk_id, struct timespec *, res)
 		return 0;
 	}
 	case CLOCK_MONOTONIC:
+	case CLOCK_MONOTONIC_COARSE:
+	case CLOCK_MONOTONIC_RAW:
 	{
 		LARGE_INTEGER freq;
 		QueryPerformanceFrequency(&freq);
