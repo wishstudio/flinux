@@ -1370,15 +1370,15 @@ static size_t console_write(struct file *f, const char *buf, size_t count)
 		}
 		else if (ch == 0x0E)
 		{
-			/* Shift In */
-			OUTPUT();
-			console->charset = 0;
-		}
-		else if (ch == 0x0F)
-		{
 			/* Shift Out */
 			OUTPUT();
 			console->charset = 1;
+		}
+		else if (ch == 0x0F)
+		{
+			/* Shift In */
+			OUTPUT();
+			console->charset = 0;
 		}
 		else if (console->processor)
 			console->processor(ch);
