@@ -244,10 +244,25 @@ DEFINE_SYSCALL(setresuid, uid_t, ruid, uid_t, euid, uid_t, suid)
 	log_info("setresuid(%d, %d, %d)\n", ruid, euid, suid);
 	return 0;
 }
+DEFINE_SYSCALL(getresuid, uid_t *, ruid, uid_t *, euid, uid_t *, suid)
+{
+	log_info("getresuid(%d, %d, %d)\n", ruid, euid, suid);
+	return 0;
+}
 
 DEFINE_SYSCALL(setresgid, gid_t, rgid, gid_t, egid, gid_t, sgid)
 {
 	log_info("setresgid(%d, %d, %d)\n", rgid, egid, sgid);
+	return 0;
+}
+DEFINE_SYSCALL(getresgid, uid_t *, rgid, gid_t *, egid, gid_t *, sgid)
+{
+	log_info("getresgid(%d, %d, %d)\n", rgid, egid, sgid);
+	return 0;
+}
+DEFINE_SYSCALL(getgroups, int, size, gid_t *, list)
+{
+	log_info("getgroups()\n");
 	return 0;
 }
 
