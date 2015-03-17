@@ -837,8 +837,8 @@ static const struct instruction_desc mandatory_0x0F7F[4] =
 
 static const struct instruction_desc extension_0xAE[8] =
 {
-	/* 0: ??? */ UNKNOWN()
-	/* 1: ??? */ UNKNOWN()
+	/* 0: FXSAVE */ INST(MODRM(), WRITE(MODRM_RM_M))
+	/* 1: FXRSTOR */ INST(MODRM(), READ(MODRM_RM_M))
 	/* 2: LDMXCSR m32 */ INST(MODRM(), READ(MODRM_RM_M))
 	/* 3: STMXCSR m32 */ INST(MODRM(), WRITE(MODRM_RM_M))
 	/* 4: mem: XSAVE mem */ INST(MODRM(), WRITE(MODRM_RM_M))
