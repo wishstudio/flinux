@@ -98,7 +98,7 @@ struct console_data
 	char string_buffer[MAX_STRING];
 	char input_buffer[MAX_INPUT];
 	size_t input_buffer_head, input_buffer_tail;
-	int private_mode; /* mode starts with "CSI ?" */
+	char csi_prefix; /* prefix after CSI, e.g. '?', '>' */
 	void (*processor)(char ch);
 };
 
@@ -569,6 +569,16 @@ static void crnl()
 	nl();
 }
 
+static void console_add_input(char *str, size_t size)
+{
+	/* TODO: Detect input buffer overflow */
+	for (size_t i = 0; i < size; i++)
+	{
+		console->input_buffer[console->input_buffer_head] = str[i];
+		console->input_buffer_head = (console->input_buffer_head + 1) % MAX_INPUT;
+	}
+}
+
 static void write_normal(const char *buf, int size)
 {
 	if (size == 0)
@@ -920,7 +930,7 @@ static void control_escape_csi(char ch)
 		break;
 
 	case 'h':
-		if (console->private_mode)
+		if (console->csi_prefix == '?')
 			for (int i = 0; i <= console->param_count; i++)
 				change_private_mode(console->params[i], 1);
 		else
@@ -940,7 +950,7 @@ static void control_escape_csi(char ch)
 		break;
 
 	case 'l':
-		if (console->private_mode)
+		if (console->csi_prefix == '?')
 			for (int i = 0; i <= console->param_count; i++)
 				change_private_mode(console->params[i], 0);
 		else
@@ -966,6 +976,24 @@ static void control_escape_csi(char ch)
 
 	case 'P': /* DCH */
 		delete_character(console->params[0]? console->params[0]: 1);
+		console->processor = NULL;
+		break;
+
+	case 'c':
+		if (console->csi_prefix == '>') /* DA2 */
+		{
+			if (console->params[0] == 0)
+				console_add_input("\x1B[>61;95;0c", 11);
+			else
+				log_warning("DA2 parameter is not zero.\n");
+		}
+		else /* DA1 */
+		{
+			if (console->params[0] == 0)
+				log_error("DA1 not supported.\n");
+			else
+				log_warning("DA1 parameter is not zero.\n");
+		}
 		console->processor = NULL;
 		break;
 
@@ -1046,7 +1074,11 @@ static void control_escape_csi(char ch)
 		break;
 
 	case '?':
-		console->private_mode = 1;
+		console->csi_prefix = '?';
+		break;
+
+	case '>':
+		console->csi_prefix = '?';
 		break;
 
 	default:
@@ -1148,7 +1180,7 @@ static void control_escape(char ch)
 		for (int i = 0; i < CONSOLE_MAX_PARAMS; i++)
 			console->params[i] = 0;
 		console->param_count = 0;
-		console->private_mode = 0;
+		console->csi_prefix = 0;
 		console->processor = control_escape_csi;
 		break;
 
@@ -1201,16 +1233,6 @@ static void control_escape(char ch)
 	default:
 		log_error("control_escape(): Unhandled character %c\n", ch);
 		console->processor = NULL;
-	}
-}
-
-static void console_add_input(char *str, size_t size)
-{
-	/* TODO: Detect input buffer overflow */
-	for (size_t i = 0; i < size; i++)
-	{
-		console->input_buffer[console->input_buffer_head] = str[i];
-		console->input_buffer_head = (console->input_buffer_head + 1) % MAX_INPUT;
 	}
 }
 
