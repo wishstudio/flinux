@@ -51,10 +51,20 @@
 #define DEFAULT_ATTRIBUTE	0
 
 typedef uint32_t (*charset_func)(uint32_t ch);
+struct console_cursor /* DECSC */
+{
+	int x, y;
+	int at_right_margin;
+	int bright, reverse, foreground, background;
+	int charset;
+	int origin_mode;
+	int wraparound_mode;
+};
 struct console_data
 {
 	HANDLE section, mutex;
 	HANDLE in, out;
+	HANDLE normal_buffer, alternate_buffer;
 	/* console mode settings */
 	struct termios termios;
 	int bright, reverse, foreground, background;
@@ -64,6 +74,7 @@ struct console_data
 	int cursor_key_mode;
 	int origin_mode;
 	int wraparound_mode;
+	struct console_cursor saved_cursor;
 
 	/* Based on our assumption, these values are not modifiable by other processes
 	 * during a console operation.
@@ -71,6 +82,7 @@ struct console_data
 	 */
 	int x, y; /* current position, in window coordinate */
 	int at_right_margin; /* whether we are at the right margin, i.e. the invisible column after the rightmost */
+	WORD attr; /* text attribute */
 	int width, height; /* current size of the console window */
 	int buffer_height; /* current height of the screen buffer */
 	int top; /* the row number of current emulated top line in buffer coordinate */
@@ -121,6 +133,7 @@ static charset_func parse_charset(char ch)
 	}
 }
 
+static void save_cursor();
 void console_init()
 {
 	log_info("Initializing console shared memory region.\n");
@@ -179,6 +192,8 @@ void console_init()
 	console->mutex = mutex;
 	console->in = in;
 	console->out = out;
+	console->normal_buffer = out;
+	console->alternate_buffer = CreateConsoleScreenBuffer(GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &attr, CONSOLE_TEXTMODE_BUFFER, NULL);
 	console->termios.c_iflag = INLCR | ICRNL;
 	console->termios.c_oflag = ONLCR | OPOST;
 	console->termios.c_cflag = CREAD | CSIZE | B38400;
@@ -205,6 +220,8 @@ void console_init()
 	console->top = 0;
 	console->scroll_full_screen = 1;
 	console->utf8_buf_size = 0;
+
+	save_cursor();
 
 	console->input_buffer_head = console->input_buffer_tail = 0;
 	console->processor = NULL;
@@ -413,6 +430,49 @@ static void console_set_size(int width, int height)
 	set_pos(console->x, console->y);
 	console->width = width;
 	console->height = height;
+}
+
+static void save_cursor()
+{
+	console->saved_cursor.x = console->x;
+	console->saved_cursor.y = console->y;
+	console->saved_cursor.at_right_margin = console->at_right_margin;
+	console->saved_cursor.bright = console->bright;
+	console->saved_cursor.reverse = console->reverse;
+	console->saved_cursor.foreground = console->foreground;
+	console->saved_cursor.background = console->background;
+	console->saved_cursor.charset = console->charset;
+	console->saved_cursor.origin_mode = console->origin_mode;
+	console->saved_cursor.wraparound_mode = console->wraparound_mode;
+}
+
+static void restore_cursor()
+{
+	console->x = console->saved_cursor.x;
+	console->y = console->saved_cursor.y;
+	console->at_right_margin = console->saved_cursor.at_right_margin;
+	console->bright = console->saved_cursor.bright;
+	console->reverse = console->saved_cursor.reverse;
+	console->foreground = console->saved_cursor.foreground;
+	console->background = console->saved_cursor.background;
+	console->charset = console->saved_cursor.charset;
+	console->origin_mode = console->saved_cursor.origin_mode;
+	console->wraparound_mode = console->saved_cursor.wraparound_mode;
+
+	set_pos(console->x, console->y);
+	SetConsoleTextAttribute(console->out, get_text_attribute());
+}
+
+static void switch_to_normal_buffer()
+{
+	console->out = console->normal_buffer;
+	SetConsoleActiveScreenBuffer(console->out);
+}
+
+static void switch_to_alternate_buffer()
+{
+	console->out = console->alternate_buffer;
+	SetConsoleActiveScreenBuffer(console->out);
 }
 
 static void move_left(int count)
@@ -716,6 +776,60 @@ static void change_private_mode(int mode, int set)
 
 	case 7:
 		console->wraparound_mode = set;
+		break;
+
+	case 47:
+		if (set)
+			switch_to_alternate_buffer();
+		else
+			switch_to_normal_buffer();
+		break;
+
+	case 1047:
+		if (set)
+		{
+			if (console->out == console->normal_buffer)
+			{
+				switch_to_alternate_buffer();
+				erase_screen(ERASE_SCREEN_BEGIN_TO_END);
+			}
+		}
+		else
+		{
+			if (console->out == console->alternate_buffer)
+			{
+				switch_to_normal_buffer();
+				erase_screen(ERASE_SCREEN_BEGIN_TO_END);
+			}
+		}
+		break;
+
+	case 1048:
+		if (set)
+			save_cursor();
+		else
+			restore_cursor();
+		break;
+
+	case 1049:
+		if (set)
+		{
+			save_cursor();
+			if (console->out == console->normal_buffer)
+			{
+				switch_to_alternate_buffer();
+				erase_screen(ERASE_SCREEN_BEGIN_TO_END);
+			}
+		}
+		else
+		{
+			if (console->out == console->alternate_buffer)
+			{
+				switch_to_normal_buffer();
+				erase_screen(ERASE_SCREEN_BEGIN_TO_END);
+			}
+			restore_cursor();
+		}
 		break;
 
 	default:
@@ -1072,6 +1186,16 @@ static void control_escape(char ch)
 
 	case '#':
 		console->processor = control_escape_sharp;
+		break;
+
+	case '7': /* DECSC */
+		save_cursor();
+		console->processor = NULL;
+		break;
+
+	case '8': /* DECRC */
+		restore_cursor();
+		console->processor = NULL;
 		break;
 
 	default:
