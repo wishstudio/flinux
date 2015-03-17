@@ -19,12 +19,24 @@
 
 #include <common/fcntl.h>
 #include <fs/file.h>
+#include <syscall/syscall.h>
+#include <errno.h>
 #include <heap.h>
 #include <log.h>
 
 #define SystemFunction036 NTAPI SystemFunction036
 #include <NTSecAPI.h>
 #undef SystemFunction036
+
+DEFINE_SYSCALL(getrandom, void *, buf, size_t, buflen, unsigned int, flags)
+{
+	log_info("getrandom(%p, %d, %x)\n", buf, buflen, flags);
+	if (!mm_check_write(buf, buflen))
+		return -EFAULT;
+	if (!RtlGenRandom(buf, buflen))
+		return 0;
+	return buflen;
+}
 
 static int random_dev_close(struct file *f)
 {
