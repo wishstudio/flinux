@@ -1,6 +1,8 @@
 Foreign LINUX
 ======
 
+[![Build status](https://ci.appveyor.com/api/projects/status/a340ver0l85l14tf?svg=true)](https://ci.appveyor.com/project/wishstudio/flinux)
+
 Foreign LINUX is a dynamic binary translator and a Linux system call interface emulator for the Windows platform. It is capable of running *unmodified* Linux binaries on Windows without any drivers or modifications to the system. This provides another way of running Linux applications under Windows in constrast to Cygwin and other tools. There is a  [comparison](https://github.com/wishstudio/flinux/wiki/Comparison) over existing projects.
 
 This project is in heavy development. It is currently capable of running many Linux utilities. Including but not limiting to:
@@ -20,7 +22,7 @@ Foreign LINUX is still in early stage, bad things like *crashing your system* or
 
 For users who just want to give it a try. Download a premade Arch Linux environment [here](https://xysun.me/static/flinux-archlinux.7z). Then visit [Beginner's Guide](https://github.com/wishstudio/flinux/wiki/Beginner's-Guide).
 
-For just the binary executables, visit [release page](https://github.com/wishstudio/flinux/releases).
+For just the binary executables, visit [release page](https://github.com/wishstudio/flinux/releases). For getting the latest development snapshot, visit [here](https://ci.appveyor.com/project/wishstudio/flinux/build/artifacts).
 
 For developers, you can also visit [this guide](https://github.com/wishstudio/flinux/wiki/ArchLinux-installation-steps) for detailed bootstrapping steps of an ArchLinux chroot.
 
