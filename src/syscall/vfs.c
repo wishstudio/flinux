@@ -750,6 +750,8 @@ DEFINE_SYSCALL(openat, int, dirfd, const char *, pathname, int, flags, int, mode
 	int fd = vfs_store_file(f, (flags & O_CLOEXEC) > 0);
 	if (fd < 0)
 		vfs_release(f);
+	else
+		log_info("openat() file descriptor id: %d\n", fd);
 	return fd;
 }
 
@@ -909,7 +911,9 @@ DEFINE_SYSCALL(readlinkat, int, dirfd, const char *, pathname, char *, buf, int,
 		return r;
 	if (!f->op_vtable->readlink)
 		return -EINVAL;
-	return f->op_vtable->readlink(f, buf, bufsize);
+	r = f->op_vtable->readlink(f, buf, bufsize);
+	vfs_release(f);
+	return r;
 }
 
 DEFINE_SYSCALL(readlink, const char *, pathname, char *, buf, int, bufsize)
