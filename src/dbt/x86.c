@@ -456,7 +456,6 @@ struct dbt_data
 };
 
 extern void dbt_find_direct_internal();
-extern void dbt_find_indirect_internal();
 extern void dbt_sieve_fallback();
 
 extern void dbt_save_simd_state();
@@ -755,6 +754,17 @@ static void dbt_gen_ret_trampoline(uint8_t **out)
 	gen_byte(out, 0xC3);
 }
 
+static void dbt_log_opcode(struct instruction_t *ins)
+{
+	log_info("Opcode: 0x%02x\n", ins->opcode);
+	log_info("Escape_0F: %d\n", ins->escape_0x0f);
+	log_info("Escape byte2: 0x%02x\n", ins->escape_byte2);
+	log_info("R: %d\n", ins->r);
+	log_info("Lock: %d\n", ins->lock_prefix);
+	log_info("rep: %d\n", ins->rep_prefix);
+	log_info("segment: 0x%02x\n", ins->segment_prefix);
+}
+
 /* CAUTION
  * We do not save x87/MMX/SSE/AVX states across a translation request
  * Thus we have to ensure these get unchanged during the translation
@@ -899,9 +909,9 @@ done_prefix:
 		/* Translate instruction */
 		switch (ins.desc->type)
 		{
-		case INST_TYPE_UNKNOWN: log_error("Unknown opcode.\n"); __debugbreak(); break;
-		case INST_TYPE_INVALID: log_error("Invalid opcode.\n"); __debugbreak(); break;
-		case INST_TYPE_UNSUPPORTED: log_error("Unsupported opcode.\n"); __debugbreak(); break;
+		case INST_TYPE_UNKNOWN: log_error("Unknown opcode.\n"); dbt_log_opcode(&ins); __debugbreak(); break;
+		case INST_TYPE_INVALID: log_error("Invalid opcode.\n"); dbt_log_opcode(&ins); __debugbreak(); break;
+		case INST_TYPE_UNSUPPORTED: log_error("Unsupported opcode.\n"); dbt_log_opcode(&ins); __debugbreak(); break;
 
 		case INST_TYPE_EXTENSION:
 		{
