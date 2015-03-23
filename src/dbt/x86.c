@@ -17,9 +17,9 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <core/forward_list.h>
 #include <dbt/x86.h>
 #include <dbt/x86_inst.h>
+#include <lib/forward_list.h>
 #include <syscall/mm.h>
 #include <syscall/tls.h>
 #include <log.h>

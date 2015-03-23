@@ -52,8 +52,6 @@
     <ClInclude Include="src\common\utime.h" />
     <ClInclude Include="src\common\utsname.h" />
     <ClInclude Include="src\common\wait.h" />
-    <ClInclude Include="src\core\core.h" />
-    <ClInclude Include="src\core\forward_list.h" />
     <ClInclude Include="src\datetime.h" />
     <ClInclude Include="src\dbt\cpuid.h" />
     <ClInclude Include="src\dbt\x86.h" />
@@ -67,6 +65,8 @@
     <ClInclude Include="src\fs\socket.h" />
     <ClInclude Include="src\fs\winfs.h" />
     <ClInclude Include="src\heap.h" />
+    <ClInclude Include="src\lib\core.h" />
+    <ClInclude Include="src\lib\forward_list.h" />
     <ClInclude Include="src\log.h" />
     <ClInclude Include="src\ntdll.h" />
     <ClInclude Include="src\platform.h" />

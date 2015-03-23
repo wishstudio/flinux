@@ -13,11 +13,11 @@
     <Filter Include="fs">
       <UniqueIdentifier>{b5499d5e-1549-4423-8644-e1c3d92fee62}</UniqueIdentifier>
     </Filter>
-    <Filter Include="core">
-      <UniqueIdentifier>{bf8b2302-bfb8-482c-bb5a-68176dce23d8}</UniqueIdentifier>
-    </Filter>
     <Filter Include="dbt">
       <UniqueIdentifier>{02ac593e-eb9d-4e52-8b21-4974493b4fa6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="lib">
+      <UniqueIdentifier>{bf8b2302-bfb8-482c-bb5a-68176dce23d8}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -131,12 +131,6 @@
     <ClInclude Include="src\common\select.h">
       <Filter>common</Filter>
     </ClInclude>
-    <ClInclude Include="src\core\core.h">
-      <Filter>core</Filter>
-    </ClInclude>
-    <ClInclude Include="src\core\forward_list.h">
-      <Filter>core</Filter>
-    </ClInclude>
     <ClInclude Include="src\syscall\timer.h">
       <Filter>syscall</Filter>
     </ClInclude>
@@ -201,6 +195,12 @@
     </ClInclude>
     <ClInclude Include="src\common\in.h">
       <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="src\lib\core.h">
+      <Filter>lib</Filter>
+    </ClInclude>
+    <ClInclude Include="src\lib\forward_list.h">
+      <Filter>lib</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

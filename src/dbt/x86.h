@@ -19,6 +19,8 @@
 
 #pragma once
 
+#include <stdint.h>
+
 void dbt_init();
 void dbt_reset();
 void dbt_shutdown();

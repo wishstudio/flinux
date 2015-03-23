@@ -18,7 +18,7 @@
  */
 
 #include <common/errno.h>
-#include <core/forward_list.h>
+#include <lib/forward_list.h>
 #include <syscall/mm.h>
 #include <syscall/syscall.h>
 #include <syscall/vfs.h>

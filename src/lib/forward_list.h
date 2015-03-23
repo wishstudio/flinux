@@ -19,7 +19,7 @@
 
 #pragma once
 
-#include <core/core.h>
+#include <lib/core.h>
 
 #define FORWARD_LIST(type) \
 	struct \
