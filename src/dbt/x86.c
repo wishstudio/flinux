@@ -19,7 +19,7 @@
 
 #include <dbt/x86.h>
 #include <dbt/x86_inst.h>
-#include <lib/forward_list.h>
+#include <lib/slist.h>
 #include <syscall/mm.h>
 #include <syscall/tls.h>
 #include <log.h>
@@ -422,7 +422,7 @@ static __forceinline void gen_jecxz_rel(uint8_t **out, int8_t rel)
 
 struct dbt_block
 {
-	FORWARD_LIST_NODE(struct dbt_block);
+	struct slist list;
 	size_t pc;
 	uint8_t *start;
 };
@@ -439,7 +439,7 @@ struct dbt_block
 #define RETURN_CACHE_HASH(x)		((x) & 0xFFFF)
 struct dbt_data
 {
-	FORWARD_LIST(struct dbt_block) block_hash[DBT_BLOCK_HASH_BUCKETS];
+	struct slist block_hash[DBT_BLOCK_HASH_BUCKETS];
 	struct dbt_block *blocks;
 	int blocks_count;
 	uint8_t *out, *end;
@@ -567,7 +567,7 @@ void dbt_shutdown()
 static void dbt_flush()
 {
 	for (int i = 0; i < DBT_BLOCK_HASH_BUCKETS; i++)
-		forward_list_init(&dbt->block_hash[i]);
+		slist_init(&dbt->block_hash[i]);
 	dbt->blocks_count = 0;
 	dbt->out = dbt_cache;
 	dbt->end = dbt_cache + DBT_CACHE_SIZE;
@@ -603,10 +603,12 @@ static struct dbt_block *alloc_block()
 static struct dbt_block *find_block(size_t pc)
 {
 	int bucket = hash_block_pc(pc);
-	struct dbt_block *block, *prev;
-	forward_list_iterate(&dbt->block_hash[bucket], prev, block)
+	slist_iterate(&dbt->block_hash[bucket], prev, cur)
+	{
+		struct dbt_block *block = slist_entry(struct dbt_block, list, cur);
 		if (block->pc == pc)
 			return block;
+	}
 	return NULL;
 }
 
@@ -1278,14 +1280,16 @@ done_prefix:
 size_t dbt_find_next(size_t pc)
 {
 	int bucket = hash_block_pc(pc);
-	struct dbt_block *block, *prev;
-	forward_list_iterate(&dbt->block_hash[bucket], prev, block)
+	slist_iterate(&dbt->block_hash[bucket], prev, cur)
+	{
+		struct dbt_block *block = slist_entry(struct dbt_block, list, cur);
 		if (block->pc == pc)
 			return block->start;
+	}
 
 	/* Block not found, translate it now */
-	block = dbt_translate(pc);
-	forward_list_add(&dbt->block_hash[bucket], block);
+	struct dbt_block *block = dbt_translate(pc);
+	slist_add(&dbt->block_hash[bucket], &block->list);
 	return block->start;
 }
 

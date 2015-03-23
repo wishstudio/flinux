@@ -18,7 +18,7 @@
  */
 
 #include <common/errno.h>
-#include <lib/forward_list.h>
+#include <lib/slist.h>
 #include <syscall/mm.h>
 #include <syscall/syscall.h>
 #include <syscall/vfs.h>
@@ -214,7 +214,7 @@
 
 struct map_entry
 {
-	FORWARD_LIST_NODE(struct map_entry);
+	struct slist list;
 	size_t start_page;
 	size_t end_page;
 	int prot;
@@ -228,7 +228,7 @@ struct mm_data
 	void *brk;
 
 	/* Information for all existing mappings */
-	FORWARD_LIST(struct map_entry) map_list, map_free_list;
+	struct slist map_list, map_free_list;
 	struct map_entry map_entries[MAX_MMAP_COUNT];
 
 	/* Section handle count for each table */
@@ -273,26 +273,28 @@ static __forceinline void remove_section_handle(size_t i)
 
 static struct map_entry *new_map_entry()
 {
-	if (forward_list_empty(&mm->map_free_list))
+	if (slist_empty(&mm->map_free_list))
 		return NULL;
-	struct map_entry *entry = forward_list_next(&mm->map_free_list);
-	forward_list_remove(&mm->map_free_list, entry);
+	struct map_entry *entry = slist_next_entry(struct map_entry, list, &mm->map_free_list);
+	slist_remove(&mm->map_free_list, &entry->list);
 	return entry;
 }
 
 static void free_map_entry(struct map_entry *entry)
 {
-	forward_list_add(&mm->map_free_list, entry);
+	slist_add(&mm->map_free_list, &entry->list);
 }
 
 static struct map_entry *find_map_entry(void *addr)
 {
-	struct map_entry *p, *e;
-	forward_list_iterate(&mm->map_list, p, e)
+	slist_iterate(&mm->map_list, prev, cur)
+	{
+		struct map_entry *e = slist_entry(struct map_entry, list, cur);
 		if (addr < GET_PAGE_ADDRESS(e->start_page))
 			return NULL;
 		else if (addr < GET_PAGE_ADDRESS(e->end_page + 1))
 			return e;
+	}
 	return NULL;
 }
 
@@ -308,14 +310,14 @@ static void split_map_entry(struct map_entry *e, size_t last_page_of_first_entry
 	}
 	ne->prot = e->prot;
 	e->end_page = last_page_of_first_entry;
-	forward_list_add(e, ne);
+	slist_add(&e->list, &ne->list);
 }
 
 static void free_map_entry_blocks(struct map_entry *p, struct map_entry *e)
 {
 	if (e->f)
 		vfs_release(e->f);
-	struct map_entry *n = forward_list_next(e);
+	struct map_entry *n = slist_next_entry(struct map_entry, list, &e->list);
 	size_t start_block = GET_BLOCK_OF_PAGE(e->start_page);
 	size_t end_block = GET_BLOCK_OF_PAGE(e->end_page);
 	if (p != &mm->map_list && GET_BLOCK_OF_PAGE(p->end_page) == start_block)
@@ -352,10 +354,10 @@ void mm_init()
 {
 	VirtualAlloc(MM_DATA_BASE, sizeof(struct mm_data), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 	/* Initialize mapping info freelist */
-	forward_list_init(&mm->map_list);
-	forward_list_init(&mm->map_free_list);
+	slist_init(&mm->map_list);
+	slist_init(&mm->map_free_list);
 	for (size_t i = 0; i + 1 < MAX_MMAP_COUNT; i++)
-		forward_list_add(&mm->map_free_list, &mm->map_entries[i]);
+		slist_add(&mm->map_free_list, &mm->map_entries[i].list);
 	mm->brk = 0;
 }
 
@@ -365,9 +367,9 @@ void mm_reset()
 	size_t last_block = 0;
 	size_t reserved_start = GET_BLOCK(ADDRESS_RESERVED_LOW);
 	size_t reserved_end = GET_BLOCK(ADDRESS_RESERVED_HIGH) - 1;
-	struct map_entry *p, *e;
-	forward_list_iterate_safe(&mm->map_list, p, e)
+	slist_iterate_safe(&mm->map_list, p, cur)
 	{
+		struct map_entry *e = slist_entry(struct map_entry, list, cur);
 		size_t start_block = GET_BLOCK_OF_PAGE(e->start_page);
 		size_t end_block = GET_BLOCK_OF_PAGE(e->end_page);
 		if (reserved_start <= start_block && start_block <= reserved_end)
@@ -391,7 +393,7 @@ void mm_reset()
 
 		if (e->f)
 			vfs_release(e->f);
-		forward_list_remove(p, e);
+		slist_remove(p, &e->list);
 		free_map_entry(e);
 	}
 	mm->brk = 0;
@@ -426,13 +428,15 @@ void mm_update_brk(void *brk)
 static size_t find_free_pages(size_t count, size_t low, size_t high)
 {
 	size_t last = GET_PAGE(low);
-	struct map_entry *p, *e;
-	forward_list_iterate(&mm->map_list, p, e)
+	slist_iterate(&mm->map_list, prev, cur)
+	{
+		struct map_entry *e = slist_entry(struct map_entry, list, cur);
 		if (e->start_page >= GET_PAGE(low))
 			if (e->start_page - last >= count)
 				return last;
 			else
 				last = e->end_page + 1;
+	}
 	if (GET_PAGE(high) - last >= count)
 		return last;
 	else
@@ -503,10 +507,12 @@ void mm_dump_windows_memory_mappings(HANDLE process)
 
 void mm_dump_memory_mappings()
 {
-	struct map_entry *p, *e;
 	log_info("Current memory mappings...\n");
-	forward_list_iterate(&mm->map_list, p, e)
+	slist_iterate(&mm->map_list, prev, cur)
+	{
+		struct map_entry *e = slist_entry(struct map_entry, list, cur);
 		log_info("0x%p - 0x%p: PROT: %d\n", GET_PAGE_ADDRESS(e->start_page), GET_PAGE_ADDRESS(e->end_page), e->prot);
+	}
 }
 
 static void map_entry_range(struct map_entry *e, size_t start_page, size_t end_page)
@@ -730,8 +736,9 @@ static int handle_cow_page_fault(void *addr)
 	/* We're the only owner of the section now, change page protection flags */
 	size_t start_page = GET_FIRST_PAGE_OF_BLOCK(block);
 	size_t end_page = GET_LAST_PAGE_OF_BLOCK(block);
-	struct map_entry *p, *e;
-	forward_list_iterate(&mm->map_list, p, e)
+	slist_iterate(&mm->map_list, prev, cur)
+	{
+		struct map_entry *e = slist_entry(struct map_entry, list, cur);
 		if (end_page < e->start_page)
 			break;
 		else
@@ -748,6 +755,7 @@ static int handle_cow_page_fault(void *addr)
 				return 0;
 			}
 		}
+	}
 	log_info("CoW section %p successfully duplicated.\n", block);
 	return 1;
 }
@@ -762,7 +770,9 @@ static int handle_on_demand_page_fault(void *addr)
 	struct map_entry *p, *e;
 	int found = 0;
 	allocate_block(block);
-	forward_list_iterate(&mm->map_list, p, e)
+	slist_iterate(&mm->map_list, prev, cur)
+	{
+		struct map_entry *e = slist_entry(struct map_entry, list, cur);
 		if (end_page < e->start_page)
 			break;
 		else
@@ -780,6 +790,7 @@ static int handle_on_demand_page_fault(void *addr)
 				VirtualProtect(GET_PAGE_ADDRESS(range_start), (range_end - range_start + 1) * PAGE_SIZE, prot_linux2win(e->prot), &oldProtect);
 			}
 		}
+	}
 	/* TODO: Mark unmapped pages as PAGE_NOACCESS */
 	if (!found)
 		log_error("Block 0x%p not mapped.\n", GET_BLOCK(addr));
@@ -833,10 +844,10 @@ int mm_fork(HANDLE process)
 		}
 	size_t last_block = 0;
 	size_t section_object_count = 0;
-	struct map_entry *p, *e;
 	log_info("Mapping and changing memory protection...\n");
-	forward_list_iterate(&mm->map_list, p, e)
+	slist_iterate(&mm->map_list, prev, cur)
 	{
+		struct map_entry *e = slist_entry(struct map_entry, list, cur);
 		/* Map section */
 		size_t start_block = GET_BLOCK_OF_PAGE(e->start_page);
 		size_t end_block = GET_BLOCK_OF_PAGE(e->end_page);
@@ -937,12 +948,14 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, int internal_flags
 			/* The caller does not want to overwrite existing pages
 			 * Check whether it is possible before doing anything
 			 */
-			struct map_entry *p, *e;
-			forward_list_iterate(&mm->map_list, p, e)
+			slist_iterate(&mm->map_list, prev, cur)
+			{
+				struct map_entry *e = slist_entry(struct map_entry, list, cur);
 				if (end_page < e->start_page)
 					break;
 				else if (start_page <= e->end_page && e->start_page <= end_page)
 					return -ENOMEM;
+			}
 		}
 		else
 			mm_munmap(addr, length);
@@ -958,22 +971,22 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, int internal_flags
 	if (f)
 		vfs_ref(f);
 
-	if (forward_list_empty(&mm->map_list))
-		forward_list_add(&mm->map_list, entry);
+	if (slist_empty(&mm->map_list))
+		slist_add(&mm->map_list, &entry->list);
 	else
 	{
-		struct map_entry *p, *e;
 		/* No need to use forward_list_safe since we will break immediately after node insertion */
-		forward_list_iterate(&mm->map_list, p, e)
+		slist_iterate(&mm->map_list, p, cur)
 		{
+			struct map_entry *e = slist_entry(struct map_entry, list, cur);
 			if (e->start_page > end_page)
 			{
-				forward_list_add(p, entry);
+				slist_add(p, &entry->list);
 				break;
 			}
-			else if (forward_list_next(e) == NULL)
+			else if (slist_next(&e->list) == NULL)
 			{
-				forward_list_add(e, entry);
+				slist_add(&e->list, &entry->list);
 				break;
 			}
 		}
@@ -1029,8 +1042,9 @@ int mm_munmap(void *addr, size_t length)
 
 	size_t start_page = GET_PAGE(addr);
 	size_t end_page = GET_PAGE((size_t)addr + length - 1);
-	struct map_entry *p, *e;
-	forward_list_iterate_safe(&mm->map_list, p, e)
+	slist_iterate_safe(&mm->map_list, p, cur)
+	{
+		struct map_entry *e = slist_entry(struct map_entry, list, cur);
 		if (end_page < e->start_page)
 			break;
 		else
@@ -1043,7 +1057,7 @@ int mm_munmap(void *addr, size_t length)
 			{
 				/* That's good, the current entry is fully overlapped */
 				free_map_entry_blocks(p, e);
-				forward_list_remove(p, e);
+				slist_remove(p, &e->list);
 				free_map_entry(e);
 			}
 			else
@@ -1053,7 +1067,7 @@ int mm_munmap(void *addr, size_t length)
 				{
 					split_map_entry(e, range_end);
 					free_map_entry_blocks(p, e);
-					forward_list_remove(p, e);
+					slist_remove(p, &e->list);
 					free_map_entry(e);
 				}
 				else
@@ -1063,6 +1077,7 @@ int mm_munmap(void *addr, size_t length)
 				}
 			}
 		}
+	}
 	return 0;
 }
 
@@ -1120,8 +1135,9 @@ DEFINE_SYSCALL(mprotect, void *, addr, size_t, length, int, prot)
 	size_t start_page = GET_PAGE(addr);
 	size_t end_page = GET_PAGE((size_t)addr + length - 1);
 	size_t last_page = start_page - 1;
-	struct map_entry *p, *e;
-	forward_list_iterate(&mm->map_list, p, e)
+	slist_iterate(&mm->map_list, p, cur)
+	{
+		struct map_entry *e = slist_entry(struct map_entry, list, cur);
 		if (e->start_page > end_page)
 			break;
 		else if (e->end_page >= start_page)
@@ -1131,11 +1147,14 @@ DEFINE_SYSCALL(mprotect, void *, addr, size_t, length, int, prot)
 			else
 				break;
 		}
+	}
 	if (last_page < end_page)
 		return -ENOMEM;
 	;
 	/* Change protection flags */
-	forward_list_iterate_safe(&mm->map_list, p, e)
+	slist_iterate_safe(&mm->map_list, p, cur)
+	{
+		struct map_entry *e = slist_entry(struct map_entry, list, cur);
 		if (end_page < e->start_page)
 			break;
 		else
@@ -1164,6 +1183,7 @@ DEFINE_SYSCALL(mprotect, void *, addr, size_t, length, int, prot)
 				}
 			}
 		}
+	}
 	if (!mm_change_protection(GetCurrentProcess(), start_page, end_page, prot & ~PROT_WRITE))
 		/* We remove the write protection in case the pages are already shared */
 		return -ENOMEM; /* TODO */
@@ -1186,8 +1206,9 @@ DEFINE_SYSCALL(mlock, const void *, addr, size_t, len)
 	/* All on demand page must be properly loaded or the locking operation will fail */
 	size_t start_page = GET_PAGE(addr);
 	size_t end_page = GET_PAGE((size_t)addr + len);
-	struct map_entry *p, *e;
-	forward_list_iterate(&mm->map_list, p, e)
+	slist_iterate(&mm->map_list, p, cur)
+	{
+		struct map_entry *e = slist_entry(struct map_entry, list, cur);
 		if (e->start_page > end_page)
 			break;
 		else
@@ -1217,6 +1238,7 @@ DEFINE_SYSCALL(mlock, const void *, addr, size_t, len)
 					}
 				}
 		}
+	}
 	/* TODO: Mark unused pages as NOACCESS */
 
 	/* The actual locking */

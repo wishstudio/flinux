@@ -21,5 +21,5 @@
 
 #include <stddef.h>
 
-#define container_of(ptr, type, member) \
+#define container_of(type, member, ptr) \
 	(type *)((char *)(ptr) - offsetof(type, member))

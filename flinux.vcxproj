@@ -66,7 +66,7 @@
     <ClInclude Include="src\fs\winfs.h" />
     <ClInclude Include="src\heap.h" />
     <ClInclude Include="src\lib\core.h" />
-    <ClInclude Include="src\lib\forward_list.h" />
+    <ClInclude Include="src\lib\slist.h" />
     <ClInclude Include="src\log.h" />
     <ClInclude Include="src\ntdll.h" />
     <ClInclude Include="src\platform.h" />

@@ -199,7 +199,7 @@
     <ClInclude Include="src\lib\core.h">
       <Filter>lib</Filter>
     </ClInclude>
-    <ClInclude Include="src\lib\forward_list.h">
+    <ClInclude Include="src\lib\slist.h">
       <Filter>lib</Filter>
     </ClInclude>
   </ItemGroup>
