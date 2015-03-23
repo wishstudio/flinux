@@ -22,4 +22,4 @@
 #include <stddef.h>
 
 #define container_of(type, member, ptr) \
-	(type *)((char *)(ptr) - offsetof(type, member))
+	((type *)((char *)(ptr) - offsetof(type, member)))

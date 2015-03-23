@@ -97,15 +97,15 @@ struct instruction_desc
 			int read_regs; /* The bitmask of registers which are read from */
 			int write_regs; /* The bitmask of registers which are written to */
 		};
-		struct instruction_desc *extension_table; /* Secondary lookup table for INST_TYPE_EXTENSION */
+		const struct instruction_desc *extension_table; /* Secondary lookup table for INST_TYPE_EXTENSION */
 	};
 };
 #define UNKNOWN()		{ .type = INST_TYPE_UNKNOWN },
 #define INVALID()		{ .type = INST_TYPE_INVALID },
 #define UNSUPPORTED()	{ .type = INST_TYPE_UNSUPPORTED },
-#define MANDATORY(x)	{ .type = INST_TYPE_MANDATORY, .extension_table = &mandatory_##x },
+#define MANDATORY(x)	{ .type = INST_TYPE_MANDATORY, .extension_table = mandatory_##x },
 #define X87()			{ .type = INST_TYPE_X87 },
-#define EXTENSION(x)	{ .type = INST_TYPE_EXTENSION, .has_modrm = 1, .extension_table = &extension_##x },
+#define EXTENSION(x)	{ .type = INST_TYPE_EXTENSION, .has_modrm = 1, .extension_table = extension_##x },
 
 #define INST(...)		{ .type = INST_TYPE_NORMAL, __VA_ARGS__ },
 #define SPECIAL(s, ...)	{ .type = s, __VA_ARGS__ },

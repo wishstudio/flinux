@@ -66,10 +66,10 @@ void LogServer::AddClient()
 void LogServer::RemoveClient(Client *client)
 {
 	CloseHandle(client->hPipe);
-	for (int i = 0; i < m_clients.size(); i++)
-		if (m_clients[i].get() == client)
+	for (auto i = m_clients.begin(); i != m_clients.end(); ++i)
+		if (i->get() == client)
 		{
-			m_clients.erase(m_clients.begin() + i);
+			m_clients.erase(i);
 			break;
 		}
 }
@@ -164,7 +164,7 @@ void LogServer::RunWorker()
 		}
 		}
 	}
-	for (int i = 0; i < m_clients.size(); i++)
-		CloseHandle(m_clients[i]->hPipe);
+	for (auto const &client : m_clients)
+		CloseHandle(client->hPipe);
 	CloseHandle(m_hCompletionPort);
 }

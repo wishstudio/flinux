@@ -80,12 +80,12 @@ LRESULT MainWindow::OnLogReceive(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL &
 	if (r)
 	{
 		wbuffer[r] = 0;
-		for (int i = 0; i < m_clients.size(); i++)
-			if (m_clients[i]->pid == msg->pid)
+		for (auto const &client : m_clients)
+			if (client->pid == msg->pid)
 			{
-				m_clients[i]->logViewer.AppendText(wbuffer, TRUE, FALSE);
-				if (m_splitter.GetSplitterPane(SPLIT_PANE_RIGHT) != m_clients[i]->logViewer)
-					m_processTree.SetItemState(m_clients[i]->item, TVIS_BOLD, TVIS_BOLD);
+				client->logViewer.AppendText(wbuffer, TRUE, FALSE);
+				if (m_splitter.GetSplitterPane(SPLIT_PANE_RIGHT) != client->logViewer)
+					m_processTree.SetItemState(client->item, TVIS_BOLD, TVIS_BOLD);
 			}
 	}
 	bHandled = TRUE;
@@ -99,10 +99,10 @@ LRESULT MainWindow::OnTreeItemChange(LPNMHDR pnmh)
 	if (notification->uStateNew & TVIS_SELECTED)
 	{
 		uint32_t pid = (uint32_t)m_processTree.GetItemData(hItem);
-		for (int i = 0; i < m_clients.size(); i++)
-			if (m_clients[i]->pid == pid)
+		for (auto const &client : m_clients)
+			if (client->pid == pid)
 			{
-				SetCurrentLogViewer(m_clients[i]->logViewer);
+				SetCurrentLogViewer(client->logViewer);
 				m_processTree.SetItemState(hItem, 0, TVIS_BOLD);
 			}
 	}

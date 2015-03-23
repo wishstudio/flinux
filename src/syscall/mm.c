@@ -234,8 +234,8 @@ struct mm_data
 	/* Section handle count for each table */
 	uint16_t section_table_handle_count[SECTION_TABLE_COUNT];
 };
-static struct mm_data *const mm = MM_DATA_BASE;
-static HANDLE *mm_section_handle = MM_SECTION_HANDLE_BASE;
+static struct mm_data *const mm = (struct mm_data *)MM_DATA_BASE;
+static HANDLE *mm_section_handle = (HANDLE *)MM_SECTION_HANDLE_BASE;
 
 static __forceinline HANDLE get_section_handle(size_t i)
 {
@@ -313,14 +313,14 @@ static void split_map_entry(struct map_entry *e, size_t last_page_of_first_entry
 	slist_add(&e->list, &ne->list);
 }
 
-static void free_map_entry_blocks(struct map_entry *p, struct map_entry *e)
+static void free_map_entry_blocks(struct slist *p, struct map_entry *e)
 {
 	if (e->f)
 		vfs_release(e->f);
 	struct map_entry *n = slist_next_entry(struct map_entry, list, &e->list);
 	size_t start_block = GET_BLOCK_OF_PAGE(e->start_page);
 	size_t end_block = GET_BLOCK_OF_PAGE(e->end_page);
-	if (p != &mm->map_list && GET_BLOCK_OF_PAGE(p->end_page) == start_block)
+	if (p != &mm->map_list && GET_BLOCK_OF_PAGE(slist_entry(struct map_entry, list, p)->end_page) == start_block)
 	{
 		/* First block is still in use, make it inaccessible */
 		size_t last_page = GET_LAST_PAGE_OF_BLOCK(GET_BLOCK_OF_PAGE(e->start_page));
@@ -352,7 +352,7 @@ static void free_map_entry_blocks(struct map_entry *p, struct map_entry *e)
 
 void mm_init()
 {
-	VirtualAlloc(MM_DATA_BASE, sizeof(struct mm_data), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+	VirtualAlloc(mm, sizeof(struct mm_data), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 	/* Initialize mapping info freelist */
 	slist_init(&mm->map_list);
 	slist_init(&mm->map_free_list);
@@ -420,7 +420,7 @@ void mm_update_brk(void *brk)
 #ifdef _WIN64
 	mm->brk = MM_BRK_BASE;
 #else
-	mm->brk = max(mm->brk, ALIGN_TO_PAGE(brk));
+	mm->brk = (void*)max((size_t)mm->brk, ALIGN_TO_PAGE(brk));
 #endif
 }
 
@@ -816,12 +816,12 @@ int mm_handle_page_fault(void *addr)
 int mm_fork(HANDLE process)
 {
 	/* Copy mm_data struct */
-	if (!VirtualAllocEx(process, MM_DATA_BASE, sizeof(struct mm_data), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE))
+	if (!VirtualAllocEx(process, mm, sizeof(struct mm_data), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE))
 	{
 		log_error("mm_fork(): Allocate mm_data structure failed, error code: %d\n", GetLastError());
 		return 0;
 	}
-	if (!WriteProcessMemory(process, MM_DATA_BASE, mm, sizeof(struct mm_data), NULL))
+	if (!WriteProcessMemory(process, mm, mm, sizeof(struct mm_data), NULL))
 	{
 		log_error("mm_fork(): Write mm_data structure failed, error code: %d\n", GetLastError());
 		return 0;
@@ -831,12 +831,12 @@ int mm_fork(HANDLE process)
 		if (mm->section_table_handle_count[i])
 		{
 			size_t offset = i * BLOCK_SIZE;
-			if (!VirtualAllocEx(process, MM_SECTION_HANDLE_BASE + offset, BLOCK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE))
+			if (!VirtualAllocEx(process, (char*)MM_SECTION_HANDLE_BASE + offset, BLOCK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE))
 			{
 				log_error("mm_fork(): Allocate section table 0x%p failed, error code: %d\n", i, GetLastError());
 				return 0;
 			}
-			if (!WriteProcessMemory(process, MM_SECTION_HANDLE_BASE + offset, MM_SECTION_HANDLE_BASE + offset, BLOCK_SIZE, NULL))
+			if (!WriteProcessMemory(process, (char*)MM_SECTION_HANDLE_BASE + offset, (char*)MM_SECTION_HANDLE_BASE + offset, BLOCK_SIZE, NULL))
 			{
 				log_error("mm_fork(): Write section table 0x%p failed, error code: %d\n", i, GetLastError());
 				return 0;
@@ -888,28 +888,28 @@ int mm_fork(HANDLE process)
 void *mm_mmap(void *addr, size_t length, int prot, int flags, int internal_flags, struct file *f, off_t offset_pages)
 {
 	if (length == 0)
-		return -EINVAL;
+		return (void*)-EINVAL;
 	length = ALIGN_TO_PAGE(length);
 	if ((size_t)addr < ADDRESS_SPACE_LOW || (size_t)addr >= ADDRESS_SPACE_HIGH
 		|| (size_t)addr + length < ADDRESS_SPACE_LOW || (size_t)addr + length >= ADDRESS_SPACE_HIGH
 		|| (size_t)addr + length < (size_t)addr)
-		return -EINVAL;
+		return (void*)-EINVAL;
 	if (flags & MAP_SHARED)
 	{
 		log_error("MAP_SHARED is not supported yet.\n");
 		if (prot & PROT_WRITE)
-			return -EINVAL;
+			return (void*)-EINVAL;
 		log_info("No write permission requested, ignoring MAP_SHARED.\n");
 	}
 	if ((flags & MAP_ANONYMOUS) && f != NULL)
 	{
 		log_error("MAP_ANONYMOUS with file descriptor.\n");
-		return -EINVAL;
+		return (void*)-EINVAL;
 	}
 	if (!(flags & MAP_ANONYMOUS) && f == NULL)
 	{
 		log_error("MAP_FILE with bad file descriptor.\n");
-		return -EBADF;
+		return (void*)-EBADF;
 	}
 	if (!(flags & MAP_FIXED))
 	{
@@ -921,7 +921,7 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, int internal_flags
 		if (!alloc_page)
 		{
 			log_error("Cannot find free pages.\n");
-			return -ENOMEM;
+			return (void*)-ENOMEM;
 		}
 
 		addr = GET_PAGE_ADDRESS(alloc_page);
@@ -929,7 +929,7 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, int internal_flags
 	if ((flags & MAP_FIXED) && !IS_ALIGNED(addr, PAGE_SIZE))
 	{
 		log_warning("Not aligned addr with MAP_FIXED.\n");
-		return -EINVAL;
+		return (void*)-EINVAL;
 	}
 
 	size_t start_page = GET_PAGE(addr);
@@ -954,7 +954,7 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, int internal_flags
 				if (end_page < e->start_page)
 					break;
 				else if (start_page <= e->end_page && e->start_page <= end_page)
-					return -ENOMEM;
+					return (void*)-ENOMEM;
 			}
 		}
 		else
@@ -999,7 +999,7 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, int internal_flags
 		if (!take_block_ownership(start_block))
 		{
 			log_error("Taking ownership of block %p failed.\n", start_block);
-			return -ENOMEM;
+			return (void*)-ENOMEM;
 		}
 		size_t last_page = GET_LAST_PAGE_OF_BLOCK(start_block);
 		last_page = min(last_page, end_page);
@@ -1014,7 +1014,7 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, int internal_flags
 		if (!take_block_ownership(end_block))
 		{
 			log_error("Taking ownership of block %p failed.\n", start_block);
-			return -ENOMEM;
+			return (void*)-ENOMEM;
 		}
 		size_t first_page = GET_FIRST_PAGE_OF_BLOCK(end_block);
 		DWORD oldProtect;
@@ -1088,7 +1088,7 @@ DEFINE_SYSCALL(mmap, void *, addr, size_t, length, int, prot, int, flags, int, f
 	/* TODO: Initialize mapped area to zero */
 	if (!IS_ALIGNED(offset, PAGE_SIZE))
 		return -EINVAL;
-	return mm_mmap(addr, length, prot, flags, 0, vfs_get(fd), offset / PAGE_SIZE);
+	return (intptr_t)mm_mmap(addr, length, prot, flags, 0, vfs_get(fd), offset / PAGE_SIZE);
 }
 
 DEFINE_SYSCALL(oldmmap, void *, _args)
@@ -1110,7 +1110,7 @@ DEFINE_SYSCALL(oldmmap, void *, _args)
 DEFINE_SYSCALL(mmap2, void *, addr, size_t, length, int, prot, int, flags, int, fd, off_t, offset)
 {
 	log_info("mmap2(%p, %p, %x, %x, %d, %p)\n", addr, length, prot, flags, fd, offset);
-	return mm_mmap(addr, length, prot, flags, 0, vfs_get(fd), offset);
+	return (intptr_t)mm_mmap(addr, length, prot, flags, 0, vfs_get(fd), offset);
 }
 
 DEFINE_SYSCALL(munmap, void *, addr, size_t, length)
@@ -1243,7 +1243,7 @@ DEFINE_SYSCALL(mlock, const void *, addr, size_t, len)
 
 	/* The actual locking */
 	/* TODO: Automatically enlarge working set size for arbitrary sized mlock() call */
-	if (!VirtualLock(addr, len))
+	if (!VirtualLock((LPVOID)addr, len))
 	{
 		log_warning("VirtualLock() failed, error code: %d\n", GetLastError());
 		return -ENOMEM;
@@ -1256,7 +1256,7 @@ DEFINE_SYSCALL(munlock, const void *, addr, size_t, len)
 	log_info("munlock(0x%p, 0x%p)\n", addr, len);
 	if (!IS_ALIGNED(addr, PAGE_SIZE))
 		return -EINVAL;
-	if (!VirtualUnlock(addr, len))
+	if (!VirtualUnlock((LPVOID)addr, len))
 	{
 		log_warning("VirtualUnlock() failed, error code: %d\n", GetLastError());
 		return -ENOMEM;
@@ -1285,7 +1285,7 @@ DEFINE_SYSCALL(brk, void *, addr)
 	log_info("brk(%p)\n", addr);
 	log_info("Last brk: %p\n", mm->brk);
 	size_t brk = ALIGN_TO_PAGE(mm->brk);
-	addr = ALIGN_TO_PAGE(addr);
+	addr = (void*)ALIGN_TO_PAGE(addr);
 	if (addr > 0 && addr < mm->brk)
 	{
 		if (mm_munmap(addr, (size_t)brk - (size_t)addr) < 0)
@@ -1297,7 +1297,7 @@ DEFINE_SYSCALL(brk, void *, addr)
 	}
 	else if (addr > mm->brk)
 	{
-		int r = (int)mm_mmap(brk, (size_t)addr - (size_t)brk, PROT_READ | PROT_WRITE | PROT_EXEC,
+		int r = (int)mm_mmap((void *)brk, (size_t)addr - (size_t)brk, PROT_READ | PROT_WRITE | PROT_EXEC,
 			MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, INTERNAL_MAP_NOOVERWRITE, NULL, 0);
 		if (r < 0)
 		{
@@ -1308,5 +1308,5 @@ DEFINE_SYSCALL(brk, void *, addr)
 	}
 out:
 	log_info("New brk: %p\n", mm->brk);
-	return mm->brk;
+	return (intptr_t)mm->brk;
 }

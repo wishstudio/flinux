@@ -386,16 +386,16 @@ static __forceinline void gen_push_imm32(uint8_t **out, uint32_t imm)
 	gen_dword(out, imm);
 }
 
-static __forceinline void gen_call(uint8_t **out, size_t dest)
+static __forceinline void gen_call(uint8_t **out, void *dest)
 {
-	int32_t rel = (int32_t)(dest - (((size_t)*out) + 5));
+	int32_t rel = (int32_t)((size_t)dest - (((size_t)*out) + 5));
 	gen_byte(out, 0xE8);
 	gen_dword(out, rel);
 }
 
-static __forceinline void gen_jmp(uint8_t **out, size_t dest)
+static __forceinline void gen_jmp(uint8_t **out, void *dest)
 {
-	int32_t rel = (int32_t)(dest - (((size_t)*out) + 5));
+	int32_t rel = (int32_t)((size_t)dest - (((size_t)*out) + 5));
 	gen_byte(out, 0xE9);
 	gen_dword(out, rel);
 }
@@ -496,7 +496,7 @@ static void dbt_gen_sieve_dispatch()
 }
 
 #define DBT_SIEVE_NEXT_BUCKET_OFFSET		13
-static size_t dbt_gen_sieve(size_t original_pc, size_t target)
+static uint8_t *dbt_gen_sieve(size_t original_pc, uint8_t *target)
 {
 	/* The destination address should be pushed on the stack */
 	/* Caution: we must ensure that this stub fits in DBT_OUT_ALIGN*2(32) bytes */
@@ -520,7 +520,7 @@ static size_t dbt_gen_sieve(size_t original_pc, size_t target)
 	gen_lea(&out, ESP, modrm_rm_mreg(ESP, 4));
 	gen_jmp(&out, target);
 
-	return (size_t)dbt->end;
+	return dbt->end;
 }
 
 void dbt_gen_trampolines()
@@ -612,7 +612,7 @@ static struct dbt_block *find_block(size_t pc)
 	return NULL;
 }
 
-static size_t dbt_get_direct_trampoline(size_t pc, size_t patch_addr)
+static uint8_t *dbt_get_direct_trampoline(size_t pc, size_t patch_addr)
 {
 	struct dbt_block *cached_block = find_block(pc);
 	if (cached_block)
@@ -625,13 +625,13 @@ static size_t dbt_get_direct_trampoline(size_t pc, size_t patch_addr)
 	gen_push_imm32(&out, patch_addr);
 	gen_push_imm32(&out, pc);
 	gen_jmp(&out, &dbt_find_direct_internal);
-	return (size_t)dbt->end;
+	return dbt->end;
 }
 
-static size_t dbt_get_call_trampoline(size_t pc)
+static uint8_t *dbt_get_call_trampoline(size_t pc)
 {
 	dbt->end -= DBT_OUT_ALIGN;
-	size_t entry = (size_t)dbt->end;
+	uint8_t *entry = dbt->end;
 	uint8_t *out = dbt->end;
 	gen_lea(&out, ESP, modrm_rm_mreg(ESP, 4));
 	size_t patch_addr = (size_t)out + 1;
@@ -656,7 +656,7 @@ struct instruction_t
 	int r;
 	struct modrm_rm_t rm;
 	int imm_bytes;
-	struct instruction_desc *desc;
+	const struct instruction_desc *desc;
 };
 
 /* Find and return an unused register in an instruction, which can be used to hold temporary values */
@@ -788,7 +788,7 @@ reentry:;
 		block = alloc_block(); /* We won't fail again */
 	}
 	block->pc = pc;
-	block->start = ALIGN_TO(dbt->out, DBT_OUT_ALIGN);
+	block->start = (uint8_t *)ALIGN_TO(dbt->out, DBT_OUT_ALIGN);
 	if (!start_block)
 		start_block = block;
 
@@ -1046,11 +1046,11 @@ done_prefix:
 			int32_t rel = parse_rel(&code, ins.imm_bytes);
 			size_t dest = (size_t)code + rel;
 			gen_push_imm32(&out, (size_t)code);
-			gen_mov_rm_imm32(&out, modrm_rm_disp(&dbt->return_cache[RETURN_CACHE_HASH((size_t)code)]), 0);
+			gen_mov_rm_imm32(&out, modrm_rm_disp((int32_t)&dbt->return_cache[RETURN_CACHE_HASH((size_t)code)]), 0);
 			*(size_t*)(out - 4) = (size_t)out + 5;
 			size_t patch_addr = (size_t)out + 1;
-			gen_call(&out, dbt_get_call_trampoline(dest, patch_addr));
-			dbt_gen_call_postamble(&out, code);
+			gen_call(&out, dbt_get_call_trampoline(dest));
+			dbt_gen_call_postamble(&out, (size_t)code);
 			break;
 		}
 
@@ -1073,10 +1073,10 @@ done_prefix:
 					gen_byte(&out, ins.segment_prefix);
 				gen_push_rm(&out, ins.rm);
 			}
-			gen_mov_rm_imm32(&out, modrm_rm_disp(&dbt->return_cache[RETURN_CACHE_HASH((size_t)code)]), 0);
+			gen_mov_rm_imm32(&out, modrm_rm_disp((int32_t)&dbt->return_cache[RETURN_CACHE_HASH((size_t)code)]), 0);
 			*(size_t*)(out - 4) = (size_t)out + 5;
 			gen_call(&out, dbt->sieve_indirect_call_dispatch_trampoline);
-			dbt_gen_call_postamble(&out, code);
+			dbt_gen_call_postamble(&out, (size_t)code);
 			break;
 		}
 
@@ -1148,7 +1148,7 @@ done_prefix:
 			size_t dest0 = (size_t)code + rel; /* Branch taken */
 			size_t dest1 = (size_t)code; /* Branch not taken */
 			size_t patch_addr0 = (size_t)out + 2;
-			gen_jcc(&out, cond, dbt_get_direct_trampoline(dest0, patch_addr0));
+			gen_jcc(&out, cond, (size_t)dbt_get_direct_trampoline(dest0, patch_addr0));
 			size_t patch_addr1 = (size_t)out + 1;
 			gen_jmp(&out, dbt_get_direct_trampoline(dest1, patch_addr1));
 			goto end_block;
@@ -1193,7 +1193,7 @@ done_prefix:
 				log_error("mov from segment selectors other than GS not supported.\n");
 				__debugbreak();
 			}
-			int temp_reg = find_unused_register(&ins, 0);
+			int temp_reg = find_unused_register(&ins);
 			/* mov fs:[scratch], temp_reg */
 			gen_fs_prefix(&out);
 			gen_mov_rm_r_32(&out, modrm_rm_disp(dbt->tls_scratch_offset), temp_reg);
@@ -1277,7 +1277,7 @@ done_prefix:
 	return start_block;
 }
 
-size_t dbt_find_next(size_t pc)
+uint8_t *dbt_find_next(size_t pc)
 {
 	int bucket = hash_block_pc(pc);
 	slist_iterate(&dbt->block_hash[bucket], prev, cur)
@@ -1293,14 +1293,14 @@ size_t dbt_find_next(size_t pc)
 	return block->start;
 }
 
-size_t dbt_find_next_sieve(size_t pc)
+uint8_t *dbt_find_next_sieve(size_t pc)
 {
-	size_t target = dbt_find_next(pc);
-	uint8_t *sieve = (uint8_t*)dbt_gen_sieve(pc, target);
+	uint8_t *target = dbt_find_next(pc);
+	uint8_t *sieve = dbt_gen_sieve(pc, target);
 
 	/* Patch sieve table */
 	int hash = SIEVE_HASH(pc);
-	if (dbt->sieve_table[hash] == &dbt_sieve_fallback)
+	if (dbt->sieve_table[hash] == (void*)&dbt_sieve_fallback)
 		dbt->sieve_table[hash] = sieve;
 	else
 	{
@@ -1309,7 +1309,7 @@ size_t dbt_find_next_sieve(size_t pc)
 		{
 			uint8_t *next_bucket_rel = *(uint8_t**)&current[DBT_SIEVE_NEXT_BUCKET_OFFSET];
 			uint8_t *next_bucket = next_bucket_rel + (size_t)(current + DBT_SIEVE_NEXT_BUCKET_OFFSET + sizeof(size_t));
-			if (next_bucket == &dbt_sieve_fallback)
+			if (next_bucket == (void*)&dbt_sieve_fallback)
 				break;
 			current = next_bucket;
 		}
@@ -1322,7 +1322,7 @@ size_t dbt_find_next_sieve(size_t pc)
 size_t dbt_find_direct(size_t pc, size_t patch_addr)
 {
 	/* Translate or generate the block */
-	size_t block_start = dbt_find_next(pc);
+	size_t block_start = (size_t)dbt_find_next(pc);
 	/* Patch the jmp/call address so we don't need to repeat work again */
 	*(size_t*)patch_addr = (intptr_t)(block_start - (patch_addr + 4)); /* Relative address */
 	return block_start;
@@ -1330,7 +1330,7 @@ size_t dbt_find_direct(size_t pc, size_t patch_addr)
 
 void __declspec(noreturn) dbt_run(size_t pc, size_t sp)
 {
-	size_t entrypoint = dbt_find_next(pc);
+	size_t entrypoint = (size_t)dbt_find_next(pc);
 	extern __declspec(noreturn) void dbt_run_internal(size_t pc, size_t sp);
 	log_info("dbt: Calling into application code generated at %p, (original: pc: %p, sp: %p)\n", entrypoint, pc, sp);
 	dbt_run_internal(entrypoint, sp);

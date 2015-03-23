@@ -101,7 +101,7 @@ static int translate_socket_error(int error)
 	}
 }
 
-static int translate_socket_addr_to_winsock(const struct linux_sockaddr_storage *from, struct linux_sockaddr_storage *to, int addrlen)
+static int translate_socket_addr_to_winsock(const struct sockaddr_storage *from, struct sockaddr_storage *to, int addrlen)
 {
 	if (addrlen < sizeof(from->ss_family))
 		return SOCKET_ERROR;
@@ -131,7 +131,7 @@ static int translate_socket_addr_to_winsock(const struct linux_sockaddr_storage 
 }
 
 /* Caller ensures the input is correct */
-static int translate_socket_addr_to_linux(struct linux_sockaddr_storage *addr, int addrlen)
+static int translate_socket_addr_to_linux(struct sockaddr_storage *addr, int addrlen)
 {
 	switch (addr->ss_family)
 	{
@@ -255,7 +255,7 @@ static int socket_sendto(struct socket_file *f, const void *buf, size_t len, int
 	struct sockaddr_storage addr_storage;
 	if (addrlen)
 	{
-		if ((addrlen = translate_socket_addr_to_winsock(dest_addr, &addr_storage, addrlen)) == SOCKET_ERROR)
+		if ((addrlen = translate_socket_addr_to_winsock((const struct sockaddr_storage *)dest_addr, &addr_storage, addrlen)) == SOCKET_ERROR)
 			return -EINVAL;
 		dest_addr = (const struct sockaddr *)&addr_storage;
 	}
@@ -294,7 +294,7 @@ static int socket_sendmsg(struct socket_file *f, const struct msghdr *msg, int f
 	{
 		if ((wsamsg.namelen = translate_socket_addr_to_winsock(msg->msg_name, &addr_storage, msg->msg_namelen)) == SOCKET_ERROR)
 			return -EINVAL;
-		wsamsg.name = &addr_storage;
+		wsamsg.name = (LPSOCKADDR)&addr_storage;
 	}
 	else
 	{
@@ -334,7 +334,7 @@ static int socket_recvfrom(struct socket_file *f, void *buf, size_t len, int fla
 	{
 		if (!(flags & LINUX_MSG_PEEK))
 			f->events &= ~FD_READ;
-		r = recvfrom(f->socket, buf, len, flags, &addr_storage, &addr_storage_len);
+		r = recvfrom(f->socket, buf, len, flags, (struct sockaddr *)&addr_storage, &addr_storage_len);
 		if (r != SOCKET_ERROR)
 			break;
 		int err = WSAGetLastError();
@@ -401,7 +401,7 @@ static int socket_recvmsg(struct socket_file *f, struct msghdr *msg, int flags)
 	struct sockaddr_storage addr_storage;
 	int addr_storage_len = sizeof(struct sockaddr_storage);
 	WSAMSG wsamsg;
-	wsamsg.name = &addr_storage;
+	wsamsg.name = (LPSOCKADDR)&addr_storage;
 	wsamsg.namelen = addr_storage_len;
 	wsamsg.lpBuffers = buffers;
 	wsamsg.dwBufferCount = msg->msg_iovlen;
@@ -603,11 +603,11 @@ DEFINE_SYSCALL(connect, int, sockfd, const struct sockaddr *, addr, size_t, addr
 	int r = get_sockfd(sockfd, &f);
 	if (r)
 		return r;
-	struct linux_sockaddr_storage addr_storage;
+	struct sockaddr_storage addr_storage;
 	int addr_storage_len;
-	if ((addr_storage_len = translate_socket_addr_to_winsock(addr, &addr_storage, addrlen)) == SOCKET_ERROR)
+	if ((addr_storage_len = translate_socket_addr_to_winsock((const struct sockaddr_storage *)addr, &addr_storage, addrlen)) == SOCKET_ERROR)
 		return -EINVAL;
-	if (connect(f->socket, &addr_storage, addr_storage_len) == SOCKET_ERROR)
+	if (connect(f->socket, (struct sockaddr *)&addr_storage, addr_storage_len) == SOCKET_ERROR)
 	{
 		int err = WSAGetLastError();
 		if (err != WSAEWOULDBLOCK)
@@ -642,7 +642,7 @@ DEFINE_SYSCALL(getsockname, int, sockfd, struct sockaddr *, addr, int *, addrlen
 		return r;
 	struct sockaddr_storage addr_storage;
 	int addr_storage_len = sizeof(struct sockaddr_storage);
-	if (getsockname(f->socket, &addr_storage, &addr_storage_len) != SOCKET_ERROR)
+	if (getsockname(f->socket, (struct sockaddr *)&addr_storage, &addr_storage_len) != SOCKET_ERROR)
 		addr_storage_len = translate_socket_addr_to_linux(&addr_storage, addr_storage_len);
 	else
 	{
@@ -698,7 +698,7 @@ DEFINE_SYSCALL(getpeername, int, sockfd, struct sockaddr *, addr, int *, addrlen
 		return r;
 	struct sockaddr_storage addr_storage;
 	int addr_storage_len = sizeof(struct sockaddr_storage);
-	if (getpeername(f->socket, &addr_storage, &addr_storage_len) == SOCKET_ERROR)
+	if (getpeername(f->socket, (struct sockaddr *)&addr_storage, &addr_storage_len) == SOCKET_ERROR)
 	{
 		log_warning("getsockname() failed, error code: %d\n", WSAGetLastError());
 		return translate_socket_error(WSAGetLastError());
@@ -873,7 +873,7 @@ DEFINE_SYSCALL(getsockopt, int, sockfd, int, level, int, optname, void *, optval
 	int r = get_sockfd(sockfd, &f);
 	if (r)
 		return r;
-	return socket_get_set_sockopt(SYS_GETSOCKOPT, f, level, optname, NULL, NULL, optval, optlen);
+	return socket_get_set_sockopt(SYS_GETSOCKOPT, f, level, optname, NULL, 0, optval, optlen);
 }
 
 DEFINE_SYSCALL(sendmsg, int, sockfd, const struct msghdr *, msg, int, flags)
