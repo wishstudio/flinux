@@ -1288,9 +1288,8 @@ static int console_close(struct file *f)
 	return 0;
 }
 
-static size_t console_read(struct file *f, void *b, size_t count)
+static size_t console_read(struct file *f, char *buf, size_t count)
 {
-	char *buf = (char *)b;
 	struct console_file *console_file = (struct console_file *)f;
 
 	console_lock();
@@ -1463,9 +1462,8 @@ read_done:
 	return bytes_read;
 }
 
-static size_t console_write(struct file *f, const void *b, size_t count)
+static size_t console_write(struct file *f, const char *buf, size_t count)
 {
-	const char *buf = (const char *)b;
 	struct console_file *console_file = (struct console_file *)f;
 
 	console_lock();

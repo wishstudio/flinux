@@ -36,10 +36,10 @@ struct file_ops
 	HANDLE (*get_poll_handle)(struct file *f, int *poll_events);
 	int (*close)(struct file *f);
 	int (*getpath)(struct file *f, char *buf);
-	size_t (*read)(struct file *f, char *buf, size_t count);
-	size_t (*write)(struct file *f, const char *buf, size_t count);
-	size_t (*pread)(struct file *f, char *buf, size_t count, loff_t offset);
-	size_t (*pwrite)(struct file *f, const char *buf, size_t count, loff_t offset);
+	size_t (*read)(struct file *f, void *buf, size_t count);
+	size_t (*write)(struct file *f, const void *buf, size_t count);
+	size_t (*pread)(struct file *f, void *buf, size_t count, loff_t offset);
+	size_t (*pwrite)(struct file *f, const void *buf, size_t count, loff_t offset);
 	size_t (*readlink)(struct file *f, char *buf, size_t bufsize);
 	int (*truncate)(struct file *f, loff_t length);
 	int (*fsync)(struct file *f);

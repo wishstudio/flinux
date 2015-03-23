@@ -26,6 +26,7 @@
 #include <syscall/process.h>
 #include <syscall/syscall.h>
 #include <syscall/tls.h>
+#include <syscall/vfs.h>
 #include <log.h>
 
 #define WIN32_LEAN_AND_MEAN
@@ -60,7 +61,7 @@ struct fork_info
 	void *ctid;
 };
 
-static struct fork_info * const fork = (struct fork_info *)FORK_INFO_BASE;
+static struct fork_info * const fork = FORK_INFO_BASE;
 
 __declspec(noreturn) void restore_fork_context(struct syscall_context *context);
 
@@ -134,7 +135,7 @@ void fork_init()
 		}
 #endif
 		/* Allocate fork_info memory early to avoid possible VirtualAlloc() collision */
-		VirtualAlloc(fork, BLOCK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+		VirtualAlloc(FORK_INFO_BASE, BLOCK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 		/* Return control flow to main() */
 	}
 }
@@ -186,7 +187,7 @@ static pid_t fork_process(struct syscall_context *context, unsigned long flags, 
 
 	/* Set up fork_info in child process */
 	void *stack_base = process_get_stack_base();
-	VirtualAllocEx(info.hProcess, fork, BLOCK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+	VirtualAllocEx(info.hProcess, FORK_INFO_BASE, BLOCK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 	WriteProcessMemory(info.hProcess, &fork->context, context, sizeof(struct syscall_context), NULL);
 	WriteProcessMemory(info.hProcess, &fork->stack_base, &stack_base, sizeof(stack_base), NULL);
 	if (flags & CLONE_CHILD_SETTID)
@@ -194,8 +195,7 @@ static pid_t fork_process(struct syscall_context *context, unsigned long flags, 
 
 	/* Copy stack */
 	VirtualAllocEx(info.hProcess, stack_base, STACK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
-	WriteProcessMemory(info.hProcess, (LPVOID)context->esp, (LPCVOID)context->esp,
-		(SIZE_T)((char *)stack_base + STACK_SIZE - context->esp), NULL);
+	WriteProcessMemory(info.hProcess, context->esp, context->esp, (char *)stack_base + STACK_SIZE - context->esp, NULL);
 
 	ResumeThread(info.hThread);
 

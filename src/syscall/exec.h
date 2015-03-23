@@ -19,4 +19,5 @@
 
 #pragma once
 
-int do_execve(const char *filename, int argc, char *argv[], int env_size, char *envp[], char *buffer_base);
+int do_execve(const char *filename, int argc, char *argv[], int env_size, char *envp[], char *buffer_base,
+	void(*initialize_routine)());

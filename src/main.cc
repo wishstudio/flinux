@@ -18,10 +18,12 @@
  */
 
 #include <common/auxvec.h>
+#include <dbt/x86.h>
 #include <syscall/exec.h>
 #include <syscall/fork.h>
 #include <syscall/mm.h>
 #include <syscall/process.h>
+#include <syscall/syscall.h>
 #include <syscall/tls.h>
 #include <syscall/vfs.h>
 #include <log.h>
@@ -86,11 +88,11 @@ void main()
 	char *env3 = envbuf;
 	ENV("PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin:/sbin");
 	int argc = 0;
-	char **argv = (char **)ALIGN_TO(envbuf, sizeof(void*));
+	const char **argv = (const char **)ALIGN_TO(envbuf, sizeof(void*));
 
 	/* Parse command line */
 	int in_quote = 0;
-	char *j = current_startup_base;
+	const char *j = current_startup_base;
 	for (char *i = current_startup_base; i <= current_startup_base + len; i++)
 		if (!in_quote && (*i == ' ' || *i == '\t' || *i == '\r' || *i == '\n' || *i == 0))
 		{
@@ -108,7 +110,7 @@ void main()
 			j = i + 1;
 		}
 	argv[argc] = NULL;
-	char **envp = argv + argc + 1;
+	const char **envp = argv + argc + 1;
 	int env_size = 4;
 	envp[0] = env0;
 	envp[1] = env1;

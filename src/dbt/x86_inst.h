@@ -453,7 +453,7 @@ static const struct instruction_desc one_byte_inst[256] =
 	/* 0xC7: */ EXTENSION(C7)
 	/* 0xC8: ENTER */ UNSUPPORTED()
 	/* 0xC9: LEAVE */ INST(READ(REG_BP), WRITE(REG_BP | REG_SP))
-	/* 0xCA: RET FAR imm16 */ UNSUPPORTED(IMM(2))
+	/* 0xCA: RET FAR imm16 */ UNSUPPORTED()
 	/* 0xCB: RET FAR */ UNSUPPORTED()
 	/* 0xCC: INT 3 */ INST()
 	/* 0xCD: INT */ SPECIAL(INST_INT, IMM(1))

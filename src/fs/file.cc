@@ -17,12 +17,9 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#pragma once
+#include <common/poll.h>
 
-#ifdef _WIN64
-#define Xip Rip
-#define XWORD QWORD
-#else
-#define Xip Eip
-#define XWORD DWORD
-#endif
+int fhelper_get_poll_status_inout(struct file *f)
+{
+	return LINUX_POLLIN | LINUX_POLLOUT;
+}

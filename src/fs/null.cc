@@ -28,12 +28,12 @@ static int null_dev_close(struct file *f)
 	return 0;
 }
 
-static size_t null_dev_read(struct file *f, void *buf, size_t count)
+static size_t null_dev_read(struct file *f, char *buf, size_t count)
 {
 	return 0;
 }
 
-static size_t null_dev_write(struct file *f, const void *buf, size_t count)
+static size_t null_dev_write(struct file *f, const char *buf, size_t count)
 {
 	return count;
 }

@@ -69,7 +69,7 @@ __declspec(noreturn) void goto_entrypoint(const char *stack, void *entrypoint);
 static void run(struct binfmt *binary, int argc, char *argv[], int env_size, char *envp[])
 {
 	/* Generate initial stack */
-	char *stack_base = process_get_stack_base();
+	char *stack_base = (char *)process_get_stack_base();
 	char *stack = stack_base + STACK_SIZE;
 	/* 16 random bytes for AT_RANDOM */
 	/* TODO: Fill in real content */
@@ -91,7 +91,7 @@ static void run(struct binfmt *binary, int argc, char *argv[], int env_size, cha
 		AUX_VEC(AT_ENTRY, executable->load_base + executable->eh.e_entry);
 	else
 		AUX_VEC(AT_ENTRY, executable->eh.e_entry);
-	AUX_VEC(AT_BASE, (interpreter ? (void*)(interpreter->load_base - interpreter->low) : NULL));
+	AUX_VEC(AT_BASE, (interpreter ? interpreter->load_base - interpreter->low : NULL));
 
 	/* environment variables */
 	PTR(NULL);
@@ -139,7 +139,7 @@ static int load_elf(struct file *f, struct binfmt *binary)
 	Elf_Ehdr eh;
 
 	/* Load ELF header */
-	f->op_vtable->pread(f, &eh, sizeof(eh), 0);
+	f->op_vtable->pread(f, (char *)&eh, sizeof(eh), 0);
 	if (eh.e_type != ET_EXEC && eh.e_type != ET_DYN)
 	{
 		log_error("Only ET_EXEC and ET_DYN executables can be loaded.\n");
@@ -160,7 +160,7 @@ static int load_elf(struct file *f, struct binfmt *binary)
 
 	/* Load program header table */
 	size_t phsize = (size_t)eh.e_phentsize * (size_t)eh.e_phnum;
-	struct elf_header *elf = alloca(sizeof(struct elf_header) + phsize);
+	struct elf_header *elf = (struct elf_header *)alloca(sizeof(struct elf_header) + phsize);
 	if (binary->executable)
 		binary->interpreter = elf;
 	else
@@ -389,7 +389,7 @@ int do_execve(const char *filename, int argc, char *argv[], int env_size, char *
 
 	/* Execute file */
 	if (binary.replace_argv0)
-		argv[0] = (char *)filename;
+		argv[0] = (char*)filename;
 	run(&binary, argc, argv, env_size, envp);
 	return 0; /* Would never reach here */
 }

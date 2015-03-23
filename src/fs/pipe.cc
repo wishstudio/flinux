@@ -35,7 +35,7 @@ struct pipe_file
 	int is_read;
 };
 
-static HANDLE pipe_get_poll_handle(struct file *f, int *poll_flags)
+static HANDLE pipe_get_poll_handle(struct file *f, int **poll_flags)
 {
 	struct pipe_file *pipe = (struct pipe_file *) f;
 	if (pipe->is_read)
@@ -53,7 +53,7 @@ static int pipe_close(struct file *f)
 	return 0;
 }
 
-static size_t pipe_read(struct file *f, void *buf, size_t count)
+static size_t pipe_read(struct file *f, char *buf, size_t count)
 {
 	struct pipe_file *pipe = (struct pipe_file *)f;
 	if (!pipe->is_read)
@@ -74,7 +74,7 @@ static size_t pipe_read(struct file *f, void *buf, size_t count)
 	return num_read;
 }
 
-static size_t pipe_write(struct file *f, const void *buf, size_t count)
+static size_t pipe_write(struct file *f, const char *buf, size_t count)
 {
 	struct pipe_file *pipe = (struct pipe_file *)f;
 	if (pipe->is_read)
@@ -140,7 +140,7 @@ static struct file *pipe_create_file(HANDLE handle, int is_read, int flags)
 	pipe->base_file.flags = is_read? O_RDONLY: O_WRONLY;
 	pipe->handle = handle;
 	pipe->is_read = is_read;
-	return (struct file *)pipe;
+	return pipe;
 }
 
 int pipe_alloc(struct file **fread, struct file **fwrite, int flags)

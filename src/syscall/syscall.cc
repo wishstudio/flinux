@@ -84,24 +84,23 @@ static LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
 			}
 			else
 #endif
-			if (mm_handle_page_fault((void *)ep->ExceptionRecord->ExceptionInformation[1]))
+			if (mm_handle_page_fault(ep->ExceptionRecord->ExceptionInformation[1]))
 				return EXCEPTION_CONTINUE_EXECUTION;
-			void *ip = (void *)ep->ContextRecord->Xip;
-			if (ip >= &mm_check_read_begin && ip <= &mm_check_read_end)
+			if (ep->ContextRecord->Xip >= &mm_check_read_begin && ep->ContextRecord->Xip <= &mm_check_read_end)
 			{
-				ep->ContextRecord->Xip = (XWORD)&mm_check_read_fail;
+				ep->ContextRecord->Xip = &mm_check_read_fail;
 				log_warning("mm_check_read() failed at location 0x%x\n", ep->ExceptionRecord->ExceptionInformation[1]);
 				return EXCEPTION_CONTINUE_EXECUTION;
 			}
-			if (ip >= &mm_check_read_string_begin && ip <= &mm_check_read_string_end)
+			if (ep->ContextRecord->Xip >= &mm_check_read_string_begin && ep->ContextRecord->Xip <= &mm_check_read_string_end)
 			{
-				ep->ContextRecord->Xip = (XWORD)&mm_check_read_string_fail;
+				ep->ContextRecord->Xip = &mm_check_read_string_fail;
 				log_warning("mm_check_read_string() failed at location 0x%x\n", ep->ExceptionRecord->ExceptionInformation[1]);
 				return EXCEPTION_CONTINUE_EXECUTION;
 			}
-			if (ip >= &mm_check_write_begin && ip <= &mm_check_write_end)
+			if (ep->ContextRecord->Xip >= &mm_check_write_begin && ep->ContextRecord->Xip <= &mm_check_write_end)
 			{
-				ep->ContextRecord->Xip = (XWORD)&mm_check_write_fail;
+				ep->ContextRecord->Xip = &mm_check_write_fail;
 				log_warning("mm_check_write() failed at location 0x%x\n", ep->ExceptionRecord->ExceptionInformation[1]);
 				return EXCEPTION_CONTINUE_EXECUTION;
 			}

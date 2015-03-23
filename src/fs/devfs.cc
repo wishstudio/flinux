@@ -79,5 +79,5 @@ struct file_system *devfs_alloc()
 	struct devfs *fs = (struct devfs *)kmalloc(sizeof(struct devfs));
 	fs->base_fs.mountpoint = "/dev";
 	fs->base_fs.open = devfs_open;
-	return (struct file_system *)fs;
+	return fs;
 }

@@ -60,7 +60,7 @@ struct vfs_data
 	int umask;
 };
 
-static struct vfs_data * const vfs = (struct vfs_data *)VFS_DATA_BASE;
+static struct vfs_data * const vfs = (struct vfs_data *const) VFS_DATA_BASE;
 
 static void vfs_add(struct file_system *fs)
 {
@@ -1019,7 +1019,7 @@ static intptr_t getdents_fill(void *buffer, uint64_t inode, const wchar_t *name,
 	if (dirent->d_ino != inode)
 		return -EOVERFLOW;
 	dirent->d_off = 0; /* TODO */
-	intptr_t len = utf16_to_utf8_filename(name, namelen, dirent->d_name, size);
+	intptr_t len = utf16_to_utf8_filename((uint16_t*)name, namelen, dirent->d_name, size);
 	/* Don't care much about the size, there is guaranteed to be enough room */
 	dirent->d_name[len] = 0;
 	dirent->d_name[len + 1] = type;
@@ -1034,7 +1034,7 @@ static intptr_t getdents64_fill(void *buffer, uint64_t inode, const wchar_t *nam
 	dirent->d_ino = inode;
 	dirent->d_off = 0; /* TODO */
 	dirent->d_type = type;
-	intptr_t len = utf16_to_utf8_filename(name, namelen, dirent->d_name, size);
+	intptr_t len = utf16_to_utf8_filename((uint16_t*)name, namelen, dirent->d_name, size);
 	/* Don't care much about the size, there is guaranteed to be enough room */
 	dirent->d_name[len] = 0;
 	log_info("Added %s, inode = %llx, type = %d\n", dirent->d_name, inode, type);
@@ -1383,6 +1383,55 @@ DEFINE_SYSCALL(fadvise64, int, fd, loff_t, offset, size_t, len, int, advice)
 	return sys_fadvise64_64(fd, offset, len, advice);
 }
 
+DEFINE_SYSCALL(fcntl, int, fd, int, cmd, int, arg)
+{
+	log_info("fcntl(%d, %d)\n", fd, cmd);
+	struct file *f = vfs->fds[fd];
+	if (!f)
+		return -EBADF;
+	switch (cmd)
+	{
+	case F_DUPFD:
+		return sys_dup(fd);
+	case F_GETFD:
+	{
+		int cloexec = vfs->fds_cloexec[fd];
+		log_info("F_GETFD: CLOEXEC: %d\n", cloexec);
+		return cloexec ? FD_CLOEXEC : 0;
+	}
+	case F_SETFD:
+	{
+		int cloexec = (arg & FD_CLOEXEC) ? 1 : 0;
+		log_info("F_SETFD: CLOEXEC: %d\n", cloexec);
+		vfs->fds_cloexec[fd] = cloexec;
+		return 0;
+	}
+	case F_GETFL:
+	{
+		log_info("F_GETFL: %x\n", f->flags);
+		return f->flags;
+	}
+	case F_SETFL:
+	{
+		log_info("F_SETFL: 0%o\n", arg);
+		if ((arg & O_APPEND) || (arg & FASYNC) || (arg & O_DIRECT) || (arg & O_NOATIME))
+			log_error("flags contain unsupported bits.\n");
+		else
+			f->flags = (f->flags & ~O_NONBLOCK) | (arg & O_NONBLOCK);
+		return 0;
+	}
+
+	default:
+		log_error("Unsupported command: %d\n", cmd);
+		return -EINVAL;
+	}
+}
+
+DEFINE_SYSCALL(fcntl64, int, fd, int, cmd, int, arg)
+{
+	return sys_fcntl(fd, cmd, arg);
+}
+
 DEFINE_SYSCALL(ioctl, int, fd, unsigned int, cmd, unsigned long, arg)
 {
 	log_info("ioctl(%d, %x, %x)\n", fd, cmd, arg);
@@ -1513,56 +1562,7 @@ DEFINE_SYSCALL(getcwd, char *, buf, size_t, size)
 		return -ERANGE;
 	log_info("cwd: \"%s\"\n", cwd);
 	memcpy(buf, cwd, r + 1);
-	return (intptr_t)buf;
-}
-
-DEFINE_SYSCALL(fcntl, int, fd, int, cmd, int, arg)
-{
-	log_info("fcntl(%d, %d)\n", fd, cmd);
-	struct file *f = vfs->fds[fd];
-	if (!f)
-		return -EBADF;
-	switch (cmd)
-	{
-	case F_DUPFD:
-		return sys_dup(fd);
-	case F_GETFD:
-	{
-		int cloexec = vfs->fds_cloexec[fd];
-		log_info("F_GETFD: CLOEXEC: %d\n", cloexec);
-		return cloexec? FD_CLOEXEC: 0;
-	}
-	case F_SETFD:
-	{
-		int cloexec = (arg & FD_CLOEXEC)? 1: 0;
-		log_info("F_SETFD: CLOEXEC: %d\n", cloexec);
-		vfs->fds_cloexec[fd] = cloexec;
-		return 0;
-	}
-	case F_GETFL:
-	{
-		log_info("F_GETFL: %x\n", f->flags);
-		return f->flags;
-	}
-	case F_SETFL:
-	{
-		log_info("F_SETFL: 0%o\n", arg);
-		if ((arg & O_APPEND) || (arg & FASYNC) || (arg & O_DIRECT) || (arg & O_NOATIME))
-			log_error("flags contain unsupported bits.\n");
-		else
-			f->flags = (f->flags & ~O_NONBLOCK) | (arg & O_NONBLOCK);
-		return 0;
-	}
-
-	default:
-		log_error("Unsupported command: %d\n", cmd);
-		return -EINVAL;
-	}
-}
-
-DEFINE_SYSCALL(fcntl64, int, fd, int, cmd, int, arg)
-{
-	return sys_fcntl(fd, cmd, arg);
+	return (uintptr_t)buf;
 }
 
 DEFINE_SYSCALL(faccessat, int, dirfd, const char *, pathname, int, mode, int, flags)
@@ -1631,7 +1631,7 @@ DEFINE_SYSCALL(chroot, const char *, pathname)
 		return r;
 	log_info("resolved path: \"%s\"\n", realpath);
 	WCHAR wpath[PATH_MAX];
-	utf8_to_utf16_filename(realpath, r + 1, wpath, PATH_MAX);
+	utf8_to_utf16_filename(realpath, r + 1, (uint16_t*)wpath, PATH_MAX);
 	/* TODO */
 	if (!SetCurrentDirectoryW(wpath + 1)) /* ignore the heading slash */
 		log_error("SetCurrentDirectoryW() failed, error code: %d\n", GetLastError());

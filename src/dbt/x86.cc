@@ -464,35 +464,35 @@ extern void dbt_restore_simd_state();
 extern void dbt_cpuid_internal();
 extern void syscall_handler();
 
-static struct dbt_data *const dbt = (struct dbt_data *)DBT_DATA_BASE;
-static uint8_t *const dbt_cache = (uint8_t *)DBT_CACHE_BASE;
+static struct dbt_data *const dbt = DBT_DATA_BASE;
+static uint8_t *const dbt_cache = DBT_CACHE_BASE;
 
 static void dbt_gen_sieve_dispatch()
 {
 	uint8_t *out;
-	out = (uint8_t*)ALIGN_TO(dbt->out, DBT_OUT_ALIGN);
+	out = ALIGN_TO(dbt->out, DBT_OUT_ALIGN);
 	dbt->sieve_dispatch_trampoline = out;
 
 	/* The destination address should be pushed on the stack */
 	gen_push_rm(&out, modrm_rm_reg(ECX));
 	gen_movzx_r32_rm16(&out, ECX, modrm_rm_mreg(ESP, 4));
-	gen_jmp_rm(&out, modrm_rm_mscale(-1, ECX, MODRM_SCALE_4, (int32_t)dbt->sieve_table));
+	gen_jmp_rm(&out, modrm_rm_mscale(-1, ECX, MODRM_SCALE_4, dbt->sieve_table));
 
 	dbt->out = out;
 
-	out = (uint8_t*)ALIGN_TO(dbt->out, DBT_OUT_ALIGN);
+	out = ALIGN_TO(dbt->out, DBT_OUT_ALIGN);
 	dbt->sieve_indirect_call_dispatch_trampoline = out;
 
 	/* there is a dummy return address on stack, replace it */
 	gen_mov_rm_r_32(&out, modrm_rm_mreg(ESP, 0), ECX);
 	gen_movzx_r32_rm16(&out, ECX, modrm_rm_mreg(ESP, 4));
-	gen_jmp_rm(&out, modrm_rm_mscale(-1, ECX, MODRM_SCALE_4, (int32_t)dbt->sieve_table));
+	gen_jmp_rm(&out, modrm_rm_mscale(-1, ECX, MODRM_SCALE_4, dbt->sieve_table));
 
 	dbt->out = out;
 
 	/* Fill out sieve_table */
 	for (int i = 0; i < DBT_SIEVE_ENTRIES; i++)
-		dbt->sieve_table[i] = (uint8_t*)&dbt_sieve_fallback;
+		dbt->sieve_table[i] = &dbt_sieve_fallback;
 }
 
 #define DBT_SIEVE_NEXT_BUCKET_OFFSET		13
@@ -527,7 +527,7 @@ void dbt_gen_trampolines()
 {
 	dbt_gen_sieve_dispatch();
 	for (int i = 0; i < DBT_RETURN_CACHE_ENTRIES; i++)
-		dbt->return_cache[i] = (uint8_t*)&dbt_sieve_fallback;
+		dbt->return_cache[i] = &dbt_sieve_fallback;
 }
 
 void dbt_init()
@@ -535,11 +535,11 @@ void dbt_init()
 	log_info("Initializing dbt subsystem...\n");
 	if (!VirtualAlloc(dbt, sizeof(struct dbt_data), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE))
 		log_error("VirtualAlloc() for dbt_data failed.\n");
-	if (!VirtualAlloc((LPVOID)DBT_BLOCKS_BASE, DBT_BLOCKS_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE))
+	if (!VirtualAlloc(DBT_BLOCKS_BASE, DBT_BLOCKS_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE))
 		log_error("VirtualAlloc() for dbt_blocks failed.\n");
 	if (!VirtualAlloc(dbt_cache, DBT_CACHE_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE))
 		log_error("VirtualAlloc() for dbt_cache failed.\n");
-	dbt->blocks = (struct dbt_block *)DBT_BLOCKS_BASE;
+	dbt->blocks = DBT_BLOCKS_BASE;
 	dbt->blocks_count = 0;
 	dbt->out = dbt_cache;
 	dbt->end = dbt_cache + DBT_CACHE_SIZE;
@@ -681,7 +681,6 @@ static int find_unused_register(struct instruction_t *ins)
 #undef TEST_REG
 	log_error("find_unused_register: No usable register found. There must be a bug in our implementation.\n");
 	__debugbreak();
-	return 0;
 }
 
 static void dbt_copy_instruction(uint8_t **out, uint8_t **code, struct instruction_t *ins)
@@ -751,12 +750,13 @@ static void dbt_gen_ret_trampoline(uint8_t **out)
 {
 	gen_push_rm(out, modrm_rm_reg(ECX));
 	gen_movzx_r32_rm16(out, ECX, modrm_rm_mreg(ESP, 4));
-	gen_push_rm(out, modrm_rm_mscale(-1, ECX, MODRM_SCALE_4, (int32_t)dbt->return_cache));
+	gen_push_rm(out, modrm_rm_mscale(-1, ECX, MODRM_SCALE_4, dbt->return_cache));
 	gen_byte(out, 0xC3);
 }
 
 static void dbt_log_opcode(struct instruction_t *ins)
 {
+	decltype(ins) x;
 	log_info("Opcode: 0x%02x\n", ins->opcode);
 	log_info("Escape_0F: %d\n", ins->escape_0x0f);
 	log_info("Escape byte2: 0x%02x\n", ins->escape_byte2);

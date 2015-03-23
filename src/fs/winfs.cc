@@ -247,7 +247,7 @@ static int winfs_getpath(struct file *f, char *buf)
 	return winfile->pathlen + 1;
 }
 
-static size_t winfs_read(struct file *f, void *buf, size_t count)
+static size_t winfs_read(struct file *f, char *buf, size_t count)
 {
 	struct winfs_file *winfile = (struct winfs_file *) f;
 	size_t num_read = 0;
@@ -270,7 +270,7 @@ static size_t winfs_read(struct file *f, void *buf, size_t count)
 	return num_read;
 }
 
-static size_t winfs_write(struct file *f, const void *buf, size_t count)
+static size_t winfs_write(struct file *f, const char *buf, size_t count)
 {
 	struct winfs_file *winfile = (struct winfs_file *) f;
 	size_t num_written = 0;
@@ -296,7 +296,7 @@ static size_t winfs_write(struct file *f, const void *buf, size_t count)
 	return num_written;
 }
 
-static size_t winfs_pread(struct file *f, void *buf, size_t count, loff_t offset)
+static size_t winfs_pread(struct file *f, char *buf, size_t count, loff_t offset)
 {
 	struct winfs_file *winfile = (struct winfs_file *) f;
 	size_t num_read = 0;
@@ -326,7 +326,7 @@ static size_t winfs_pread(struct file *f, void *buf, size_t count, loff_t offset
 	return num_read;
 }
 
-static size_t winfs_pwrite(struct file *f, const void *buf, size_t count, loff_t offset)
+static size_t winfs_pwrite(struct file *f, const char *buf, size_t count, loff_t offset)
 {
 	struct winfs_file *winfile = (struct winfs_file *) f;
 	size_t num_written = 0;
@@ -759,7 +759,7 @@ static int winfs_mkdir(const char *pathname, int mode)
 {
 	WCHAR wpathname[PATH_MAX];
 
-	if (utf8_to_utf16_filename(pathname, strlen(pathname) + 1, wpathname, PATH_MAX) <= 0)
+	if (utf8_to_utf16_filename(pathname, strlen(pathname) + 1, (uint16_t*)wpathname, PATH_MAX) <= 0)
 		return -ENOENT;
 	if (!CreateDirectoryW(wpathname, NULL))
 	{
@@ -798,7 +798,7 @@ static int winfs_open(const char *pathname, int flags, int mode, struct file **f
 	struct winfs_file *file;
 	int pathlen = strlen(pathname);
 
-	if (utf8_to_utf16_filename(pathname, pathlen + 1, wpathname, PATH_MAX) <= 0)
+	if (utf8_to_utf16_filename(pathname, pathlen + 1, (uint16_t*)wpathname, PATH_MAX) <= 0)
 		return -ENOENT;
 	if (wpathname[0] == 0)
 	{

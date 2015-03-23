@@ -49,11 +49,11 @@ struct process_data
 	HANDLE child_handles[MAX_CHILD_COUNT];
 };
 
-static struct process_data *const process = (struct process_data *)PROCESS_DATA_BASE;
+static struct process_data *const process = PROCESS_DATA_BASE;
 
 void process_init(void *stack_base)
 {
-	VirtualAlloc(process, sizeof(struct process_data), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+	VirtualAlloc(PROCESS_DATA_BASE, sizeof(struct process_data), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 	process->child_count = 0;
 	/* TODO: Avoid VirtualAlloc() to reduce potential virtual address space collision */
 	if (stack_base)

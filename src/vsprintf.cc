@@ -90,7 +90,7 @@ int kvsprintf(char *buffer, const char *format, va_list args)
 			case 'c':
 			{
 				format = f;
-				*buf++ = va_arg(args, char);
+				*buf++ = va_arg(args, const char *);
 				continue;
 			}
 
