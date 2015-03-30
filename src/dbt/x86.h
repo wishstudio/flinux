@@ -20,9 +20,25 @@
 #pragma once
 
 #include <stdint.h>
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
+
+struct syscall_context
+{
+	/* Note: should be kept consistent with syscall trampoline in x86_trampoline.asm */
+	DWORD ebx;
+	DWORD ecx;
+	DWORD edx;
+	DWORD esi;
+	DWORD edi;
+	DWORD ebp;
+	DWORD esp;
+	DWORD eip;
+};
 
 void dbt_init();
 void dbt_reset();
 void dbt_shutdown();
 
 void __declspec(noreturn) dbt_run(size_t pc, size_t sp);
+void __declspec(noreturn) dbt_restore_fork_context(struct syscall_context *context);

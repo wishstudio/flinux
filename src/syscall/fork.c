@@ -40,19 +40,6 @@
  * 5. Wake up child process, it will use fork_info to restore context
  */
 
-struct syscall_context
-{
-	/* Note: should be kept consistent with syscall trampoline in x86_trampoline.asm */
-	DWORD ebx;
-	DWORD ecx;
-	DWORD edx;
-	DWORD esi;
-	DWORD edi;
-	DWORD ebp;
-	DWORD esp;
-	DWORD eip;
-};
-
 struct fork_info
 {
 	struct syscall_context context;
@@ -62,8 +49,6 @@ struct fork_info
 
 static struct fork_info * const fork = (struct fork_info *)FORK_INFO_BASE;
 
-__declspec(noreturn) void restore_fork_context(struct syscall_context *context);
-
 __declspec(noreturn) static void fork_child()
 {
 	install_syscall_handler();
@@ -72,7 +57,7 @@ __declspec(noreturn) static void fork_child()
 	dbt_init();
 	if (fork->ctid)
 		*(pid_t *)fork->ctid = GetCurrentProcessId();
-	restore_fork_context(&fork->context);
+	dbt_restore_fork_context(&fork->context);
 }
 
 void fork_init()

@@ -447,6 +447,7 @@ struct dbt_data
 	int tls_scratch_offset; /* scratch variable */
 	int tls_gs_offset; /* gs value */
 	int tls_gs_addr_offset; /* gs base address */
+	int tls_return_addr_offset; /* return address */
 	/* Sieve */
 	uint8_t **sieve_table;
 	uint8_t *sieve_dispatch_trampoline;
@@ -466,6 +467,29 @@ extern void syscall_handler();
 
 static struct dbt_data *const dbt = (struct dbt_data *)DBT_DATA_BASE;
 static uint8_t *const dbt_cache = (uint8_t *)DBT_CACHE_BASE;
+
+/* We use a return trampoline for returning to user code from kernel code
+ * The return address is stored in TLS and set up in kernel code
+ * This enables us to do efficient return address patching on receipt of signals
+ */
+void *dbt_return_trampoline;
+static void dbt_gen_return_trampoline()
+{
+	uint8_t *out;
+	out = (uint8_t*)ALIGN_TO(dbt->out, DBT_OUT_ALIGN);
+	dbt_return_trampoline = out;
+
+	/* jmp fs:[return_addr] */
+	gen_fs_prefix(&out);
+	gen_jmp_rm(&out, modrm_rm_disp(dbt->tls_return_addr_offset));
+
+	dbt->out = out;
+}
+
+static void dbt_set_return_addr(size_t addr)
+{
+	__writefsdword(dbt->tls_return_addr_offset, addr);
+}
 
 static void dbt_gen_sieve_dispatch()
 {
@@ -523,8 +547,21 @@ static uint8_t *dbt_gen_sieve(size_t original_pc, uint8_t *target)
 	return dbt->end;
 }
 
-void dbt_gen_trampolines()
+static void dbt_gen_tables()
 {
+	/* Initialize block cache */
+	dbt->blocks_count = 0;
+	dbt->out = dbt_cache;
+	dbt->end = dbt_cache + DBT_CACHE_SIZE;
+
+	/* Allocate ancillary data structure */
+	dbt->sieve_table = (uint8_t**)dbt->out;
+	dbt->out += sizeof(uint8_t*) * DBT_SIEVE_ENTRIES;
+	dbt->return_cache = (uint8_t**)dbt->out;
+	dbt->out += sizeof(uint8_t*) * DBT_RETURN_CACHE_ENTRIES;
+
+	/* Trampolines */
+	dbt_gen_return_trampoline();
 	dbt_gen_sieve_dispatch();
 	for (int i = 0; i < DBT_RETURN_CACHE_ENTRIES; i++)
 		dbt->return_cache[i] = (uint8_t*)&dbt_sieve_fallback;
@@ -540,21 +577,11 @@ void dbt_init()
 	if (!VirtualAlloc(dbt_cache, DBT_CACHE_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE))
 		log_error("VirtualAlloc() for dbt_cache failed.\n");
 	dbt->blocks = (struct dbt_block *)DBT_BLOCKS_BASE;
-	dbt->blocks_count = 0;
-	dbt->out = dbt_cache;
-	dbt->end = dbt_cache + DBT_CACHE_SIZE;
 	dbt->tls_scratch_offset = tls_kernel_entry_to_offset(TLS_ENTRY_SCRATCH);
 	dbt->tls_gs_offset = tls_kernel_entry_to_offset(TLS_ENTRY_GS);
 	dbt->tls_gs_addr_offset = tls_kernel_entry_to_offset(TLS_ENTRY_GS_ADDR);
-
-	/* Allocate ancillary data structure */
-	dbt->sieve_table = (uint8_t**)dbt->out;
-	dbt->out += sizeof(uint8_t*) * DBT_SIEVE_ENTRIES;
-	dbt->return_cache = (uint8_t**)dbt->out;
-	dbt->out += sizeof(uint8_t*) * DBT_RETURN_CACHE_ENTRIES;
-
-	/* Generate trampolines */
-	dbt_gen_trampolines();
+	dbt->tls_return_addr_offset = tls_kernel_entry_to_offset(TLS_ENTRY_RETURN_ADDR);
+	dbt_gen_tables();
 	log_info("dbt subsystem initialized.\n");
 }
 
@@ -568,18 +595,7 @@ static void dbt_flush()
 {
 	for (int i = 0; i < DBT_BLOCK_HASH_BUCKETS; i++)
 		slist_init(&dbt->block_hash[i]);
-	dbt->blocks_count = 0;
-	dbt->out = dbt_cache;
-	dbt->end = dbt_cache + DBT_CACHE_SIZE;
-
-	/* Allocate ancillary data structure */
-	dbt->sieve_table = (uint8_t**)dbt->out;
-	dbt->out += sizeof(uint8_t*) * DBT_SIEVE_ENTRIES;
-	dbt->return_cache = (uint8_t**)dbt->out;
-	dbt->out += sizeof(uint8_t*) * DBT_RETURN_CACHE_ENTRIES;
-
-	/* Generate trampolines */
-	dbt_gen_trampolines();
+	dbt_gen_tables();
 	log_info("dbt code cache flushed.\n");
 }
 
@@ -1277,7 +1293,7 @@ done_prefix:
 	return start_block;
 }
 
-uint8_t *dbt_find_next(size_t pc)
+static uint8_t *dbt_find(size_t pc)
 {
 	int bucket = hash_block_pc(pc);
 	slist_iterate(&dbt->block_hash[bucket], prev, cur)
@@ -1293,9 +1309,14 @@ uint8_t *dbt_find_next(size_t pc)
 	return block->start;
 }
 
-uint8_t *dbt_find_next_sieve(size_t pc)
+void dbt_find_next(size_t pc)
 {
-	uint8_t *target = dbt_find_next(pc);
+	dbt_set_return_addr((size_t)dbt_find(pc));
+}
+
+void dbt_find_next_sieve(size_t pc)
+{
+	uint8_t *target = dbt_find(pc);
 	uint8_t *sieve = dbt_gen_sieve(pc, target);
 
 	/* Patch sieve table */
@@ -1316,22 +1337,30 @@ uint8_t *dbt_find_next_sieve(size_t pc)
 		uint8_t *next_bucket_rel = sieve - (size_t)(current + DBT_SIEVE_NEXT_BUCKET_OFFSET + sizeof(size_t));
 		*(uint8_t**)&current[DBT_SIEVE_NEXT_BUCKET_OFFSET] = next_bucket_rel;
 	}
-	return target;
+	dbt_set_return_addr((size_t)target);
 }
 
-size_t dbt_find_direct(size_t pc, size_t patch_addr)
+void dbt_find_direct(size_t pc, size_t patch_addr)
 {
 	/* Translate or generate the block */
-	size_t block_start = (size_t)dbt_find_next(pc);
+	size_t block_start = (size_t)dbt_find(pc);
 	/* Patch the jmp/call address so we don't need to repeat work again */
 	*(size_t*)patch_addr = (intptr_t)(block_start - (patch_addr + 4)); /* Relative address */
-	return block_start;
+	dbt_set_return_addr(block_start);
 }
 
 void __declspec(noreturn) dbt_run(size_t pc, size_t sp)
 {
-	size_t entrypoint = (size_t)dbt_find_next(pc);
-	extern __declspec(noreturn) void dbt_run_internal(size_t pc, size_t sp);
+	size_t entrypoint = (size_t)dbt_find(pc);
+	extern __declspec(noreturn) void dbt_run_internal(size_t sp);
 	log_info("dbt: Calling into application code generated at %p, (original: pc: %p, sp: %p)\n", entrypoint, pc, sp);
-	dbt_run_internal(entrypoint, sp);
+	dbt_set_return_addr(entrypoint);
+	dbt_run_internal(sp);
+}
+
+void __declspec(noreturn) dbt_restore_fork_context(struct syscall_context *ctx)
+{
+	extern __declspec(noreturn) void dbt_restore_fork_context_internal(struct syscall_context *ctx);
+	log_info("dbt: Restoring fork context, (original: pc: %p, sp: %p)\n", ctx->eip, ctx->esp);
+	dbt_restore_fork_context_internal(ctx);
 }
