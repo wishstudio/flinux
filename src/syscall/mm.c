@@ -400,15 +400,21 @@ void mm_reset()
 	size_t last_block = 0;
 	size_t reserved_start = GET_BLOCK(ADDRESS_RESERVED_LOW);
 	size_t reserved_end = GET_BLOCK(ADDRESS_RESERVED_HIGH) - 1;
-	for (struct rb_node *cur = rb_first(&mm->entry_tree); cur; cur = rb_next(cur))
+	for (struct rb_node *cur = rb_first(&mm->entry_tree); cur;)
 	{
 		struct map_entry *e = rb_entry(cur, struct map_entry, tree);
 		size_t start_block = GET_BLOCK_OF_PAGE(e->start_page);
 		size_t end_block = GET_BLOCK_OF_PAGE(e->end_page);
 		if (reserved_start <= start_block && start_block <= reserved_end)
+		{
+			cur = rb_next(cur);
 			continue;
+		}
 		if (reserved_start <= end_block && end_block <= reserved_end)
+		{
+			cur = rb_next(cur);
 			continue;
+		}
 
 		if (start_block == last_block)
 			start_block++;
@@ -427,9 +433,11 @@ void mm_reset()
 		if (e->f)
 			vfs_release(e->f);
 		free_map_entry(e);
+		struct rb_node *next = rb_next(cur);
+		rb_remove(&mm->entry_tree, cur);
+		cur = next;
 	}
 	mm->brk = 0;
-	rb_init(&mm->entry_tree);
 }
 
 void mm_shutdown()
