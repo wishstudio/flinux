@@ -275,7 +275,7 @@ static struct map_entry *new_map_entry()
 {
 	if (slist_empty(&mm->map_free_list))
 		return NULL;
-	struct map_entry *entry = slist_next_entry(struct map_entry, list, &mm->map_free_list);
+	struct map_entry *entry = slist_next_entry(&mm->map_free_list, struct map_entry, list);
 	slist_remove(&mm->map_free_list, &entry->list);
 	return entry;
 }
@@ -289,7 +289,7 @@ static struct map_entry *find_map_entry(void *addr)
 {
 	slist_iterate(&mm->map_list, prev, cur)
 	{
-		struct map_entry *e = slist_entry(struct map_entry, list, cur);
+		struct map_entry *e = slist_entry(cur, struct map_entry, list);
 		if (addr < GET_PAGE_ADDRESS(e->start_page))
 			return NULL;
 		else if (addr < GET_PAGE_ADDRESS(e->end_page + 1))
@@ -317,10 +317,10 @@ static void free_map_entry_blocks(struct slist *p, struct map_entry *e)
 {
 	if (e->f)
 		vfs_release(e->f);
-	struct map_entry *n = slist_next_entry(struct map_entry, list, &e->list);
+	struct map_entry *n = slist_next_entry(&e->list, struct map_entry, list);
 	size_t start_block = GET_BLOCK_OF_PAGE(e->start_page);
 	size_t end_block = GET_BLOCK_OF_PAGE(e->end_page);
-	if (p != &mm->map_list && GET_BLOCK_OF_PAGE(slist_entry(struct map_entry, list, p)->end_page) == start_block)
+	if (p != &mm->map_list && GET_BLOCK_OF_PAGE(slist_entry(p, struct map_entry, list)->end_page) == start_block)
 	{
 		/* First block is still in use, make it inaccessible */
 		size_t last_page = GET_LAST_PAGE_OF_BLOCK(GET_BLOCK_OF_PAGE(e->start_page));
@@ -369,7 +369,7 @@ void mm_reset()
 	size_t reserved_end = GET_BLOCK(ADDRESS_RESERVED_HIGH) - 1;
 	slist_iterate_safe(&mm->map_list, p, cur)
 	{
-		struct map_entry *e = slist_entry(struct map_entry, list, cur);
+		struct map_entry *e = slist_entry(cur, struct map_entry, list);
 		size_t start_block = GET_BLOCK_OF_PAGE(e->start_page);
 		size_t end_block = GET_BLOCK_OF_PAGE(e->end_page);
 		if (reserved_start <= start_block && start_block <= reserved_end)
@@ -430,7 +430,7 @@ static size_t find_free_pages(size_t count, size_t low, size_t high)
 	size_t last = GET_PAGE(low);
 	slist_iterate(&mm->map_list, prev, cur)
 	{
-		struct map_entry *e = slist_entry(struct map_entry, list, cur);
+		struct map_entry *e = slist_entry(cur, struct map_entry, list);
 		if (e->start_page >= GET_PAGE(low))
 			if (e->start_page - last >= count)
 				return last;
@@ -510,7 +510,7 @@ void mm_dump_memory_mappings()
 	log_info("Current memory mappings...\n");
 	slist_iterate(&mm->map_list, prev, cur)
 	{
-		struct map_entry *e = slist_entry(struct map_entry, list, cur);
+		struct map_entry *e = slist_entry(cur, struct map_entry, list);
 		log_info("0x%p - 0x%p: PROT: %d\n", GET_PAGE_ADDRESS(e->start_page), GET_PAGE_ADDRESS(e->end_page), e->prot);
 	}
 }
@@ -738,7 +738,7 @@ static int handle_cow_page_fault(void *addr)
 	size_t end_page = GET_LAST_PAGE_OF_BLOCK(block);
 	slist_iterate(&mm->map_list, prev, cur)
 	{
-		struct map_entry *e = slist_entry(struct map_entry, list, cur);
+		struct map_entry *e = slist_entry(cur, struct map_entry, list);
 		if (end_page < e->start_page)
 			break;
 		else
@@ -772,7 +772,7 @@ static int handle_on_demand_page_fault(void *addr)
 	allocate_block(block);
 	slist_iterate(&mm->map_list, prev, cur)
 	{
-		struct map_entry *e = slist_entry(struct map_entry, list, cur);
+		struct map_entry *e = slist_entry(cur, struct map_entry, list);
 		if (end_page < e->start_page)
 			break;
 		else
@@ -847,7 +847,7 @@ int mm_fork(HANDLE process)
 	log_info("Mapping and changing memory protection...\n");
 	slist_iterate(&mm->map_list, prev, cur)
 	{
-		struct map_entry *e = slist_entry(struct map_entry, list, cur);
+		struct map_entry *e = slist_entry(cur, struct map_entry, list);
 		/* Map section */
 		size_t start_block = GET_BLOCK_OF_PAGE(e->start_page);
 		size_t end_block = GET_BLOCK_OF_PAGE(e->end_page);
@@ -950,7 +950,7 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, int internal_flags
 			 */
 			slist_iterate(&mm->map_list, prev, cur)
 			{
-				struct map_entry *e = slist_entry(struct map_entry, list, cur);
+				struct map_entry *e = slist_entry(cur, struct map_entry, list);
 				if (end_page < e->start_page)
 					break;
 				else if (start_page <= e->end_page && e->start_page <= end_page)
@@ -978,7 +978,7 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, int internal_flags
 		/* No need to use forward_list_safe since we will break immediately after node insertion */
 		slist_iterate(&mm->map_list, p, cur)
 		{
-			struct map_entry *e = slist_entry(struct map_entry, list, cur);
+			struct map_entry *e = slist_entry(cur, struct map_entry, list);
 			if (e->start_page > end_page)
 			{
 				slist_add(p, &entry->list);
@@ -1044,7 +1044,7 @@ int mm_munmap(void *addr, size_t length)
 	size_t end_page = GET_PAGE((size_t)addr + length - 1);
 	slist_iterate_safe(&mm->map_list, p, cur)
 	{
-		struct map_entry *e = slist_entry(struct map_entry, list, cur);
+		struct map_entry *e = slist_entry(cur, struct map_entry, list);
 		if (end_page < e->start_page)
 			break;
 		else
@@ -1137,7 +1137,7 @@ DEFINE_SYSCALL(mprotect, void *, addr, size_t, length, int, prot)
 	size_t last_page = start_page - 1;
 	slist_iterate(&mm->map_list, p, cur)
 	{
-		struct map_entry *e = slist_entry(struct map_entry, list, cur);
+		struct map_entry *e = slist_entry(cur, struct map_entry, list);
 		if (e->start_page > end_page)
 			break;
 		else if (e->end_page >= start_page)
@@ -1154,7 +1154,7 @@ DEFINE_SYSCALL(mprotect, void *, addr, size_t, length, int, prot)
 	/* Change protection flags */
 	slist_iterate_safe(&mm->map_list, p, cur)
 	{
-		struct map_entry *e = slist_entry(struct map_entry, list, cur);
+		struct map_entry *e = slist_entry(cur, struct map_entry, list);
 		if (end_page < e->start_page)
 			break;
 		else
@@ -1208,7 +1208,7 @@ DEFINE_SYSCALL(mlock, const void *, addr, size_t, len)
 	size_t end_page = GET_PAGE((size_t)addr + len);
 	slist_iterate(&mm->map_list, p, cur)
 	{
-		struct map_entry *e = slist_entry(struct map_entry, list, cur);
+		struct map_entry *e = slist_entry(cur, struct map_entry, list);
 		if (e->start_page > end_page)
 			break;
 		else

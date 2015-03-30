@@ -26,8 +26,8 @@ struct slist
 	struct slist *next;
 };
 
-#define slist_entry(type, member, node) \
-	container_of(type, member, node)
+#define slist_entry(node, type, member) \
+	container_of(node, type, member)
 
 #define slist_init(node) \
 	do \
@@ -41,8 +41,8 @@ struct slist
 #define slist_next(node) \
 	(node)->next
 
-#define slist_next_entry(type, member, node) \
-	slist_entry(type, member, slist_next(node))
+#define slist_next_entry(node, type, member) \
+	slist_entry(slist_next(node), type, member)
 
 #define slist_add(prev, node) \
 	do \

@@ -605,7 +605,7 @@ static struct dbt_block *find_block(size_t pc)
 	int bucket = hash_block_pc(pc);
 	slist_iterate(&dbt->block_hash[bucket], prev, cur)
 	{
-		struct dbt_block *block = slist_entry(struct dbt_block, list, cur);
+		struct dbt_block *block = slist_entry(cur, struct dbt_block, list);
 		if (block->pc == pc)
 			return block;
 	}
@@ -1282,7 +1282,7 @@ uint8_t *dbt_find_next(size_t pc)
 	int bucket = hash_block_pc(pc);
 	slist_iterate(&dbt->block_hash[bucket], prev, cur)
 	{
-		struct dbt_block *block = slist_entry(struct dbt_block, list, cur);
+		struct dbt_block *block = slist_entry(cur, struct dbt_block, list);
 		if (block->pc == pc)
 			return block->start;
 	}
