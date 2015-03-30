@@ -202,6 +202,9 @@
     <ClInclude Include="src\lib\slist.h">
       <Filter>lib</Filter>
     </ClInclude>
+    <ClInclude Include="src\lib\rbtree.h">
+      <Filter>lib</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
@@ -271,6 +274,9 @@
       <Filter>fs</Filter>
     </ClCompile>
     <ClCompile Include="src\wcwidth.c" />
+    <ClCompile Include="src\lib\rbtree.c">
+      <Filter>lib</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <MASM Include="src\syscall\stubs64.asm">

@@ -66,6 +66,7 @@
     <ClInclude Include="src\fs\winfs.h" />
     <ClInclude Include="src\heap.h" />
     <ClInclude Include="src\lib\core.h" />
+    <ClInclude Include="src\lib\rbtree.h" />
     <ClInclude Include="src\lib\slist.h" />
     <ClInclude Include="src\log.h" />
     <ClInclude Include="src\ntdll.h" />
@@ -98,6 +99,7 @@
     <ClCompile Include="src\fs\socket.c" />
     <ClCompile Include="src\fs\winfs.c" />
     <ClCompile Include="src\heap.c" />
+    <ClCompile Include="src\lib\rbtree.c" />
     <ClCompile Include="src\log.c" />
     <ClCompile Include="src\main.c" />
     <ClCompile Include="src\str.c" />

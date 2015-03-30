@@ -18,6 +18,7 @@
  */
 
 #include <common/errno.h>
+#include <lib/rbtree.h>
 #include <lib/slist.h>
 #include <syscall/mm.h>
 #include <syscall/syscall.h>
@@ -214,13 +215,32 @@
 
 struct map_entry
 {
-	struct slist list;
-	size_t start_page;
-	size_t end_page;
-	int prot;
-	struct file *f;
-	off_t offset_pages;
+	struct rb_node tree;
+	union
+	{
+		struct slist free_list;
+		struct
+		{
+			size_t start_page;
+			size_t end_page;
+			int prot;
+			struct file *f;
+			off_t offset_pages;
+		};
+	};
 };
+
+static int map_entry_cmp(const struct rb_node *l, const struct rb_node *r)
+{
+	struct map_entry *left = rb_entry(l, struct map_entry, tree);
+	struct map_entry *right = rb_entry(r, struct map_entry, tree);
+	if (left->start_page == right->start_page)
+		return 0;
+	else if (left->start_page < right->start_page)
+		return -1;
+	else
+		return 1;
+}
 
 struct mm_data
 {
@@ -228,8 +248,9 @@ struct mm_data
 	void *brk;
 
 	/* Information for all existing mappings */
-	struct slist map_list, map_free_list;
-	struct map_entry map_entries[MAX_MMAP_COUNT];
+	struct rb_tree entry_tree;
+	struct slist entry_free_list;
+	struct map_entry entries[MAX_MMAP_COUNT];
 
 	/* Section handle count for each table */
 	uint16_t section_table_handle_count[SECTION_TABLE_COUNT];
@@ -273,28 +294,37 @@ static __forceinline void remove_section_handle(size_t i)
 
 static struct map_entry *new_map_entry()
 {
-	if (slist_empty(&mm->map_free_list))
+	if (slist_empty(&mm->entry_free_list))
 		return NULL;
-	struct map_entry *entry = slist_next_entry(&mm->map_free_list, struct map_entry, list);
-	slist_remove(&mm->map_free_list, &entry->list);
+	struct map_entry *entry = slist_next_entry(&mm->entry_free_list, struct map_entry, free_list);
+	slist_remove(&mm->entry_free_list, &entry->free_list);
 	return entry;
 }
 
 static void free_map_entry(struct map_entry *entry)
 {
-	slist_add(&mm->map_free_list, &entry->list);
+	slist_add(&mm->entry_free_list, &entry->free_list);
+}
+
+static struct rb_node *start_node(size_t start_page)
+{
+	struct map_entry probe;
+	probe.start_page = start_page;
+	struct rb_node *node = rb_upper_bound(&mm->entry_tree, &probe.tree, map_entry_cmp);
+	if (node)
+		return node;
+	return rb_lower_bound(&mm->entry_tree, &probe.tree, map_entry_cmp);
 }
 
 static struct map_entry *find_map_entry(void *addr)
 {
-	slist_iterate(&mm->map_list, prev, cur)
-	{
-		struct map_entry *e = slist_entry(cur, struct map_entry, list);
-		if (addr < GET_PAGE_ADDRESS(e->start_page))
-			return NULL;
-		else if (addr < GET_PAGE_ADDRESS(e->end_page + 1))
-			return e;
-	}
+	struct map_entry probe, *entry;
+	size_t page = GET_PAGE(addr);
+	probe.start_page = page;
+	entry = rb_entry(rb_upper_bound(&mm->entry_tree, &probe.tree, map_entry_cmp), struct map_entry, tree);
+	/* upper bound condition: block->start_page <= page */
+	if (page <= entry->end_page)
+		return entry;
 	return NULL;
 }
 
@@ -310,34 +340,37 @@ static void split_map_entry(struct map_entry *e, size_t last_page_of_first_entry
 	}
 	ne->prot = e->prot;
 	e->end_page = last_page_of_first_entry;
-	slist_add(&e->list, &ne->list);
+	rb_add(&mm->entry_tree, &ne->tree, map_entry_cmp);
 }
 
-static void free_map_entry_blocks(struct slist *p, struct map_entry *e)
+static void free_map_entry_blocks(struct map_entry *e)
 {
 	if (e->f)
 		vfs_release(e->f);
-	struct map_entry *n = slist_next_entry(&e->list, struct map_entry, list);
+	struct rb_node *prev = rb_prev(&e->tree);
+	struct rb_node *next = rb_next(&e->tree);
 	size_t start_block = GET_BLOCK_OF_PAGE(e->start_page);
 	size_t end_block = GET_BLOCK_OF_PAGE(e->end_page);
-	if (p != &mm->map_list && GET_BLOCK_OF_PAGE(slist_entry(p, struct map_entry, list)->end_page) == start_block)
+
+	/* The first block and last block may be shared with previous/next entry
+	 * We should mark corresponding pages in such blocks as PAGE_NOACCESS instead of free them */
+	if (prev && GET_BLOCK_OF_PAGE(rb_entry(prev, struct map_entry, tree)->end_page) == start_block)
 	{
-		/* First block is still in use, make it inaccessible */
+		/* First block is shared, just make it inaccessible */
 		size_t last_page = GET_LAST_PAGE_OF_BLOCK(GET_BLOCK_OF_PAGE(e->start_page));
-		if (n && GET_BLOCK_OF_PAGE(n->start_page) == start_block)
-			last_page = n->start_page - 1;
+		last_page = min(last_page, e->end_page); /* The entry may occupy only a block */
 		DWORD oldProtect;
 		VirtualProtect(GET_PAGE_ADDRESS(e->start_page), (last_page - e->start_page + 1) * PAGE_SIZE, PAGE_NOACCESS, &oldProtect);
 		start_block++;
 	}
-	if (end_block >= start_block && n && GET_BLOCK_OF_PAGE(n->start_page) == end_block)
+	if (end_block >= start_block && next && GET_BLOCK_OF_PAGE(rb_entry(next, struct map_entry, tree)->start_page) == end_block)
 	{
-		/* Last block is still in use, make it inaccessible */
+		/* Last block is shared, just make it inaccessible */
 		DWORD oldProtect;
 		VirtualProtect(GET_BLOCK_ADDRESS(end_block), GET_SIZE_OF_BLOCK_TO_PAGE(e->end_page + 1), PAGE_NOACCESS, &oldProtect);
 		end_block--;
 	}
-	/* Unmap other full blocks */
+	/* Unmap non-shared full blocks */
 	for (size_t i = start_block; i <= end_block; i++)
 	{
 		HANDLE handle = get_section_handle(i);
@@ -354,10 +387,10 @@ void mm_init()
 {
 	VirtualAlloc(mm, sizeof(struct mm_data), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 	/* Initialize mapping info freelist */
-	slist_init(&mm->map_list);
-	slist_init(&mm->map_free_list);
+	rb_init(&mm->entry_tree);
+	slist_init(&mm->entry_free_list);
 	for (size_t i = 0; i + 1 < MAX_MMAP_COUNT; i++)
-		slist_add(&mm->map_free_list, &mm->map_entries[i].list);
+		slist_add(&mm->entry_free_list, &mm->entries[i].free_list);
 	mm->brk = 0;
 }
 
@@ -367,9 +400,9 @@ void mm_reset()
 	size_t last_block = 0;
 	size_t reserved_start = GET_BLOCK(ADDRESS_RESERVED_LOW);
 	size_t reserved_end = GET_BLOCK(ADDRESS_RESERVED_HIGH) - 1;
-	slist_iterate_safe(&mm->map_list, p, cur)
+	for (struct rb_node *cur = rb_first(&mm->entry_tree); cur; cur = rb_next(cur))
 	{
-		struct map_entry *e = slist_entry(cur, struct map_entry, list);
+		struct map_entry *e = rb_entry(cur, struct map_entry, tree);
 		size_t start_block = GET_BLOCK_OF_PAGE(e->start_page);
 		size_t end_block = GET_BLOCK_OF_PAGE(e->end_page);
 		if (reserved_start <= start_block && start_block <= reserved_end)
@@ -393,10 +426,10 @@ void mm_reset()
 
 		if (e->f)
 			vfs_release(e->f);
-		slist_remove(p, &e->list);
 		free_map_entry(e);
 	}
 	mm->brk = 0;
+	rb_init(&mm->entry_tree);
 }
 
 void mm_shutdown()
@@ -428,9 +461,9 @@ void mm_update_brk(void *brk)
 static size_t find_free_pages(size_t count, size_t low, size_t high)
 {
 	size_t last = GET_PAGE(low);
-	slist_iterate(&mm->map_list, prev, cur)
+	for (struct rb_node *cur = rb_first(&mm->entry_tree); cur; cur = rb_next(cur))
 	{
-		struct map_entry *e = slist_entry(cur, struct map_entry, list);
+		struct map_entry *e = rb_entry(cur, struct map_entry, tree);
 		if (e->start_page >= GET_PAGE(low))
 			if (e->start_page - last >= count)
 				return last;
@@ -508,9 +541,9 @@ void mm_dump_windows_memory_mappings(HANDLE process)
 void mm_dump_memory_mappings()
 {
 	log_info("Current memory mappings...\n");
-	slist_iterate(&mm->map_list, prev, cur)
+	for (struct rb_node *cur = rb_first(&mm->entry_tree); cur; cur = rb_next(cur))
 	{
-		struct map_entry *e = slist_entry(cur, struct map_entry, list);
+		struct map_entry *e = rb_entry(cur, struct map_entry, tree);
 		log_info("0x%p - 0x%p: PROT: %d\n", GET_PAGE_ADDRESS(e->start_page), GET_PAGE_ADDRESS(e->end_page), e->prot);
 	}
 }
@@ -736,9 +769,9 @@ static int handle_cow_page_fault(void *addr)
 	/* We're the only owner of the section now, change page protection flags */
 	size_t start_page = GET_FIRST_PAGE_OF_BLOCK(block);
 	size_t end_page = GET_LAST_PAGE_OF_BLOCK(block);
-	slist_iterate(&mm->map_list, prev, cur)
+	for (struct rb_node *cur = start_node(start_page); cur; cur = rb_next(cur))
 	{
-		struct map_entry *e = slist_entry(cur, struct map_entry, list);
+		struct map_entry *e = rb_entry(cur, struct map_entry, tree);
 		if (end_page < e->start_page)
 			break;
 		else
@@ -770,9 +803,9 @@ static int handle_on_demand_page_fault(void *addr)
 	struct map_entry *p, *e;
 	int found = 0;
 	allocate_block(block);
-	slist_iterate(&mm->map_list, prev, cur)
+	for (struct rb_node *cur = start_node(start_page); cur; cur = rb_next(cur))
 	{
-		struct map_entry *e = slist_entry(cur, struct map_entry, list);
+		struct map_entry *e = rb_entry(cur, struct map_entry, tree);
 		if (end_page < e->start_page)
 			break;
 		else
@@ -845,9 +878,9 @@ int mm_fork(HANDLE process)
 	size_t last_block = 0;
 	size_t section_object_count = 0;
 	log_info("Mapping and changing memory protection...\n");
-	slist_iterate(&mm->map_list, prev, cur)
+	for (struct rb_node *cur = rb_first(&mm->entry_tree); cur; cur = rb_next(cur))
 	{
-		struct map_entry *e = slist_entry(cur, struct map_entry, list);
+		struct map_entry *e = rb_entry(cur, struct map_entry, tree);
 		/* Map section */
 		size_t start_block = GET_BLOCK_OF_PAGE(e->start_page);
 		size_t end_block = GET_BLOCK_OF_PAGE(e->end_page);
@@ -948,9 +981,9 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, int internal_flags
 			/* The caller does not want to overwrite existing pages
 			 * Check whether it is possible before doing anything
 			 */
-			slist_iterate(&mm->map_list, prev, cur)
+			for (struct rb_node *cur = start_node(start_page); cur; cur = rb_next(cur))
 			{
-				struct map_entry *e = slist_entry(cur, struct map_entry, list);
+				struct map_entry *e = rb_entry(cur, struct map_entry, tree);
 				if (end_page < e->start_page)
 					break;
 				else if (start_page <= e->end_page && e->start_page <= end_page)
@@ -971,26 +1004,7 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, int internal_flags
 	if (f)
 		vfs_ref(f);
 
-	if (slist_empty(&mm->map_list))
-		slist_add(&mm->map_list, &entry->list);
-	else
-	{
-		/* No need to use forward_list_safe since we will break immediately after node insertion */
-		slist_iterate(&mm->map_list, p, cur)
-		{
-			struct map_entry *e = slist_entry(cur, struct map_entry, list);
-			if (e->start_page > end_page)
-			{
-				slist_add(p, &entry->list);
-				break;
-			}
-			else if (slist_next(&e->list) == NULL)
-			{
-				slist_add(&e->list, &entry->list);
-				break;
-			}
-		}
-	}
+	rb_add(&mm->entry_tree, &entry->tree, map_entry_cmp);
 
 	/* If the first or last block is already allocated, we have to set up proper content in it
 	   For other blocks we map them on demand */
@@ -1042,9 +1056,9 @@ int mm_munmap(void *addr, size_t length)
 
 	size_t start_page = GET_PAGE(addr);
 	size_t end_page = GET_PAGE((size_t)addr + length - 1);
-	slist_iterate_safe(&mm->map_list, p, cur)
+	for (struct rb_node *cur = start_node(start_page); cur;)
 	{
-		struct map_entry *e = slist_entry(cur, struct map_entry, list);
+		struct map_entry *e = rb_entry(cur, struct map_entry, tree);
 		if (end_page < e->start_page)
 			break;
 		else
@@ -1052,13 +1066,18 @@ int mm_munmap(void *addr, size_t length)
 			size_t range_start = max(start_page, e->start_page);
 			size_t range_end = min(end_page, e->end_page);
 			if (range_start > range_end)
+			{
+				cur = rb_next(cur);
 				continue;
+			}
 			if (range_start == e->start_page && range_end == e->end_page)
 			{
 				/* That's good, the current entry is fully overlapped */
-				free_map_entry_blocks(p, e);
-				slist_remove(p, &e->list);
+				struct rb_node *next = rb_next(cur);
+				free_map_entry_blocks(e);
+				rb_remove(&mm->entry_tree, cur);
 				free_map_entry(e);
+				cur = next;
 			}
 			else
 			{
@@ -1066,14 +1085,17 @@ int mm_munmap(void *addr, size_t length)
 				if (range_start == e->start_page)
 				{
 					split_map_entry(e, range_end);
-					free_map_entry_blocks(p, e);
-					slist_remove(p, &e->list);
+					struct rb_node *next = rb_next(cur);
+					free_map_entry_blocks(e);
+					rb_remove(&mm->entry_tree, cur);
 					free_map_entry(e);
+					cur = next;
 				}
 				else
 				{
 					split_map_entry(e, range_start - 1);
 					/* The current entry is unrelated, we just skip to next entry (which we just generated) */
+					cur = rb_next(cur);
 				}
 			}
 		}
@@ -1135,9 +1157,9 @@ DEFINE_SYSCALL(mprotect, void *, addr, size_t, length, int, prot)
 	size_t start_page = GET_PAGE(addr);
 	size_t end_page = GET_PAGE((size_t)addr + length - 1);
 	size_t last_page = start_page - 1;
-	slist_iterate(&mm->map_list, p, cur)
+	for (struct rb_node *cur = start_node(start_page); cur; cur = rb_next(cur))
 	{
-		struct map_entry *e = slist_entry(cur, struct map_entry, list);
+		struct map_entry *e = rb_entry(cur, struct map_entry, tree);
 		if (e->start_page > end_page)
 			break;
 		else if (e->end_page >= start_page)
@@ -1150,11 +1172,11 @@ DEFINE_SYSCALL(mprotect, void *, addr, size_t, length, int, prot)
 	}
 	if (last_page < end_page)
 		return -ENOMEM;
-	;
+
 	/* Change protection flags */
-	slist_iterate_safe(&mm->map_list, p, cur)
+	for (struct rb_node *cur = start_node(start_page); cur; cur = rb_next(cur))
 	{
-		struct map_entry *e = slist_entry(cur, struct map_entry, list);
+		struct map_entry *e = rb_entry(cur, struct map_entry, tree);
 		if (end_page < e->start_page)
 			break;
 		else
@@ -1206,9 +1228,9 @@ DEFINE_SYSCALL(mlock, const void *, addr, size_t, len)
 	/* All on demand page must be properly loaded or the locking operation will fail */
 	size_t start_page = GET_PAGE(addr);
 	size_t end_page = GET_PAGE((size_t)addr + len);
-	slist_iterate(&mm->map_list, p, cur)
+	for (struct rb_node *cur = start_node(start_page); cur; cur = rb_next(cur))
 	{
-		struct map_entry *e = slist_entry(cur, struct map_entry, list);
+		struct map_entry *e = rb_entry(cur, struct map_entry, tree);
 		if (e->start_page > end_page)
 			break;
 		else
