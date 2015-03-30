@@ -809,6 +809,9 @@ static int socket_get_set_sockopt(int call, struct socket_file *f, int level, in
 		level = SOL_SOCKET;
 		switch (optname)
 		{
+		case LINUX_SO_REUSEADDR: optname = SO_REUSEADDR;
+			log_warning("SO_REUSEADDR: Current semantic is not exactly correct.\n");
+			goto get_set_sockopt;
 		case LINUX_SO_ERROR: optname = SO_ERROR; goto get_set_sockopt;
 		case LINUX_SO_BROADCAST: optname = SO_BROADCAST; goto get_set_sockopt;
 		case LINUX_SO_SNDBUF: optname = SO_SNDBUF; goto get_set_sockopt;
