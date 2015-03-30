@@ -814,6 +814,34 @@ static int socket_get_set_sockopt(int call, struct socket_file *f, int level, in
 		case LINUX_SO_SNDBUF: optname = SO_SNDBUF; goto get_set_sockopt;
 		case LINUX_SO_RCVBUF: optname = SO_RCVBUF; goto get_set_sockopt;
 		case LINUX_SO_KEEPALIVE: optname = SO_KEEPALIVE; goto get_set_sockopt;
+		case LINUX_SO_LINGER: {
+			/* TODO: Handle integer overflow, buffer overflow etc */
+			struct linger win32_linger;
+			if (call == SYS_SETSOCKOPT)
+			{
+				const struct linux_linger *linger = (const struct linux_linger *)set_optval;
+				win32_linger.l_onoff = linger->l_onoff;
+				win32_linger.l_linger = linger->l_linger;
+				if (setsockopt(f->socket, SOL_SOCKET, SO_LINGER, &win32_linger, sizeof(win32_linger)) == SOCKET_ERROR)
+				{
+					log_warning("setsockopt() failed, error code: %d\n", WSAGetLastError());
+					return translate_socket_error(WSAGetLastError());
+				}
+			}
+			else
+			{
+				if (getsockopt(f->socket, SOL_SOCKET, SO_LINGER, &win32_linger, sizeof(win32_linger)) == SOCKET_ERROR)
+				{
+					log_warning("getsockopt() failed, error code: %d\n", WSAGetLastError());
+					return translate_socket_error(WSAGetLastError());
+				}
+				struct linux_linger *linger = (struct linux_linger *)get_optval;
+				linger->l_onoff = win32_linger.l_onoff;
+				linger->l_linger = win32_linger.l_linger;
+				*get_optlen = sizeof(struct linux_linger);
+			}
+			return 0;
+		}
 		}
 	}
 	case LINUX_SOL_TCP:
