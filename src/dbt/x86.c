@@ -19,6 +19,7 @@
 
 #include <dbt/x86.h>
 #include <dbt/x86_inst.h>
+#include <lib/rbtree.h>
 #include <lib/slist.h>
 #include <syscall/mm.h>
 #include <syscall/tls.h>
@@ -424,9 +425,22 @@ static __forceinline void gen_jecxz_rel(uint8_t **out, int8_t rel)
 struct dbt_block
 {
 	struct slist list;
+	struct rb_node cache_tree; /* RB tree for code cache */
 	size_t pc;
 	uint8_t *start;
 };
+
+static int cache_tree_cmp(const struct rb_node *left, const struct rb_node *right)
+{
+	struct dbt_block *l = rb_entry(left, struct dbt_block, cache_tree);
+	struct dbt_block *r = rb_entry(right, struct dbt_block, cache_tree);
+	if (l->start < r->start)
+		return -1;
+	else if (l->start > r->start)
+		return 1;
+	else
+		return 0;
+}
 
 #define DBT_OUT_ALIGN			16
 #define DBT_TRAMPOLINE_ALIGN	32
@@ -443,6 +457,7 @@ struct dbt_data
 {
 	struct slist block_hash[DBT_BLOCK_HASH_BUCKETS];
 	struct dbt_block *blocks;
+	struct rb_tree cache_tree;
 	int blocks_count;
 	uint8_t *out, *end;
 	/* Cached offsets for accessing thread local storage in fs:[.] */
@@ -497,6 +512,7 @@ static void dbt_gen_sieve_dispatch();
 static void dbt_gen_tables()
 {
 	/* Initialize block cache */
+	rb_init(&dbt->cache_tree);
 	dbt->blocks_count = 0;
 	dbt->out = dbt_cache;
 	dbt->end = dbt_cache + DBT_CACHE_SIZE;
@@ -988,14 +1004,37 @@ static void dbt_log_opcode(struct instruction_t *ins)
  * dbt_restore_simd_state(). This including log_*() functions.
  */
 /* If context is given, dbt_translate() ignores pc and fix up context to user context
- * Otherwise, it translates a new basic block at pc
+ * Otherwise, it translates a new basic block at pc and returns NULL
+ * Caller ensures EIP is inside dbt code cache
  */
 static struct dbt_block *dbt_translate(size_t pc, CONTEXT *context)
 {
 	struct dbt_block *block;
 	if (context)
 	{
-		/* TODO */
+		if (dbt_sieve_dispatch_fixup(context))
+			return NULL;
+		if (context->Eip >= (DWORD)dbt->end)
+		{
+			if (dbt_sieve_fixup(context))
+				return NULL;
+			if (dbt_direct_trampoline_fixup(context))
+				return NULL;
+			if (dbt_direct_call_trampoline_fixup(context))
+				return NULL;
+			log_error("Address %p: Unknown trampoline type.", pc);
+			__debugbreak();
+		}
+		/* Not in a trampoline */
+		struct dbt_block probe;
+		probe.start = (uint8_t *)pc;
+		struct rb_node *node = rb_upper_bound(&dbt->cache_tree, &probe.cache_tree, cache_tree_cmp);
+		if (node == NULL)
+		{
+			log_error("Address %p: Block not found.", pc);
+			__debugbreak();
+		}
+		block = rb_entry(node, struct dbt_block, cache_tree);
 	}
 	else
 	{
@@ -1008,6 +1047,7 @@ static struct dbt_block *dbt_translate(size_t pc, CONTEXT *context)
 		}
 		block->pc = pc;
 		block->start = (uint8_t *)ALIGN_TO(dbt->out, DBT_OUT_ALIGN);
+		rb_add(&dbt->cache_tree, &block->cache_tree, cache_tree_cmp);
 	}
 
 	//dbt_save_simd_state();
