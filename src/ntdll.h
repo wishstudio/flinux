@@ -413,6 +413,13 @@ NTSYSAPI NTSTATUS NTAPI NtUnmapViewOfSection(
 	);
 
 /* Thread */
+typedef struct _CLIENT_ID {
+	HANDLE UniqueProcess;
+	HANDLE UniqueThread;
+} CLIENT_ID;
+
+typedef LONG KPRIORITY;
+
 NTSYSAPI NTSTATUS NTAPI NtDelayExecution(
 	_In_		BOOLEAN Alertable,
 	_In_		PLARGE_INTEGER DelayInterval
@@ -422,6 +429,44 @@ NTSYSAPI NTSTATUS NTAPI NtQueryTimerResolution(
 	_Out_		PULONG MinimumResolution,
 	_Out_		PULONG MaximumResolution,
 	_Out_		PULONG ActualResolution
+	);
+
+typedef enum _NT_THREAD_INFORMATION_CLASS {
+	ThreadBasicInformation,
+	ThreadTimes,
+	ThreadPriority,
+	ThreadBasePriority,
+	ThreadAffinityMask,
+	ThreadImpersonationToken,
+	ThreadDescriptorTableEntry,
+	ThreadEnableAlignmentFaultFixup,
+	ThreadEventPair,
+	ThreadQuerySetWin32StartAddress,
+	ThreadZeroTlsCell,
+	ThreadPerformanceCount,
+	ThreadAmILastThread,
+	ThreadIdealProcessor,
+	ThreadPriorityBoost,
+	ThreadSetTlsArrayAddress,
+	ThreadIsIoPending,
+	ThreadHideFromDebugger,
+} NT_THREAD_INFORMATION_CLASS;
+
+typedef struct _THREAD_BASIC_INFORMATION {
+	NTSTATUS                ExitStatus;
+	PVOID                   TebBaseAddress;
+	CLIENT_ID               ClientId;
+	KAFFINITY               AffinityMask;
+	KPRIORITY               Priority;
+	KPRIORITY               BasePriority;
+} THREAD_BASIC_INFORMATION, *PTHREAD_BASIC_INFORMATION;
+
+NTSYSAPI NTSTATUS NTAPI NtQueryInformationThread(
+	_In_		HANDLE ThreadHandle,
+	_In_		NT_THREAD_INFORMATION_CLASS ThreadInformationClass,
+	_Inout_		PVOID ThreadInformation,
+	_In_		ULONG ThreadInformationLength,
+	_Out_opt_	PULONG ReturnLength
 	);
 
 /* RTL functions */

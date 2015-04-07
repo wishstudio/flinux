@@ -52,4 +52,4 @@ void __declspec(noreturn) dbt_restore_fork_context(struct syscall_context *conte
 
 /* Deliver the signal to the main thread's context
  * This function can only called from the signal thread */
-void dbt_deliver_signal(CONTEXT *context);
+void dbt_deliver_signal(HANDLE thread, CONTEXT *context);

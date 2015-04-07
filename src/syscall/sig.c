@@ -89,7 +89,7 @@ static DWORD WINAPI signal_thread(LPVOID parameter)
 					CONTEXT context;
 					SuspendThread(signal->main_thread);
 					GetThreadContext(signal->main_thread, &context);
-					dbt_deliver_signal(&context);
+					dbt_deliver_signal(signal->main_thread, &context);
 					signal->current_siginfo = packet.info;
 					SetThreadContext(signal->main_thread, &context);
 					ResumeThread(signal->main_thread);
@@ -168,6 +168,7 @@ void signal_setup_handler(struct syscall_context *context)
 	signal_save_sigcontext(&frame->uc.uc_mcontext, context, fpstate, (uint32_t)signal->mask);
 	sigaddset(&signal->mask, frame->sig);
 	signal->mask |= signal->actions[sig].sa_mask; /* FIXME: fix race */
+	signal->can_accept_signal = true;
 	LeaveCriticalSection(&signal->mutex);
 	/* TODO: frame->retcode */
 

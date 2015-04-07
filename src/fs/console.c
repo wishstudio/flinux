@@ -24,6 +24,7 @@
 #include <common/termios.h>
 #include <fs/console.h>
 #include <syscall/mm.h>
+#include <syscall/sig.h>
 #include <heap.h>
 #include <log.h>
 #include <str.h>
@@ -133,6 +134,18 @@ static charset_func parse_charset(char ch)
 	}
 }
 
+static BOOL WINAPI console_ctrlc_handler(DWORD dwCtrlType)
+{
+	if (dwCtrlType != CTRL_C_EVENT)
+		return FALSE;
+	struct siginfo info;
+	info.si_signo = SIGINT;
+	info.si_code = 0;
+	info.si_errno = 0;
+	signal_kill(GetCurrentProcessId(), &info);
+	return TRUE;
+}
+
 static void save_cursor();
 void console_init()
 {
@@ -226,8 +239,9 @@ void console_init()
 	console->input_buffer_head = console->input_buffer_tail = 0;
 	console->processor = NULL;
 
-	SetConsoleMode(in, 0);
+	SetConsoleMode(in, ENABLE_PROCESSED_INPUT);
 	SetConsoleMode(out, ENABLE_PROCESSED_OUTPUT);
+	SetConsoleCtrlHandler(console_ctrlc_handler, TRUE);
 
 	log_info("Console shared memory region successfully initialized.\n");
 }

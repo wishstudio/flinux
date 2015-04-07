@@ -30,6 +30,7 @@
 #include <stdint.h>
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
+#include <ntdll.h>
 
 #define ALIGN_TO(x, a) ((uintptr_t)((x) + (a) - 1) & -(a))
 
@@ -487,6 +488,7 @@ struct dbt_data
 	/* Return cache */
 	uint8_t **return_cache;
 	/* Information of current signal to be delivered */
+	bool signal_pending;
 	bool signal_need_fixup;
 };
 
@@ -626,6 +628,7 @@ static void dbt_gen_signal_trampoline()
 	/* lea esp, [esp+4] */
 	gen_lea(&out, ESP, modrm_rm_mreg(ESP, 4));
 	/* Set registers to signal handler */
+	/* TODO: Use dbt_set_return_addr() */
 	gen_mov_r_rm_32(&out, EAX, modrm_rm_mreg(ESP, offsetof(struct syscall_context, eip)));
 	gen_fs_prefix(&out);
 	gen_mov_rm_r_32(&out, modrm_rm_disp(dbt->tls_return_addr_offset), EAX);
@@ -649,6 +652,8 @@ static void dbt_gen_signal_trampoline()
 static void dbt_set_return_addr(size_t addr)
 {
 	__writefsdword(dbt->tls_return_addr_offset, addr);
+	if (dbt->signal_pending)
+		__writefsdword(dbt->tls_return_addr_offset, (DWORD)dbt->signal_trampoline);
 }
 
 static void dbt_gen_sieve_dispatch();
@@ -1884,19 +1889,27 @@ void __declspec(noreturn) dbt_restore_fork_context(struct syscall_context *ctx)
 	((void(*)(struct syscall_context *ctx))dbt->restore_fork_trampoline)(ctx);
 }
 
-void dbt_deliver_signal(CONTEXT *context)
+void dbt_deliver_signal(HANDLE thread, CONTEXT *context)
 {
 	/* Are we inside code cache? */
 	if (context->Eip >= (DWORD)dbt->internal_trampoline_end && context->Eip < DBT_CACHE_BASE + DBT_CACHE_SIZE)
 	{
 		dbt->signal_need_fixup = true;
+		context->Eip = (DWORD)dbt->signal_trampoline;
 	}
 	else
+	{
 		dbt->signal_need_fixup = false;
+		dbt->signal_pending = true;
+		THREAD_BASIC_INFORMATION info;
+		NtQueryInformationThread(thread, ThreadBasicInformation, &info, sizeof(info), NULL);
+		*(DWORD *)((uint8_t*)info.TebBaseAddress + dbt->tls_return_addr_offset) = (DWORD)dbt->signal_trampoline;
+	}
 }
 
 void dbt_setup_signal_handler(struct syscall_context *context)
 {
+	dbt->signal_pending = false;
 	/* Fix up context if needed */
 	if (dbt->signal_need_fixup)
 		dbt_translate(0, context);
