@@ -20,6 +20,7 @@
 #pragma once
 
 #include <common/signal.h>
+#include <common/sigcontext.h>
 
 #include <stdint.h>
 #define WIN32_LEAN_AND_MEAN
@@ -53,3 +54,6 @@ void __declspec(noreturn) dbt_restore_fork_context(struct syscall_context *conte
 /* Deliver the signal to the main thread's context
  * This function can only called from the signal thread */
 void dbt_deliver_signal(HANDLE thread, CONTEXT *context);
+
+/* Return from signal */
+void __declspec(noreturn) dbt_sigreturn(struct sigcontext *context);

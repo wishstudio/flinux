@@ -481,6 +481,7 @@ struct dbt_data
 	void *run_trampoline;
 	void *restore_fork_trampoline;
 	void *signal_trampoline;
+	void *sigreturn_trampoline;
 	/* Sieve */
 	uint8_t **sieve_table;
 	uint8_t *sieve_dispatch_trampoline;
@@ -649,9 +650,39 @@ static void dbt_gen_signal_trampoline()
 	dbt->out = out;
 }
 
-static void dbt_set_return_addr(size_t addr)
+static void dbt_gen_sigreturn_trampoline()
 {
-	__writefsdword(dbt->tls_return_addr_offset, addr);
+	uint8_t *out;
+	out = (uint8_t*)ALIGN_TO(dbt->out, DBT_OUT_ALIGN);
+	dbt->sigreturn_trampoline = out;
+
+	/* mov eax, [esp + 4] (context) */
+	gen_mov_r_rm_32(&out, EAX, modrm_rm_mreg(ESP, 4));
+	/* Restore eflags */
+	gen_push_rm(&out, modrm_rm_mreg(EAX, offsetof(struct sigcontext, flags)));
+	gen_popfd(&out);
+	/* Restore registers */
+	gen_mov_r_rm_32(&out, ECX, modrm_rm_mreg(EAX, offsetof(struct sigcontext, cx)));
+	gen_mov_r_rm_32(&out, EDX, modrm_rm_mreg(EAX, offsetof(struct sigcontext, dx)));
+	gen_mov_r_rm_32(&out, EBX, modrm_rm_mreg(EAX, offsetof(struct sigcontext, bx)));
+	gen_mov_r_rm_32(&out, ESP, modrm_rm_mreg(EAX, offsetof(struct sigcontext, sp)));
+	gen_mov_r_rm_32(&out, EBP, modrm_rm_mreg(EAX, offsetof(struct sigcontext, bp)));
+	gen_mov_r_rm_32(&out, ESI, modrm_rm_mreg(EAX, offsetof(struct sigcontext, si)));
+	gen_mov_r_rm_32(&out, EDI, modrm_rm_mreg(EAX, offsetof(struct sigcontext, di)));
+	/* push eip */
+	gen_push_rm(&out, modrm_rm_mreg(EAX, offsetof(struct sigcontext, ip)));
+	/* Restore eax */
+	gen_mov_r_rm_32(&out, EAX, modrm_rm_mreg(EAX, offsetof(struct sigcontext, ax)));
+	/* jmp dbt_find_indirect_internal */
+	gen_jmp(&out, dbt_find_indirect_internal);
+
+	dbt->out = out;
+}
+
+static void dbt_set_return_addr(size_t original_pc, size_t translated_addr)
+{
+	__writefsdword(dbt->tls_eip_offset, original_pc);
+	__writefsdword(dbt->tls_return_addr_offset, translated_addr);
 	if (dbt->signal_pending)
 		__writefsdword(dbt->tls_return_addr_offset, (DWORD)dbt->signal_trampoline);
 }
@@ -676,6 +707,7 @@ static void dbt_gen_tables()
 	dbt_gen_run_trampoline();
 	dbt_gen_restore_fork_trampoline();
 	dbt_gen_signal_trampoline();
+	dbt_gen_sigreturn_trampoline();
 	dbt->internal_trampoline_end = dbt->end;
 	dbt_gen_sieve_dispatch();
 	for (int i = 0; i < DBT_RETURN_CACHE_ENTRIES; i++)
@@ -1837,7 +1869,7 @@ static uint8_t *dbt_find(size_t pc)
 
 void dbt_find_next(size_t pc)
 {
-	dbt_set_return_addr((size_t)dbt_find(pc));
+	dbt_set_return_addr(pc, (size_t)dbt_find(pc));
 }
 
 void dbt_find_next_sieve(size_t pc)
@@ -1863,7 +1895,7 @@ void dbt_find_next_sieve(size_t pc)
 		uint8_t *next_bucket_rel = sieve - (size_t)(current + DBT_SIEVE_NEXT_BUCKET_OFFSET + sizeof(size_t));
 		*(uint8_t**)&current[DBT_SIEVE_NEXT_BUCKET_OFFSET] = next_bucket_rel;
 	}
-	dbt_set_return_addr((size_t)target);
+	dbt_set_return_addr(pc, (size_t)target);
 }
 
 void dbt_find_direct(size_t pc, size_t patch_addr)
@@ -1872,14 +1904,14 @@ void dbt_find_direct(size_t pc, size_t patch_addr)
 	size_t block_start = (size_t)dbt_find(pc);
 	/* Patch the jmp/call address so we don't need to repeat work again */
 	*(size_t*)patch_addr = (intptr_t)(block_start - (patch_addr + 4)); /* Relative address */
-	dbt_set_return_addr(block_start);
+	dbt_set_return_addr(pc, block_start);
 }
 
 void __declspec(noreturn) dbt_run(size_t pc, size_t sp)
 {
 	size_t entrypoint = (size_t)dbt_find(pc);
 	log_info("dbt: Calling into application code generated at %p, (original: pc: %p, sp: %p)\n", entrypoint, pc, sp);
-	dbt_set_return_addr(entrypoint);
+	dbt_set_return_addr(pc, entrypoint);
 	((void(*)(size_t sp))dbt->run_trampoline)(sp);
 }
 
@@ -1891,27 +1923,33 @@ void __declspec(noreturn) dbt_restore_fork_context(struct syscall_context *ctx)
 
 void dbt_deliver_signal(HANDLE thread, CONTEXT *context)
 {
+	THREAD_BASIC_INFORMATION info;
+	NtQueryInformationThread(thread, ThreadBasicInformation, &info, sizeof(info), NULL);
 	/* Are we inside code cache? */
 	if (context->Eip >= (DWORD)dbt->internal_trampoline_end && context->Eip < DBT_CACHE_BASE + DBT_CACHE_SIZE)
 	{
 		dbt->signal_need_fixup = true;
+		*(DWORD *)((uint8_t*)info.TebBaseAddress + dbt->tls_eip_offset) = context->Eip;
 		context->Eip = (DWORD)dbt->signal_trampoline;
 	}
 	else
 	{
 		dbt->signal_need_fixup = false;
 		dbt->signal_pending = true;
-		THREAD_BASIC_INFORMATION info;
-		NtQueryInformationThread(thread, ThreadBasicInformation, &info, sizeof(info), NULL);
 		*(DWORD *)((uint8_t*)info.TebBaseAddress + dbt->tls_return_addr_offset) = (DWORD)dbt->signal_trampoline;
 	}
 }
 
-void dbt_setup_signal_handler(struct syscall_context *context)
+static void dbt_setup_signal_handler(struct syscall_context *context)
 {
 	dbt->signal_pending = false;
 	/* Fix up context if needed */
 	if (dbt->signal_need_fixup)
 		dbt_translate(0, context);
 	signal_setup_handler(context);
+}
+
+void __declspec(noreturn) dbt_sigreturn(struct sigcontext *context)
+{
+	((void(*)(struct sigcontext *context))dbt->sigreturn_trampoline)(context);
 }

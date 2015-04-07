@@ -141,11 +141,12 @@ void signal_setup_handler(struct syscall_context *context)
 {
 	int sig = signal->current_siginfo.si_signo;
 	uintptr_t sp = context->esp;
+	/* TODO: Make fpstate layout the same as in Linux kernel */
 	/* Allocate fpstate space */
 	sp -= sizeof(struct fpstate);
 	/* Align fpstate to 512 byte boundary */
 	sp = sp & -512UL;
-	struct fpstate *fpstate = (void*)sp;
+	void *fpstate = (void*)sp;
 	fpu_fxsave(fpstate);
 
 	/* Allocate sigcontext space */
@@ -180,6 +181,24 @@ void signal_setup_handler(struct syscall_context *context)
 	context->eax = (DWORD)sig;
 	context->edx = (DWORD)&frame->info;
 	context->ecx = (DWORD)&frame->uc;
+}
+
+DEFINE_SYSCALL(rt_sigreturn, uintptr_t, bx, uintptr_t, cx, uintptr_t, dx, uintptr_t, si, uintptr_t, di,
+	uintptr_t, bp, uintptr_t, sp, uintptr_t, ip)
+{
+	struct rt_sigframe *frame = (struct rt_sigframe *)(sp - sizeof(uintptr_t));
+	if (!mm_check_read(frame, sizeof(*frame)))
+	{
+		log_error("sigreturn: Invalid frame.\n");
+		return -EFAULT;
+	}
+	/* TODO: Check validity of fpstate */
+	fpu_fxrstor(frame->uc.uc_mcontext.fpstate);
+	EnterCriticalSection(&signal->mutex);
+	signal->mask = frame->uc.uc_sigmask;
+	LeaveCriticalSection(&signal->mutex);
+	
+	dbt_sigreturn(&frame->uc.uc_mcontext);
 }
 
 /* Create a uni-direction, message based pipe */

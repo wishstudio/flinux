@@ -134,7 +134,7 @@ OPTION PROLOGUE: NONE
 OPTION EPILOGUE: NONE
 ; this function will be translated by dbt before run
 signal_restorer PROC
-	mov eax, 119 ; sigreturn
+	mov eax, 173 ; rt_sigreturn
 	int 080h
 signal_restorer ENDP
 
