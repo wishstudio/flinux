@@ -22,6 +22,7 @@
 #include <lib/rbtree.h>
 #include <lib/slist.h>
 #include <syscall/mm.h>
+#include <syscall/sig.h>
 #include <syscall/tls.h>
 #include <log.h>
 
@@ -354,6 +355,12 @@ static __forceinline void gen_shr_rm_32(uint8_t **out, struct modrm_rm_t rm, uin
 	gen_byte(out, imm8);
 }
 
+static __forceinline void gen_xor_r_rm_32(uint8_t **out, int r, struct modrm_rm_t rm)
+{
+	gen_byte(out, 0x33);
+	gen_modrm_sib(out, r, rm);
+}
+
 static __forceinline void gen_lea(uint8_t **out, int r, struct modrm_rm_t rm)
 {
 	gen_byte(out, 0x8D);
@@ -459,21 +466,32 @@ struct dbt_data
 	struct dbt_block *blocks;
 	struct rb_tree cache_tree;
 	int blocks_count;
+	uint8_t *internal_trampoline_end;
 	uint8_t *out, *end;
 	/* Cached offsets for accessing thread local storage in fs:[.] */
 	int tls_scratch_offset; /* scratch variable */
 	int tls_gs_offset; /* gs value */
 	int tls_gs_addr_offset; /* gs base address */
 	int tls_return_addr_offset; /* return address */
+	int tls_kernel_esp_offset; /* saved kernel stack pointer */
+	int tls_esp_offset; /* saved user stack pointer */
+	int tls_eip_offset; /* saved instruction pointer */
+	/* Trampolines */
+	void *run_trampoline;
+	void *restore_fork_trampoline;
+	void *signal_trampoline;
 	/* Sieve */
 	uint8_t **sieve_table;
 	uint8_t *sieve_dispatch_trampoline;
 	uint8_t *sieve_indirect_call_dispatch_trampoline;
 	/* Return cache */
 	uint8_t **return_cache;
+	/* Information of current signal to be delivered */
+	bool signal_need_fixup;
 };
 
 extern void dbt_find_direct_internal();
+extern void dbt_find_indirect_internal();
 extern void dbt_sieve_fallback();
 
 extern void dbt_save_simd_state();
@@ -503,6 +521,131 @@ static void dbt_gen_return_trampoline()
 	dbt->out = out;
 }
 
+static void dbt_gen_run_trampoline()
+{
+	uint8_t *out;
+	out = (uint8_t*)ALIGN_TO(dbt->out, DBT_OUT_ALIGN);
+	dbt->run_trampoline = out;
+
+	/* stack: desired user stack pointer */
+	/* stack: return address */
+	/* push ebp */
+	gen_push_rm(&out, modrm_rm_reg(EBP));
+	/* mov esp, [esp + 8] */
+	gen_mov_r_rm_32(&out, ESP, modrm_rm_mreg(ESP, 8));
+	/* save kernel stack pointer */
+	gen_fs_prefix(&out);
+	gen_mov_rm_r_32(&out, modrm_rm_disp(dbt->tls_kernel_esp_offset), ESP);
+	/* clear registers */
+	gen_xor_r_rm_32(&out, EAX, modrm_rm_reg(EAX));
+	gen_xor_r_rm_32(&out, ECX, modrm_rm_reg(ECX));
+	gen_xor_r_rm_32(&out, EDX, modrm_rm_reg(EDX));
+	gen_xor_r_rm_32(&out, EBX, modrm_rm_reg(EBX));
+	gen_xor_r_rm_32(&out, EBP, modrm_rm_reg(EBP));
+	gen_xor_r_rm_32(&out, ESI, modrm_rm_reg(ESI));
+	gen_xor_r_rm_32(&out, EDI, modrm_rm_reg(EDI));
+	/* jmp fs:[return_addr] */
+	gen_fs_prefix(&out);
+	gen_jmp_rm(&out, modrm_rm_disp(dbt->tls_return_addr_offset));
+
+	dbt->out = out;
+}
+
+static void dbt_gen_restore_fork_trampoline()
+{
+	uint8_t *out;
+	out = (uint8_t*)ALIGN_TO(dbt->out, DBT_OUT_ALIGN);
+	dbt->restore_fork_trampoline = out;
+
+	/* stack: struct syscall_context* */
+	/* stack: return address */
+	/* push ebp */
+	gen_push_rm(&out, modrm_rm_reg(EBP));
+	/* mov eax, [esp + 8] */
+	gen_mov_r_rm_32(&out, EAX, modrm_rm_mreg(ESP, 8));
+	/* save kernel stack pointer */
+	gen_fs_prefix(&out);
+	gen_mov_rm_r_32(&out, modrm_rm_disp(dbt->tls_kernel_esp_offset), ESP);
+	/* restore context */
+	gen_mov_r_rm_32(&out, ECX, modrm_rm_mreg(EAX, offsetof(struct syscall_context, ecx)));
+	gen_mov_r_rm_32(&out, EDX, modrm_rm_mreg(EAX, offsetof(struct syscall_context, edx)));
+	gen_mov_r_rm_32(&out, EBX, modrm_rm_mreg(EAX, offsetof(struct syscall_context, ebx)));
+	gen_mov_r_rm_32(&out, ESP, modrm_rm_mreg(EAX, offsetof(struct syscall_context, esp)));
+	gen_mov_r_rm_32(&out, EBP, modrm_rm_mreg(EAX, offsetof(struct syscall_context, ebp)));
+	gen_mov_r_rm_32(&out, ESI, modrm_rm_mreg(EAX, offsetof(struct syscall_context, esi)));
+	gen_mov_r_rm_32(&out, EDI, modrm_rm_mreg(EAX, offsetof(struct syscall_context, edi)));
+	/* push [eax].eip */
+	gen_push_rm(&out, modrm_rm_mreg(EAX, offsetof(struct syscall_context, eip)));
+	/* xor eax, eax */
+	gen_xor_r_rm_32(&out, EAX, modrm_rm_reg(EAX));
+	/* jmp dbt_find_indirect_internal */
+	gen_jmp(&out, dbt_find_indirect_internal);
+
+	dbt->out = out;
+}
+
+static void dbt_setup_signal_handler(struct syscall_context *context);
+static void dbt_gen_signal_trampoline()
+{
+	uint8_t *out;
+	out = (uint8_t*)ALIGN_TO(dbt->out, DBT_OUT_ALIGN);
+	dbt->signal_trampoline = out;
+
+	/* mov fs:[esp], esp */
+	gen_fs_prefix(&out);
+	gen_mov_rm_r_32(&out, modrm_rm_disp(dbt->tls_esp_offset), ESP);
+	/* mov esp, fs:[kernel_esp] */
+	gen_fs_prefix(&out);
+	gen_mov_r_rm_32(&out, ESP, modrm_rm_disp(dbt->tls_kernel_esp_offset));
+	/* save context (be consistent with syscall_context) */
+	/* EFLAGS */
+	gen_pushfd(&out);
+	/* EAX */
+	gen_push_rm(&out, modrm_rm_reg(EAX));
+	/* EIP */
+	gen_fs_prefix(&out);
+	gen_push_rm(&out, modrm_rm_disp(dbt->tls_eip_offset));
+	/* ESP */
+	gen_fs_prefix(&out);
+	gen_push_rm(&out, modrm_rm_disp(dbt->tls_esp_offset));
+	/* Other registers */
+	gen_push_rm(&out, modrm_rm_reg(EBP));
+	gen_push_rm(&out, modrm_rm_reg(EDI));
+	gen_push_rm(&out, modrm_rm_reg(ESI));
+	gen_push_rm(&out, modrm_rm_reg(EDX));
+	gen_push_rm(&out, modrm_rm_reg(ECX));
+	gen_push_rm(&out, modrm_rm_reg(EBX));
+
+	/* Fix EBP (nonsense, but good for debugger) */
+	gen_lea(&out, EBP, modrm_rm_mreg(ESP, sizeof(struct syscall_context)));
+	/* Push context argument */
+	gen_push_rm(&out, modrm_rm_reg(ESP));
+	/* Call setup_signal_handler() */
+	gen_call(&out, dbt_setup_signal_handler);
+	
+	/* lea esp, [esp+4] */
+	gen_lea(&out, ESP, modrm_rm_mreg(ESP, 4));
+	/* Set registers to signal handler */
+	gen_mov_r_rm_32(&out, EAX, modrm_rm_mreg(ESP, offsetof(struct syscall_context, eip)));
+	gen_fs_prefix(&out);
+	gen_mov_rm_r_32(&out, modrm_rm_disp(dbt->tls_return_addr_offset), EAX);
+
+	gen_mov_r_rm_32(&out, EAX, modrm_rm_mreg(ESP, offsetof(struct syscall_context, eax)));
+	gen_mov_r_rm_32(&out, ECX, modrm_rm_mreg(ESP, offsetof(struct syscall_context, ecx)));
+	gen_mov_r_rm_32(&out, EDX, modrm_rm_mreg(ESP, offsetof(struct syscall_context, edx)));
+	gen_mov_r_rm_32(&out, EBX, modrm_rm_mreg(ESP, offsetof(struct syscall_context, ebx)));
+	gen_mov_r_rm_32(&out, EBP, modrm_rm_mreg(ESP, offsetof(struct syscall_context, ebp)));
+	gen_mov_r_rm_32(&out, ESI, modrm_rm_mreg(ESP, offsetof(struct syscall_context, esi)));
+	gen_mov_r_rm_32(&out, EDI, modrm_rm_mreg(ESP, offsetof(struct syscall_context, edi)));
+	gen_mov_r_rm_32(&out, ESP, modrm_rm_mreg(ESP, offsetof(struct syscall_context, esp)));
+
+	/* Jump to signal handler */
+	gen_fs_prefix(&out);
+	gen_jmp_rm(&out, modrm_rm_disp(dbt->tls_return_addr_offset));
+	
+	dbt->out = out;
+}
+
 static void dbt_set_return_addr(size_t addr)
 {
 	__writefsdword(dbt->tls_return_addr_offset, addr);
@@ -525,6 +668,10 @@ static void dbt_gen_tables()
 
 	/* Trampolines */
 	dbt_gen_return_trampoline();
+	dbt_gen_run_trampoline();
+	dbt_gen_restore_fork_trampoline();
+	dbt_gen_signal_trampoline();
+	dbt->internal_trampoline_end = dbt->end;
 	dbt_gen_sieve_dispatch();
 	for (int i = 0; i < DBT_RETURN_CACHE_ENTRIES; i++)
 		dbt->return_cache[i] = (uint8_t*)&dbt_sieve_fallback;
@@ -544,6 +691,8 @@ void dbt_init()
 	dbt->tls_gs_offset = tls_kernel_entry_to_offset(TLS_ENTRY_GS);
 	dbt->tls_gs_addr_offset = tls_kernel_entry_to_offset(TLS_ENTRY_GS_ADDR);
 	dbt->tls_return_addr_offset = tls_kernel_entry_to_offset(TLS_ENTRY_RETURN_ADDR);
+	dbt->tls_kernel_esp_offset = tls_kernel_entry_to_offset(TLS_ENTRY_KERNEL_ESP);
+	dbt->tls_esp_offset = tls_kernel_entry_to_offset(TLS_ENTRY_ESP);
 	dbt_gen_tables();
 	log_info("dbt subsystem initialized.\n");
 }
@@ -631,35 +780,35 @@ static void dbt_gen_sieve_dispatch()
 		dbt->sieve_table[i] = (uint8_t*)&dbt_sieve_fallback;
 }
 
-static bool dbt_sieve_dispatch_fixup(CONTEXT *context)
+static bool dbt_sieve_dispatch_fixup(struct syscall_context *context)
 {
 	/* Test sieve_dispatch_trampoline */
-	if (context->Eip >= (DWORD)dbt->sieve_dispatch_trampoline &&
-		context->Eip < (DWORD)dbt->sieve_dispatch_trampoline + 13)
+	if (context->eip >= (DWORD)dbt->sieve_dispatch_trampoline &&
+		context->eip < (DWORD)dbt->sieve_dispatch_trampoline + 13)
 	{
-		DWORD offset = context->Eip - (DWORD)dbt->sieve_dispatch_trampoline;
+		DWORD offset = context->eip - (DWORD)dbt->sieve_dispatch_trampoline;
 		if (offset == 0)
 		{
-			context->Eip = *(DWORD *)context->Esp;
-			context->Esp += 4;
+			context->eip = *(DWORD *)context->esp;
+			context->esp += 4;
 		}
 		else
 		{
-			context->Ecx = *(DWORD *)context->Esp;
-			context->Eip = *(DWORD *)(context->Esp + 4);
-			context->Esp += 8;
+			context->ecx = *(DWORD *)context->esp;
+			context->eip = *(DWORD *)(context->esp + 4);
+			context->esp += 8;
 		}
 		return true;
 	}
 	/* Test sieve_indirect_call_dispatch_trampoline */
-	if (context->Eip >= (DWORD)dbt->sieve_indirect_call_dispatch_trampoline &&
-		context->Eip < (DWORD)dbt->sieve_indirect_call_dispatch_trampoline + 15)
+	if (context->eip >= (DWORD)dbt->sieve_indirect_call_dispatch_trampoline &&
+		context->eip < (DWORD)dbt->sieve_indirect_call_dispatch_trampoline + 15)
 	{
-		DWORD offset = context->Eip - (DWORD)dbt->sieve_indirect_call_dispatch_trampoline;
+		DWORD offset = context->eip - (DWORD)dbt->sieve_indirect_call_dispatch_trampoline;
 		if (offset > 0)
-			context->Ecx = *(DWORD *)context->Esp;
-		context->Eip = *(DWORD *)(context->Esp + 4);
-		context->Esp += 8;
+			context->ecx = *(DWORD *)context->esp;
+		context->eip = *(DWORD *)(context->esp + 4);
+		context->esp += 8;
 		return true;
 	}
 	return false;
@@ -704,25 +853,25 @@ static uint8_t *dbt_gen_sieve(size_t original_pc, uint8_t *target)
 	return dbt->end;
 }
 
-static bool dbt_sieve_fixup(CONTEXT *context)
+static bool dbt_sieve_fixup(struct syscall_context *context)
 {
-	DWORD t = context->Eip & -DBT_TRAMPOLINE_ALIGN;
+	DWORD t = context->eip & -DBT_TRAMPOLINE_ALIGN;
 	if (*(uint8_t *)t == 0x8B)
 	{
-		DWORD offset = context->Eip - t;
+		DWORD offset = context->eip - t;
 		if (offset <= 17) /* ecx hasn't been popped, rollback jumping */
 		{
-			context->Ecx = *(DWORD *)context->Esp;
-			context->Eip = *(DWORD *)(context->Esp + 4);
-			context->Esp += 8;
+			context->ecx = *(DWORD *)context->esp;
+			context->eip = *(DWORD *)(context->esp + 4);
+			context->esp += 8;
 		}
 		else if (offset == 18) /* Finish the jumping */
 		{
-			context->Esp += 4;
-			context->Eip = *(DWORD *)(t + 23);
+			context->esp += 4;
+			context->eip = *(DWORD *)(t + 23);
 		}
 		else if (offset == 22) /* Finish the jumping */
-			context->Eip = *(DWORD *)(t + 23);
+			context->eip = *(DWORD *)(t + 23);
 		return true;
 	}
 	return false;
@@ -750,18 +899,18 @@ static uint8_t *dbt_get_direct_trampoline(size_t target, size_t patch_addr)
 	return dbt->end;
 }
 
-static bool dbt_direct_trampoline_fixup(CONTEXT *context)
+static bool dbt_direct_trampoline_fixup(struct syscall_context *context)
 {
-	DWORD t = context->Eip & -DBT_TRAMPOLINE_ALIGN;
+	DWORD t = context->eip & -DBT_TRAMPOLINE_ALIGN;
 	if (*(uint8_t *)t == 0x68)
 	{
-		DWORD offset = context->Eip - t;
+		DWORD offset = context->eip - t;
 		/* Finish jumping */
-		context->Eip = *(DWORD *)(context->Eip + 6);
+		context->eip = *(DWORD *)(context->eip + 6);
 		if (offset == 5)
-			context->Esp += 4;
+			context->esp += 4;
 		else if (offset == 15)
-			context->Esp += 8;
+			context->esp += 8;
 		return true;
 	}
 	return false;
@@ -781,17 +930,17 @@ static uint8_t *dbt_get_direct_call_trampoline(size_t target)
 	return entry;
 }
 
-static bool dbt_direct_call_trampoline_fixup(CONTEXT *context)
+static bool dbt_direct_call_trampoline_fixup(struct syscall_context *context)
 {
-	DWORD t = context->Eip & -DBT_TRAMPOLINE_ALIGN;
+	DWORD t = context->eip & -DBT_TRAMPOLINE_ALIGN;
 	if (*(uint8_t *)t == 0x8D)
 	{
-		DWORD offset = context->Eip - t;
+		DWORD offset = context->eip - t;
 		if (offset == 0)
-			context->Esp += 4;
+			context->esp += 4;
 		/* Rollback calling */
-		context->Eip = *(DWORD *)context->Esp;
-		context->Esp += 4;
+		context->eip = *(DWORD *)context->esp;
+		context->esp += 4;
 		return true;
 	}
 	return false;
@@ -845,18 +994,18 @@ static int find_unused_register(struct instruction_t *ins)
 }
 
 /* Set register in context structure to specified value */
-static void set_context_register(CONTEXT *context, int reg, DWORD value)
+static void set_context_register(struct syscall_context *context, int reg, DWORD value)
 {
 	switch (reg)
 	{
-	case EAX: context->Eax = value; break;
-	case ECX: context->Ecx = value; break;
-	case EDX: context->Edx = value; break;
-	case EBX: context->Ebx = value; break;
-	case ESP: context->Esp = value; break;
-	case EBP: context->Ebp = value; break;
-	case ESI: context->Esi = value; break;
-	case EDI: context->Edi = value; break;
+	case EAX: context->eax = value; break;
+	case ECX: context->ecx = value; break;
+	case EDX: context->edx = value; break;
+	case EBX: context->ebx = value; break;
+	case ESP: context->esp = value; break;
+	case EBP: context->ebp = value; break;
+	case ESI: context->esi = value; break;
+	case EDI: context->edi = value; break;
 	}
 }
 
@@ -884,11 +1033,11 @@ static void dbt_copy_instruction(uint8_t **out, uint8_t **code, struct instructi
 	gen_copy(out, imm_start, ins->imm_bytes);
 }
 
-static bool dbt_gen_push_gs_rm(uint8_t **out, int temp_reg, struct modrm_rm_t rm, DWORD current_ip, CONTEXT *context)
+static bool dbt_gen_push_gs_rm(uint8_t **out, int temp_reg, struct modrm_rm_t rm, DWORD current_ip, struct syscall_context *context)
 {
-	if (context && context->Eip == (DWORD)*out)
+	if (context && context->eip == (DWORD)*out)
 	{
-		context->Eip = current_ip;
+		context->eip = current_ip;
 		return true;
 	}
 	/* mov fs:[scratch], temp_reg */
@@ -904,9 +1053,9 @@ static bool dbt_gen_push_gs_rm(uint8_t **out, int temp_reg, struct modrm_rm_t rm
 		/* lea temp_reg, [temp_reg + rm.base] */
 		gen_lea(out, temp_reg, modrm_rm_mscale(temp_reg, rm.base, 0, 0));
 	}
-	if (context && context->Eip <= (DWORD)*out)
+	if (context && context->eip <= (DWORD)*out)
 	{
-		context->Eip = current_ip;
+		context->eip = current_ip;
 		set_context_register(context, temp_reg, __readfsdword(dbt->tls_scratch_offset));
 		return true;
 	}
@@ -919,18 +1068,18 @@ static bool dbt_gen_push_gs_rm(uint8_t **out, int temp_reg, struct modrm_rm_t rm
 	/* mov temp_reg, fs:[scratch] */
 	gen_fs_prefix(out);
 	gen_mov_r_rm_32(out, temp_reg, modrm_rm_disp(dbt->tls_scratch_offset));
-	if (context && context->Eip <= (DWORD)*out)
+	if (context && context->eip <= (DWORD)*out)
 	{
-		context->Eip = current_ip;
+		context->eip = current_ip;
 		set_context_register(context, temp_reg, __readfsdword(dbt->tls_scratch_offset));
-		context->Esp += 4;
+		context->esp += 4;
 		return true;
 	}
 
 	return false;
 }
 
-static bool dbt_gen_call_postamble(uint8_t **out, size_t source_pc, CONTEXT *context)
+static bool dbt_gen_call_postamble(uint8_t **out, size_t source_pc, struct syscall_context *context)
 {
 	/* stack: addr */
 	/* stack: ecx */
@@ -938,47 +1087,47 @@ static bool dbt_gen_call_postamble(uint8_t **out, size_t source_pc, CONTEXT *con
 	gen_lea(out, ECX, modrm_rm_mreg(ECX, -source_pc));
 	gen_jecxz_rel(out, 5);
 	gen_jmp(out, &dbt_sieve_fallback);
-	if (context && context->Eip <= (DWORD)*out)
+	if (context && context->eip <= (DWORD)*out)
 	{
-		context->Eip = *(DWORD *)(context->Esp + 4);
-		context->Ecx = *(DWORD *)context->Esp;
-		context->Esp += 8;
+		context->eip = *(DWORD *)(context->esp + 4);
+		context->ecx = *(DWORD *)context->esp;
+		context->esp += 8;
 		return true;
 	}
 
 	/* match: */
 	gen_pop_rm(out, modrm_rm_reg(ECX));
-	if (context && context->Eip == (DWORD)*out)
+	if (context && context->eip == (DWORD)*out)
 	{
-		context->Eip = *(DWORD *)context->Esp;
-		context->Esp += 4;
+		context->eip = *(DWORD *)context->esp;
+		context->esp += 4;
 		return true;
 	}
 	gen_lea(out, ESP, modrm_rm_mreg(ESP, 4));
 	return false;
 }
 
-static bool dbt_gen_ret_trampoline(uint8_t **out, CONTEXT *context)
+static bool dbt_gen_ret_trampoline(uint8_t **out, struct syscall_context *context)
 {
-	if (context && context->Eip == (DWORD)*out)
+	if (context && context->eip == (DWORD)*out)
 	{
-		context->Eip = *(DWORD *)context->Esp;
-		context->Esp += 4;
+		context->eip = *(DWORD *)context->esp;
+		context->esp += 4;
 		return true;
 	}
 	gen_push_rm(out, modrm_rm_reg(ECX));
 	gen_movzx_r32_rm16(out, ECX, modrm_rm_mreg(ESP, 4));
-	if (context && context->Eip <= (DWORD)*out)
+	if (context && context->eip <= (DWORD)*out)
 	{
-		context->Eip = *(DWORD *)(context->Esp + 4);
-		context->Esp += 8;
+		context->eip = *(DWORD *)(context->esp + 4);
+		context->esp += 8;
 		return true;
 	}
 	gen_push_rm(out, modrm_rm_mscale(-1, ECX, MODRM_SCALE_4, (int32_t)dbt->return_cache));
-	if (context && context->Eip <= (DWORD)*out)
+	if (context && context->eip <= (DWORD)*out)
 	{
-		context->Eip = *(DWORD *)(context->Esp + 8);
-		context->Esp += 12;
+		context->eip = *(DWORD *)(context->esp + 8);
+		context->esp += 12;
 		return true;
 	}
 	gen_byte(out, 0xC3);
@@ -1007,14 +1156,14 @@ static void dbt_log_opcode(struct instruction_t *ins)
  * Otherwise, it translates a new basic block at pc and returns NULL
  * Caller ensures EIP is inside dbt code cache
  */
-static struct dbt_block *dbt_translate(size_t pc, CONTEXT *context)
+static struct dbt_block *dbt_translate(size_t pc, struct syscall_context *context)
 {
 	struct dbt_block *block;
 	if (context)
 	{
 		if (dbt_sieve_dispatch_fixup(context))
 			return NULL;
-		if (context->Eip >= (DWORD)dbt->end)
+		if (context->eip >= (DWORD)dbt->end)
 		{
 			if (dbt_sieve_fixup(context))
 				return NULL;
@@ -1059,10 +1208,10 @@ static struct dbt_block *dbt_translate(size_t pc, CONTEXT *context)
 	for (;;)
 	{
 		DWORD current_ip = (DWORD)code;
-		if (context && context->Eip == (DWORD)out)
+		if (context && context->eip == (DWORD)out)
 		{
 			/* The best case: we're at the begin of an instruction */
-			context->Eip = current_ip;
+			context->eip = current_ip;
 			goto end_block;
 		}
 		struct instruction_t ins;
@@ -1244,21 +1393,21 @@ done_prefix:
 				}
 				/* Replace rm.base with temp_reg */
 				ins.rm.base = temp_reg;
-				if (context && context->Eip <= (DWORD)out)
+				if (context && context->eip <= (DWORD)out)
 				{
 					/* The instruction is not yet executed, rollback */
 					set_context_register(context, temp_reg, __readfsdword(dbt->tls_scratch_offset));
-					context->Eip = current_ip;
+					context->eip = current_ip;
 					goto end_block;
 				}
 
 				/* Copy instruction */
 				dbt_copy_instruction(&out, &code, &ins);
-				if (context && context->Eip == (DWORD)out)
+				if (context && context->eip == (DWORD)out)
 				{
 					/* The instruction is already executed, commit */
 					set_context_register(context, temp_reg, __readfsdword(dbt->tls_scratch_offset));
-					context->Eip = (DWORD)code;
+					context->eip = (DWORD)code;
 					goto end_block;
 				}
 
@@ -1292,10 +1441,10 @@ done_prefix:
 				/* mov temp_reg, fs:[gs_addr] */
 				gen_fs_prefix(&out);
 				gen_mov_r_rm_32(&out, temp_reg, modrm_rm_disp(dbt->tls_gs_addr_offset));
-				if (context && context->Eip <= (DWORD)out)
+				if (context && context->eip <= (DWORD)out)
 				{
 					set_context_register(context, temp_reg, __readfsdword(dbt->tls_scratch_offset));
-					context->Eip = current_ip;
+					context->eip = current_ip;
 					goto end_block;
 				}
 
@@ -1314,10 +1463,10 @@ done_prefix:
 					gen_byte(&out, 0x89);
 				uint32_t disp = parse_moffset(&code, ins.imm_bytes);
 				gen_modrm_sib(&out, 0, modrm_rm_mreg(temp_reg, disp));
-				if (context && context->Eip == (DWORD)out)
+				if (context && context->eip == (DWORD)out)
 				{
 					set_context_register(context, temp_reg, __readfsdword(dbt->tls_scratch_offset));
-					context->Eip = (DWORD)code;
+					context->eip = (DWORD)code;
 					goto end_block;
 				}
 
@@ -1339,10 +1488,10 @@ done_prefix:
 			gen_push_imm32(&out, (size_t)code);
 			gen_mov_rm_imm32(&out, modrm_rm_disp((int32_t)&dbt->return_cache[RETURN_CACHE_HASH((size_t)code)]), 0);
 			*(size_t*)(out - 4) = (size_t)out + 5;
-			if (context && context->Eip <= (DWORD)out)
+			if (context && context->eip <= (DWORD)out)
 			{
-				context->Esp += 4;
-				context->Eip = current_ip;
+				context->esp += 4;
+				context->eip = current_ip;
 				goto end_block;
 			}
 			if (context)
@@ -1358,10 +1507,10 @@ done_prefix:
 		{
 			/* TODO: Bad codegen for `call esp', although should never be used in practice */
 			gen_push_imm32(&out, (size_t)code);
-			if (context && context->Eip == (DWORD)out)
+			if (context && context->eip == (DWORD)out)
 			{
-				context->Esp += 4;
-				context->Eip = current_ip;
+				context->esp += 4;
+				context->eip = current_ip;
 				goto end_block;
 			}
 			if (ins.rm.base == ESP) /* ESP-related address */
@@ -1373,7 +1522,7 @@ done_prefix:
 				int temp_reg = find_unused_register(&ins);
 				if (dbt_gen_push_gs_rm(&out, temp_reg, ins.rm, current_ip, context))
 				{
-					context->Esp += 4;
+					context->esp += 4;
 					goto end_block;
 				}
 			}
@@ -1385,10 +1534,10 @@ done_prefix:
 			}
 			gen_mov_rm_imm32(&out, modrm_rm_disp((int32_t)&dbt->return_cache[RETURN_CACHE_HASH((size_t)code)]), 0);
 			*(size_t*)(out - 4) = (size_t)out + 5;
-			if (context && context->Eip <= (DWORD)out)
+			if (context && context->eip <= (DWORD)out)
 			{
-				context->Esp += 8;
-				context->Eip = current_ip;
+				context->esp += 8;
+				context->eip = current_ip;
 				goto end_block;
 			}
 			gen_call(&out, dbt->sieve_indirect_call_dispatch_trampoline);
@@ -1410,10 +1559,10 @@ done_prefix:
 			/* esp increases before pop operation */
 			struct modrm_rm_t rm = modrm_rm_mreg(4, count - 4);
 			gen_pop_rm(&out, rm);
-			if (context && context->Eip == (DWORD)out)
+			if (context && context->eip == (DWORD)out)
 			{
-				context->Esp = context->Esp - 4 + count;
-				context->Eip = *(DWORD *)(context->Esp - 4);
+				context->esp = context->esp - 4 + count;
+				context->eip = *(DWORD *)(context->esp - 4);
 				goto end_block;
 			}
 			/* lea esp, [esp - 4 + count] */
@@ -1451,10 +1600,10 @@ done_prefix:
 					gen_byte(&out, ins.segment_prefix);
 				gen_push_rm(&out, ins.rm);
 			}
-			if (context && context->Eip == (DWORD)out)
+			if (context && context->eip == (DWORD)out)
 			{
-				context->Eip = current_ip;
-				context->Esp += 4;
+				context->eip = current_ip;
+				context->esp += 4;
 				goto end_block;
 			}
 			gen_jmp(&out, dbt->sieve_dispatch_trampoline);
@@ -1489,9 +1638,9 @@ done_prefix:
 				size_t patch_addr0 = (size_t)out + 2;
 				gen_jcc(&out, cond, (size_t)dbt_get_direct_trampoline(dest0, patch_addr0));
 			}
-			if (context && context->Eip == (DWORD)out)
+			if (context && context->eip == (DWORD)out)
 			{
-				context->Eip = current_ip;
+				context->eip = current_ip;
 				goto end_block;
 			}
 			if (context)
@@ -1523,9 +1672,9 @@ done_prefix:
 				size_t patch_addr0 = (size_t)out + 1;
 				gen_jmp(&out, dbt_get_direct_trampoline(dest0, patch_addr0));
 			}
-			if (context && context->Eip <= (DWORD)out)
+			if (context && context->eip <= (DWORD)out)
 			{
-				context->Eip = current_ip;
+				context->eip = current_ip;
 				goto end_block;
 			}
 			if (context)
@@ -1547,10 +1696,10 @@ done_prefix:
 				__debugbreak();
 			}
 			gen_push_imm32(&out, (size_t)code);
-			if (context && context->Eip == (DWORD)out)
+			if (context && context->eip == (DWORD)out)
 			{
-				context->Esp += 4;
-				context->Eip = current_ip;
+				context->esp += 4;
+				context->eip = current_ip;
 				goto end_block;
 			}
 			gen_jmp(&out, &syscall_handler);
@@ -1572,20 +1721,20 @@ done_prefix:
 			/* mov temp_reg, fs:[gs] */
 			gen_fs_prefix(&out);
 			gen_mov_r_rm_32(&out, temp_reg, modrm_rm_disp(dbt->tls_gs_offset));
-			if (context && context->Eip <= (DWORD)out)
+			if (context && context->eip <= (DWORD)out)
 			{
 				/* The instruction is not yet executed, rollback */
-				context->Eip = current_ip;
+				context->eip = current_ip;
 				set_context_register(context, temp_reg, __readfsdword(dbt->tls_scratch_offset));
 				goto end_block;
 			}
 
 			/* mov |rm|, temp_reg */
 			gen_mov_rm_r_32(&out, ins.rm, temp_reg);
-			if (context && context->Eip == (DWORD)out)
+			if (context && context->eip == (DWORD)out)
 			{
 				/* The instruction is already executed, commit */
-				context->Eip = (DWORD)code;
+				context->eip = (DWORD)code;
 				set_context_register(context, temp_reg, __readfsdword(dbt->tls_scratch_offset));
 				goto end_block;
 			}
@@ -1724,15 +1873,32 @@ void dbt_find_direct(size_t pc, size_t patch_addr)
 void __declspec(noreturn) dbt_run(size_t pc, size_t sp)
 {
 	size_t entrypoint = (size_t)dbt_find(pc);
-	extern __declspec(noreturn) void dbt_run_internal(size_t sp);
 	log_info("dbt: Calling into application code generated at %p, (original: pc: %p, sp: %p)\n", entrypoint, pc, sp);
 	dbt_set_return_addr(entrypoint);
-	dbt_run_internal(sp);
+	((void(*)(size_t sp))dbt->run_trampoline)(sp);
 }
 
 void __declspec(noreturn) dbt_restore_fork_context(struct syscall_context *ctx)
 {
-	extern __declspec(noreturn) void dbt_restore_fork_context_internal(struct syscall_context *ctx);
 	log_info("dbt: Restoring fork context, (original: pc: %p, sp: %p)\n", ctx->eip, ctx->esp);
-	dbt_restore_fork_context_internal(ctx);
+	((void(*)(struct syscall_context *ctx))dbt->restore_fork_trampoline)(ctx);
+}
+
+void dbt_deliver_signal(CONTEXT *context)
+{
+	/* Are we inside code cache? */
+	if (context->Eip >= (DWORD)dbt->internal_trampoline_end && context->Eip < DBT_CACHE_BASE + DBT_CACHE_SIZE)
+	{
+		dbt->signal_need_fixup = true;
+	}
+	else
+		dbt->signal_need_fixup = false;
+}
+
+void dbt_setup_signal_handler(struct syscall_context *context)
+{
+	/* Fix up context if needed */
+	if (dbt->signal_need_fixup)
+		dbt_translate(0, context);
+	signal_setup_handler(context);
 }

@@ -118,4 +118,16 @@ mm_check_write_fail LABEL PTR
 	ret
 mm_check_write ENDP
 
+fpu_fxsave PROC save_area
+	mov eax, save_area
+	fxsave [eax]
+	ret
+fpu_fxsave ENDP
+
+fpu_fxrstor PROC save_area
+	mov eax, save_area
+	fxrstor [eax]
+	ret
+fpu_fxrstor ENDP
+
 END

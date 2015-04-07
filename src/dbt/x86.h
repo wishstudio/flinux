@@ -19,13 +19,16 @@
 
 #pragma once
 
+#include <common/signal.h>
+
 #include <stdint.h>
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
 struct syscall_context
 {
-	/* Note: should be kept consistent with syscall trampoline in x86_trampoline.asm */
+	/* DO NOT REORDER */
+	/* Context for fork() */
 	DWORD ebx;
 	DWORD ecx;
 	DWORD edx;
@@ -34,6 +37,10 @@ struct syscall_context
 	DWORD ebp;
 	DWORD esp;
 	DWORD eip;
+
+	/* The following are not used by fork() */
+	DWORD eax;
+	DWORD eflags;
 };
 
 void dbt_init();
@@ -42,3 +49,7 @@ void dbt_shutdown();
 
 void __declspec(noreturn) dbt_run(size_t pc, size_t sp);
 void __declspec(noreturn) dbt_restore_fork_context(struct syscall_context *context);
+
+/* Deliver the signal to the main thread's context
+ * This function can only called from the signal thread */
+void dbt_deliver_signal(CONTEXT *context);

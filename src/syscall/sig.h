@@ -18,3 +18,13 @@
  */
 
 #pragma once
+
+#include <common/types.h>
+#include <common/signal.h>
+#include <dbt/x86.h>
+
+void signal_setup_handler(struct syscall_context *context);
+
+void signal_init();
+void signal_shutdown();
+int signal_kill(pid_t pid, siginfo_t *siginfo);

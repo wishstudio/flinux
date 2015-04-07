@@ -2,7 +2,17 @@
 
 #include <common/types.h>
 
-typedef unsigned long int sigset_t;
+#define	_NSIG		64
+#define _NSIG_WORDS	(_NSIG / sizeof(unsigned long))
+
+typedef uintptr_t old_sigset_t;
+typedef uint64_t sigset_t;
+
+#define sigaddset(set, sig)		*(set) |= (1ULL << (sig))
+#define sigdelset(set, sig)		*(set) &= ~(1ULL << (sig))
+#define sigemptyset(set)		*(set) = 0ULL
+#define sigfillset(set)			*(set) = (uint64_t)-1
+#define sigismember(set, sig)	(*(set) & (1ULL << (sig)))
 
 typedef union sigval
 {
@@ -10,32 +20,78 @@ typedef union sigval
 	void *sival_ptr;
 } sigval_t;
 
-struct siginfo_t
-{
-	int si_signo;		/* Signal number */
-	int si_errno;		/* An errno value */
-	int si_code;		/* Signal code */
-	int si_trapno;		/* Trap number that caused hardware-generated signal (unused on most architectures) */
-	pid_t si_pid;		/* Sending process ID */
-	uid_t si_uid;		/* Real user ID of sending process */
-	int si_status;		/* Exit value or signal */
-	clock_t si_utime;	/* User time consumed */
-	clock_t si_stime;	/* System time consumed */
-	sigval_t si_value;	/* Signal value */
-	int si_int;			/* POSIX.1b signal */
-	void *si_ptr;		/* POSIX.1b signal */
-	int si_overrun;		/* Timer overrun count; POSIX.1b timers */
-	int si_timerid;		/* Timer ID; POSIX.1b timers */
-	void *si_addr;		/* Memory location which caused fault */
-	long si_band;		/* Band event (was int in glibc 2.3.2 and earlier) */
-	int si_fd;			/* File descriptor */
-	short si_addr_lsb;	/* Least significant bit of address (since Linux 2.6.32) */
-};
+#define SI_MAX_SIZE		128
+#ifdef _WIN64
+#define SI_PAD_SIZE		((SI_MAX_SIZE / sizeof(int)) - 4)
+#else
+#define SI_PAD_SIZE		((SI_MAX_SIZE / sizeof(int)) - 3)
+#endif
+
+typedef struct siginfo {
+	int si_signo; /* signal number */
+	int si_errno; /* if non-zero, an errno value associated with this signal */
+	int si_code; /* signal code */
+
+	union {
+		int _pad[SI_PAD_SIZE];
+
+		/* kill() */
+		struct {
+			pid_t _pid;	/* sender's pid */
+			uid_t _uid;	/* sender's uid */
+		} _kill;
+
+		/* POSIX.1b timers */
+		struct {
+			int _tid;	/* timer id */
+			int _overrun;		/* overrun count */
+			sigval_t _sigval;	/* same as below */
+		} _timer;
+
+		/* POSIX.1b signals */
+		struct {
+			pid_t _pid;	/* sender's pid */
+			uid_t _uid;	/* sender's uid */
+			sigval_t _sigval;
+		} _rt;
+
+		/* SIGCHLD */
+		struct {
+			pid_t _pid;	/* which child */
+			uid_t _uid;	/* sender's uid */
+			int _status;		/* exit code */
+			clock_t _utime;
+			clock_t _stime;
+		} _sigchld;
+
+		/* SIGILL, SIGFPE, SIGSEGV, SIGBUS */
+		struct {
+			void *_addr; /* faulting insn/memory ref. */
+			short _addr_lsb; /* LSB of the reported address */
+		} _sigfault;
+
+		/* SIGPOLL */
+		struct {
+			intptr_t _band;	/* POLL_IN, POLL_OUT, POLL_MSG */
+			int _fd;
+		} _sigpoll;
+
+		/* SIGSYS */
+		struct {
+			void *_call_addr; /* calling user insn */
+			int _syscall;	/* triggering system call number */
+			unsigned int _arch;	/* AUDIT_ARCH_* of syscall */
+		} _sigsys;
+	} _sifields;
+} siginfo_t;
 
 struct sigaction
 {
-	void (*sa_handler)(int);
-	void (*sa_sigaction)(int, struct siginfo_t *, void *);
+	union
+	{
+		void (*sa_handler)(int);
+		void (*sa_sigaction)(int, siginfo_t *, void *);
+	};
 	sigset_t sa_mask;
 	int sa_flags;
 	void (*sa_restorer)();
@@ -76,7 +132,22 @@ struct sigaction
 #define	SIGUSR1		30	/* User-defined signal 1.  */
 #define	SIGUSR2		31	/* User-defined signal 2.  */
 
-#define	_NSIG		32
+#define SA_NOCLDSTOP	0x00000001u
+#define SA_NOCLDWAIT	0x00000002u
+#define SA_SIGINFO		0x00000004u
+#define SA_ONSTACK		0x08000000u
+#define SA_RESTART		0x10000000u
+#define SA_NODEFER		0x40000000u
+#define SA_RESETHAND	0x80000000u
+
+#define SA_NOMASK		SA_NODEFER
+#define SA_ONESHOT		SA_RESETHAND
+
+#define SA_RESTORER		0x04000000
+
+#define SIG_BLOCK		0
+#define SIG_UNBLOCK		1
+#define SIG_SETMASK		2
 
 #define MINSIGSTKSZ     2048
 #define SIGSTKSZ        8192

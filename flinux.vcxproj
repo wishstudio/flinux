@@ -37,6 +37,8 @@
     <ClInclude Include="src\common\resource.h" />
     <ClInclude Include="src\common\sched.h" />
     <ClInclude Include="src\common\select.h" />
+    <ClInclude Include="src\common\sigcontext.h" />
+    <ClInclude Include="src\common\sigframe.h" />
     <ClInclude Include="src\common\signal.h" />
     <ClInclude Include="src\common\socket.h" />
     <ClInclude Include="src\common\stat.h" />

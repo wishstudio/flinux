@@ -77,6 +77,8 @@
 #define DBT_DATA_BASE			0x70800000U
 /* Base address of vfs_data structure */
 #define VFS_DATA_BASE			0x70900000U
+/* Base address of signal_data structure */
+#define SIGNAL_DATA_BASE		0x70FA0000U
 /* Base address of console_data structure */
 #define CONSOLE_DATA_BASE		0x70FB0000U
 /* Base address of mm_heap structure */

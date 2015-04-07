@@ -22,6 +22,7 @@
 #include <syscall/fork.h>
 #include <syscall/mm.h>
 #include <syscall/process.h>
+#include <syscall/sig.h>
 #include <syscall/tls.h>
 #include <syscall/vfs.h>
 #include <log.h>
@@ -61,6 +62,7 @@ void main()
 	vfs_init();
 	tls_init();
 	dbt_init();
+	signal_init();
 	process_init(NULL);
 
 	/* Parse command line */

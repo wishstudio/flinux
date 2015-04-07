@@ -38,6 +38,13 @@ int kprintf(const char *format, ...)
 	return size;
 }
 
+int ksprintf(char *buf, const char *format, ...)
+{
+	va_list ap;
+	va_start(ap, format);
+	return kvsprintf(buf, format, ap);
+}
+
 /*
 Some characters can not be used on Windows as part of file names, such as
 " * : < > ? |. But they are valid in Linux and unfortunately people really

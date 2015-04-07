@@ -205,6 +205,12 @@
     <ClInclude Include="src\lib\rbtree.h">
       <Filter>lib</Filter>
     </ClInclude>
+    <ClInclude Include="src\common\sigcontext.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="src\common\sigframe.h">
+      <Filter>common</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />

@@ -20,49 +20,7 @@
 .MODEL FLAT, C
 .CODE
 
-CONTEXT STRUCT
-_Ebx	DWORD ?
-_Ecx	DWORD ?
-_Edx	DWORD ?
-_Esi	DWORD ?
-_Edi	DWORD ?
-_Ebp	DWORD ?
-_Esp	DWORD ?
-_Eip	DWORD ?
-CONTEXT ENDS
-
 EXTERN dbt_return_trampoline:NEAR
-
-dbt_restore_fork_context_internal PROC ctx
-	mov eax, ctx
-	assume eax:ptr CONTEXT
-	mov ecx, [eax]._Ecx
-	mov edx, [eax]._Edx
-	mov ebx, [eax]._Ebx
-	mov esi, [eax]._Esi
-	mov edi, [eax]._Edi
-	mov esp, [eax]._Esp
-	mov ebp, [eax]._Ebp
-	push [eax]._Eip
-	assume eax:nothing
-	xor eax, eax
-	jmp dbt_find_indirect_internal
-	retn
-dbt_restore_fork_context_internal ENDP
-
-dbt_run_internal PROC stackp
-	mov esp, stackp
-	xor eax, eax
-	xor ebx, ebx
-	xor ecx, ecx
-	xor edx, edx
-	xor esi, esi
-	xor edi, edi
-	xor ebp, ebp
-	jmp dword ptr [dbt_return_trampoline]
-	retn
-dbt_run_internal ENDP
-
 OPTION PROLOGUE: NONE
 OPTION EPILOGUE: NONE
 EXTERN dbt_find_direct:NEAR

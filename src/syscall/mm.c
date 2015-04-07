@@ -86,6 +86,8 @@
  * 70FC0000 ------------------------------
  *              console_data structure
  * 70FB0000 ------------------------------
+ *               signal_data structure
+ * 70FA0000 ------------------------------
  *                vfs_data structure
  * 70900000 ------------------------------
  *               dbt_data structure (u)

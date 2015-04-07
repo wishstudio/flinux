@@ -22,6 +22,7 @@
 #include <stdint.h>
 
 int kprintf(const char *format, ...);
+int ksprintf(char *buffer, const char *format, ...);
 
 int utf8_get_sequence_len(char ch);
 uint32_t utf8_decode(const char *data);
