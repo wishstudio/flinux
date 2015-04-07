@@ -37,6 +37,8 @@ extern intptr_t sys_time(intptr_t *t);
 
 static LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
 {
+	if (ep->ExceptionRecord->ExceptionCode == DBG_CONTROL_C)
+		return EXCEPTION_CONTINUE_SEARCH;
 	if (ep->ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION)
 	{
 		uint8_t* code = (uint8_t *)ep->ContextRecord->Xip;

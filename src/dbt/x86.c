@@ -628,10 +628,9 @@ static void dbt_gen_signal_trampoline()
 	/* lea esp, [esp+4] */
 	gen_lea(&out, ESP, modrm_rm_mreg(ESP, 4));
 	/* Set registers to signal handler */
-	/* TODO: Use dbt_set_return_addr() */
 	gen_mov_r_rm_32(&out, EAX, modrm_rm_mreg(ESP, offsetof(struct syscall_context, eip)));
 	gen_fs_prefix(&out);
-	gen_mov_rm_r_32(&out, modrm_rm_disp(dbt->tls_return_addr_offset), EAX);
+	gen_mov_rm_r_32(&out, modrm_rm_disp(dbt->tls_scratch_offset), EAX);
 
 	gen_mov_r_rm_32(&out, EAX, modrm_rm_mreg(ESP, offsetof(struct syscall_context, eax)));
 	gen_mov_r_rm_32(&out, ECX, modrm_rm_mreg(ESP, offsetof(struct syscall_context, ecx)));
@@ -644,7 +643,8 @@ static void dbt_gen_signal_trampoline()
 
 	/* Jump to signal handler */
 	gen_fs_prefix(&out);
-	gen_jmp_rm(&out, modrm_rm_disp(dbt->tls_return_addr_offset));
+	gen_push_rm(&out, modrm_rm_disp(dbt->tls_scratch_offset));
+	gen_jmp(&out, dbt_find_indirect_internal);
 	
 	dbt->out = out;
 }

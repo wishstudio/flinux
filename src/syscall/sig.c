@@ -109,6 +109,7 @@ static DWORD WINAPI signal_thread(LPVOID parameter)
 
 void fpu_fxsave(void *save_area);
 void fpu_fxrstor(void *save_area);
+void signal_restorer();
 static void signal_save_sigcontext(struct sigcontext *sc, struct syscall_context *context, void *fpstate, uint32_t mask)
 {
 	/* TODO: Add missing register values */
@@ -153,8 +154,9 @@ void signal_setup_handler(struct syscall_context *context)
 	sp = ((sp + 4) & -16UL) - 4;
 
 	struct rt_sigframe *frame = (struct rt_sigframe *)sp;
-	/* TODO: Handle sa_restorer == NULL */
 	frame->pretcode = (uint32_t)signal->actions[sig].sa_restorer; /* FIXME: fix race */
+	if (frame->pretcode == 0)
+		frame->pretcode = (uint32_t)signal_restorer;
 	frame->sig = sig;
 	frame->info = signal->current_siginfo;
 	frame->pinfo = (uint32_t)&frame->info;

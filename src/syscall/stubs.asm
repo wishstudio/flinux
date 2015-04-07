@@ -130,4 +130,12 @@ fpu_fxrstor PROC save_area
 	ret
 fpu_fxrstor ENDP
 
+OPTION PROLOGUE: NONE
+OPTION EPILOGUE: NONE
+; this function will be translated by dbt before run
+signal_restorer PROC
+	mov eax, 119 ; sigreturn
+	int 080h
+signal_restorer ENDP
+
 END
