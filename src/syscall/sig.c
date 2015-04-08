@@ -241,18 +241,9 @@ static void send_packet(HANDLE sigwrite, struct signal_packet *packet)
 	/* TODO: Handle error */
 }
 
-void signal_init()
+static void signal_init_private()
 {
-	/* Initialize signal structures */
-	mm_mmap(signal, sizeof(struct signal_data), PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, 0, NULL, 0);
-	for (int i = 0; i < _NSIG; i++)
-	{
-		signal->actions[i].sa_sigaction = NULL;
-		sigemptyset(&signal->actions[i].sa_mask);
-		signal->actions[i].sa_flags = 0;
-		signal->actions[i].sa_restorer = NULL;
-	}
-	sigemptyset(&signal->mask);
+	/* Initialize private structures and handles */
 	sigemptyset(&signal->pending);
 	if (!create_pipe(&signal->sigread, &signal->sigwrite))
 	{
@@ -274,6 +265,26 @@ void signal_init()
 	signal->thread = CreateThread(NULL, PAGE_SIZE, signal_thread, NULL, 0, NULL);
 	if (!signal->thread)
 		log_error("Signal thread creation failed, error code: %d.\n", GetLastError());
+}
+
+void signal_init()
+{
+	/* Initialize signal structures */
+	mm_mmap(signal, sizeof(struct signal_data), PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, 0, NULL, 0);
+	for (int i = 0; i < _NSIG; i++)
+	{
+		signal->actions[i].sa_sigaction = NULL;
+		sigemptyset(&signal->actions[i].sa_mask);
+		signal->actions[i].sa_flags = 0;
+		signal->actions[i].sa_restorer = NULL;
+	}
+	sigemptyset(&signal->mask);
+	signal_init_private();
+}
+
+void signal_afterfork()
+{
+	signal_init_private();
 }
 
 void signal_shutdown()

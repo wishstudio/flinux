@@ -153,6 +153,11 @@ int vfs_fork(HANDLE process)
 	return 1;
 }
 
+void vfs_afterfork()
+{
+	console_afterfork();
+}
+
 int vfs_store_file(struct file *f, int cloexec)
 {
 	for (int i = 0; i < MAX_FD_COUNT; i++)

@@ -26,5 +26,6 @@
 
 void console_init();
 int console_fork(HANDLE process);
+void console_afterfork();
 
 struct file *console_alloc();

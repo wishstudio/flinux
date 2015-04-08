@@ -53,6 +53,8 @@ __declspec(noreturn) static void fork_child()
 {
 	install_syscall_handler();
 	tls_afterfork();
+	vfs_afterfork();
+	signal_afterfork();
 	process_init(fork->stack_base);
 	dbt_init();
 	if (fork->ctid)

@@ -261,6 +261,11 @@ int console_fork(HANDLE process)
 	return 1;
 }
 
+void console_afterfork()
+{
+	SetConsoleCtrlHandler(console_ctrlc_handler, TRUE);
+}
+
 static void console_lock()
 {
 	WaitForSingleObject(console->mutex, INFINITE);

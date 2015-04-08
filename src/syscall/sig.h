@@ -26,5 +26,6 @@
 void signal_setup_handler(struct syscall_context *context);
 
 void signal_init();
+void signal_afterfork();
 void signal_shutdown();
 int signal_kill(pid_t pid, siginfo_t *siginfo);
