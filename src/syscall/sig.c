@@ -327,7 +327,7 @@ DWORD signal_wait(int count, HANDLE *handles, DWORD milliseconds)
 	for (int i = 0; i < count; i++)
 		h[i] = handles[i];
 	h[count] = signal->sigevent;
-	DWORD result = WaitForMultipleObjects(count + 1, handles, FALSE, milliseconds);
+	DWORD result = WaitForMultipleObjects(count + 1, h, FALSE, milliseconds);
 	if (result == count + WAIT_OBJECT_0)
 		return WAIT_INTERRUPTED;
 	else

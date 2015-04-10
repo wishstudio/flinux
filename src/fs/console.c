@@ -1394,8 +1394,25 @@ static size_t console_read(struct file *f, void *b, size_t count)
 			if ((vmin == 0 && vtime == 0)			/* Polling read */
 				|| (vtime > 0 && bytes_read > 0))	/* Read with interbyte timeout. Apply after reading first character */
 			{
-				if (WaitForSingleObject(console->in, vtime * 100) == WAIT_TIMEOUT)
+				DWORD r = signal_wait(1, &console->in, vtime * 100);
+				if (r == WAIT_TIMEOUT)
 					break;
+				if (r == WAIT_INTERRUPTED)
+				{
+					if (bytes_read == 0)
+						bytes_read = -EINTR;
+					break;
+				}
+			}
+			else
+			{
+				/* Blocking read */
+				if (signal_wait(1, &console->in, INFINITE) == WAIT_INTERRUPTED)
+				{
+					if (bytes_read == 0)
+						bytes_read = -EINTR;
+					break;
+				}
 			}
 			INPUT_RECORD ir;
 			DWORD read;
