@@ -26,6 +26,7 @@
 #include <fs/file.h>
 #include <fs/socket.h>
 #include <syscall/mm.h>
+#include <syscall/sig.h>
 #include <syscall/syscall.h>
 #include <syscall/vfs.h>
 #include <heap.h>
@@ -244,7 +245,8 @@ static int socket_wait_event(struct socket_file *f, int event, int flags)
 			return 0;
 		if ((f->base_file.flags & O_NONBLOCK) || (flags & LINUX_MSG_DONTWAIT))
 			return -EWOULDBLOCK;
-		WaitForSingleObject(f->event_handle, INFINITE);
+		if (signal_wait(1, &f->event_handle, INFINITE) == WAIT_INTERRUPTED)
+			return -EINTR;
 	} while (1);
 }
 
