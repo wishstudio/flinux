@@ -62,7 +62,7 @@ DEFINE_SYSCALL(nanosleep, const struct timespec *, req, struct timespec *, rem)
 	if (!mm_check_read(req, sizeof(struct timespec)) || rem && !mm_check_write(rem, sizeof(struct timespec)))
 		return -EFAULT;
 	LARGE_INTEGER delay_interval;
-	delay_interval.QuadPart = ((uint64_t)req->tv_sec * 1000000000ULL + req->tv_nsec) / 100ULL;
+	delay_interval.QuadPart = 0ULL - (((uint64_t)req->tv_sec * 1000000000ULL + req->tv_nsec) / 100ULL);
 	NtDelayExecution(FALSE, &delay_interval);
 	return 0;
 }
