@@ -75,7 +75,6 @@ struct console_data
 	int cursor_key_mode;
 	int origin_mode;
 	int wraparound_mode;
-	struct console_cursor saved_cursor;
 
 	/* Based on our assumption, these values are not modifiable by other processes
 	 * during a console operation.
@@ -91,7 +90,9 @@ struct console_data
 	int scroll_full_screen; /* whether the scrolling region is the full screen */
 	char utf8_buf[4]; /* for storing unfinished utf-8 character */
 	int utf8_buf_size;
-	
+	struct console_cursor saved_cursor;
+	int saved_top;
+
 	/* escape sequence processor */
 	int params[CONSOLE_MAX_PARAMS];
 	int param_count;
@@ -463,6 +464,7 @@ static void save_cursor()
 	console->saved_cursor.charset = console->charset;
 	console->saved_cursor.origin_mode = console->origin_mode;
 	console->saved_cursor.wraparound_mode = console->wraparound_mode;
+	console->saved_top = console->top;
 }
 
 static void restore_cursor()
@@ -478,7 +480,9 @@ static void restore_cursor()
 	console->origin_mode = console->saved_cursor.origin_mode;
 	console->wraparound_mode = console->saved_cursor.wraparound_mode;
 
+	console->top = console->saved_top;
 	set_pos(console->x, console->y);
+
 	SetConsoleTextAttribute(console->out, get_text_attribute());
 }
 
@@ -1390,8 +1394,25 @@ static size_t console_read(struct file *f, void *b, size_t count)
 			if ((vmin == 0 && vtime == 0)			/* Polling read */
 				|| (vtime > 0 && bytes_read > 0))	/* Read with interbyte timeout. Apply after reading first character */
 			{
-				if (WaitForSingleObject(console->in, vtime * 100) == WAIT_TIMEOUT)
+				DWORD r = signal_wait(1, &console->in, vtime * 100);
+				if (r == WAIT_TIMEOUT)
 					break;
+				if (r == WAIT_INTERRUPTED)
+				{
+					if (bytes_read == 0)
+						bytes_read = -EINTR;
+					break;
+				}
+			}
+			else
+			{
+				/* Blocking read */
+				if (signal_wait(1, &console->in, INFINITE) == WAIT_INTERRUPTED)
+				{
+					if (bytes_read == 0)
+						bytes_read = -EINTR;
+					break;
+				}
 			}
 			INPUT_RECORD ir;
 			DWORD read;
