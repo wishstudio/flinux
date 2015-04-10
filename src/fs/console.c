@@ -75,7 +75,6 @@ struct console_data
 	int cursor_key_mode;
 	int origin_mode;
 	int wraparound_mode;
-	struct console_cursor saved_cursor;
 
 	/* Based on our assumption, these values are not modifiable by other processes
 	 * during a console operation.
@@ -91,7 +90,9 @@ struct console_data
 	int scroll_full_screen; /* whether the scrolling region is the full screen */
 	char utf8_buf[4]; /* for storing unfinished utf-8 character */
 	int utf8_buf_size;
-	
+	struct console_cursor saved_cursor;
+	int saved_top;
+
 	/* escape sequence processor */
 	int params[CONSOLE_MAX_PARAMS];
 	int param_count;
@@ -463,6 +464,7 @@ static void save_cursor()
 	console->saved_cursor.charset = console->charset;
 	console->saved_cursor.origin_mode = console->origin_mode;
 	console->saved_cursor.wraparound_mode = console->wraparound_mode;
+	console->saved_top = console->top;
 }
 
 static void restore_cursor()
@@ -478,7 +480,9 @@ static void restore_cursor()
 	console->origin_mode = console->saved_cursor.origin_mode;
 	console->wraparound_mode = console->saved_cursor.wraparound_mode;
 
+	console->top = console->saved_top;
 	set_pos(console->x, console->y);
+
 	SetConsoleTextAttribute(console->out, get_text_attribute());
 }
 
