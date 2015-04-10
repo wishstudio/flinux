@@ -35,6 +35,7 @@ struct signal_data
 {
 	HANDLE thread;
 	HANDLE sigread, sigwrite;
+	HANDLE sigevent;
 	CRITICAL_SECTION mutex;
 	
 	HANDLE main_thread;
@@ -91,6 +92,7 @@ static DWORD WINAPI signal_thread(LPVOID parameter)
 					GetThreadContext(signal->main_thread, &context);
 					dbt_deliver_signal(signal->main_thread, &context);
 					signal->current_siginfo = packet.info;
+					SetEvent(signal->sigevent);
 					SetThreadContext(signal->main_thread, &context);
 					ResumeThread(signal->main_thread);
 				}
@@ -172,6 +174,7 @@ void signal_setup_handler(struct syscall_context *context)
 	sigaddset(&signal->mask, frame->sig);
 	signal->mask |= signal->actions[sig].sa_mask; /* FIXME: fix race */
 	signal->can_accept_signal = true;
+	ResetEvent(signal->sigevent);
 	LeaveCriticalSection(&signal->mutex);
 	/* TODO: frame->retcode */
 
@@ -250,6 +253,7 @@ static void signal_init_private()
 		log_error("Signal pipe creation failed, error code: %d\n", GetLastError());
 		return;
 	}
+	signal->sigevent = CreateEvent(NULL, TRUE, FALSE, NULL);
 	signal->can_accept_signal = true;
 
 	/* Get the handle to main thread */
@@ -315,6 +319,19 @@ int signal_kill(pid_t pid, siginfo_t *info)
 		log_error("signal_kill: Killing other processes are not supported.\n");
 		return -ESRCH;
 	}
+}
+
+DWORD signal_wait(int count, HANDLE *handles, DWORD milliseconds)
+{
+	HANDLE h[MAXIMUM_WAIT_OBJECTS];
+	for (int i = 0; i < count; i++)
+		h[i] = handles[i];
+	h[count] = signal->sigevent;
+	DWORD result = WaitForMultipleObjects(count + 1, handles, FALSE, milliseconds);
+	if (result == count + WAIT_OBJECT_0)
+		return WAIT_INTERRUPTED;
+	else
+		return result;
 }
 
 DEFINE_SYSCALL(alarm, unsigned int, seconds)

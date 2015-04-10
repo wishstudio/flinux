@@ -23,9 +23,15 @@
 #include <common/signal.h>
 #include <dbt/x86.h>
 
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
+
 void signal_setup_handler(struct syscall_context *context);
 
 void signal_init();
 void signal_afterfork();
 void signal_shutdown();
 int signal_kill(pid_t pid, siginfo_t *siginfo);
+DWORD signal_wait(int count, HANDLE *handles, DWORD milliseconds);
+
+#define WAIT_INTERRUPTED	0x80000000
