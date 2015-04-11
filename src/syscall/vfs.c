@@ -27,6 +27,7 @@
 #include <fs/socket.h>
 #include <fs/winfs.h>
 #include <syscall/mm.h>
+#include <syscall/sig.h>
 #include <syscall/syscall.h>
 #include <syscall/vfs.h>
 #include <datetime.h>
@@ -1738,9 +1739,11 @@ DEFINE_SYSCALL(poll, struct linux_pollfd *, fds, int, nfds, int, timeout)
 		int remain = timeout;
 		for (;;)
 		{
-			DWORD result = WaitForMultipleObjects(cnt, handles, FALSE, remain);
+			DWORD result = signal_wait(cnt, handles, remain);
 			if (result == WAIT_TIMEOUT)
 				return 0;
+			else if (result == WAIT_INTERRUPTED)
+				return -EINTR;
 			else if (result < WAIT_OBJECT_0 || result >= WAIT_OBJECT_0 + cnt)
 				return -ENOMEM; /* TODO: Find correct values */
 			else
