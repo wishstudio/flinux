@@ -230,6 +230,25 @@ void signal_setup_handler(struct syscall_context *context)
 	context->ecx = (DWORD)&frame->uc;
 }
 
+static void send_packet(HANDLE sigwrite, struct signal_packet *packet)
+{
+	DWORD written;
+	WriteFile(sigwrite, packet, sizeof(struct signal_packet), &written, NULL);
+	/* TODO: Handle error */
+}
+
+/* Deliver signal when masked pending signal is being unmasked */
+/* Caller ensures the signal mutex is acquired */
+static void send_pending_signal()
+{
+	if (signal->pending & ~signal->mask)
+	{
+		struct signal_packet packet;
+		packet.type = SIGNAL_PACKET_DELIVER;
+		send_packet(signal->sigwrite, &packet);
+	}
+}
+
 DEFINE_SYSCALL(rt_sigreturn, uintptr_t, bx, uintptr_t, cx, uintptr_t, dx, uintptr_t, si, uintptr_t, di,
 	uintptr_t, bp, uintptr_t, sp, uintptr_t, ip)
 {
@@ -243,6 +262,7 @@ DEFINE_SYSCALL(rt_sigreturn, uintptr_t, bx, uintptr_t, cx, uintptr_t, dx, uintpt
 	fpu_fxrstor(frame->uc.uc_mcontext.fpstate);
 	EnterCriticalSection(&signal->mutex);
 	signal->mask = frame->uc.uc_sigmask;
+	send_pending_signal();
 	LeaveCriticalSection(&signal->mutex);
 	
 	dbt_sigreturn(&frame->uc.uc_mcontext);
@@ -279,13 +299,6 @@ static bool create_pipe(HANDLE *read, HANDLE *write)
 	*read = server;
 	*write = client;
 	return true;
-}
-
-static void send_packet(HANDLE sigwrite, struct signal_packet *packet)
-{
-	DWORD written;
-	WriteFile(sigwrite, packet, sizeof(struct signal_packet), &written, NULL);
-	/* TODO: Handle error */
 }
 
 static void signal_init_private()
@@ -461,13 +474,7 @@ DEFINE_SYSCALL(rt_sigprocmask, int, how, const sigset_t *, set, sigset_t *, olds
 			break;
 		}
 	}
-	/* Deliver signal when masked pending signal is being unmasked */
-	if (signal->pending & ~signal->mask)
-	{
-		struct signal_packet packet;
-		packet.type = SIGNAL_PACKET_DELIVER;
-		send_packet(signal->sigwrite, &packet);
-	}
+	send_pending_signal();
 	LeaveCriticalSection(&signal->mutex);
 	return 0;
 }
