@@ -94,12 +94,13 @@ void log_raw_internal(const char *format, ...)
 
 static void log_internal(char type, const char *format, va_list ap)
 {
-	buffer[0] = '(';
-	buffer[1] = type;
-	buffer[2] = type;
-	buffer[3] = ')';
-	buffer[4] = ' ';
-	int size = 5 + kvsprintf(buffer + 5, format, ap);
+	SYSTEMTIME ts;
+
+	GetSystemTime(&ts);
+	int ts_size = ksprintf(buffer, "[%02u:%02u:%02u.%03u] (%c%c) ", ts.wHour,
+		ts.wMinute, ts.wSecond, ts.wMilliseconds, type, type);
+
+	int size = ts_size + kvsprintf(buffer + ts_size, format, ap);
 	DWORD bytes_written;
 	if (!WriteFile(hLoggerPipe, buffer, size, &bytes_written, NULL))
 	{
