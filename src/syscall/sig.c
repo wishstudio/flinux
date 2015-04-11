@@ -108,8 +108,9 @@ static DWORD WINAPI signal_thread(LPVOID parameter)
 		{
 			EnterCriticalSection(&signal->mutex);
 			for (int i = 0; i < _NSIG; i++)
-				if (sigismember(&signal->pending, i) && signal->can_accept_signal)
+				if (sigismember(&signal->pending, i) && !sigismember(&signal->mask, i) && signal->can_accept_signal)
 				{
+					sigdelset(&signal->pending, i);
 					signal_deliver(&signal->info[i]);
 					break;
 				}
