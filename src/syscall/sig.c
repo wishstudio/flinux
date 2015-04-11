@@ -48,6 +48,7 @@ struct signal_data
 
 #define SIGNAL_PACKET_SHUTDOWN		0 /* Shutdown signal thread */
 #define SIGNAL_PACKET_KILL			1 /* Send signal */
+#define SIGNAL_PACKET_DELIVER		2 /* Deliver existing pending signal to thread */
 struct signal_packet
 {
 	int type;
@@ -55,6 +56,19 @@ struct signal_packet
 };
 
 static struct signal_data *const signal = (struct signal_data *)SIGNAL_DATA_BASE;
+
+static void signal_deliver(siginfo_t *info)
+{
+	signal->can_accept_signal = false;
+	CONTEXT context;
+	SuspendThread(signal->main_thread);
+	GetThreadContext(signal->main_thread, &context);
+	dbt_deliver_signal(signal->main_thread, &context);
+	signal->current_siginfo = *info;
+	SetEvent(signal->sigevent);
+	SetThreadContext(signal->main_thread, &context);
+	ResumeThread(signal->main_thread);
+}
 
 static DWORD WINAPI signal_thread(LPVOID parameter)
 {
@@ -85,18 +99,20 @@ static DWORD WINAPI signal_thread(LPVOID parameter)
 					signal->info[signo] = packet.info;
 				}
 				else
-				{
-					signal->can_accept_signal = false;
-					CONTEXT context;
-					SuspendThread(signal->main_thread);
-					GetThreadContext(signal->main_thread, &context);
-					dbt_deliver_signal(signal->main_thread, &context);
-					signal->current_siginfo = packet.info;
-					SetEvent(signal->sigevent);
-					SetThreadContext(signal->main_thread, &context);
-					ResumeThread(signal->main_thread);
-				}
+					signal_deliver(&packet.info);
 			}
+			LeaveCriticalSection(&signal->mutex);
+			break;
+		}
+		case SIGNAL_PACKET_DELIVER:
+		{
+			EnterCriticalSection(&signal->mutex);
+			for (int i = 0; i < _NSIG; i++)
+				if (sigismember(&signal->pending, i) && signal->can_accept_signal)
+				{
+					signal_deliver(&signal->info[i]);
+					break;
+				}
 			LeaveCriticalSection(&signal->mutex);
 			break;
 		}
@@ -417,7 +433,13 @@ DEFINE_SYSCALL(rt_sigprocmask, int, how, const sigset_t *, set, sigset_t *, olds
 			break;
 		}
 	}
-	/* TODO: Deliver signal when masked pending signal is being unmasked */
+	/* Deliver signal when masked pending signal is being unmasked */
+	if (signal->pending & ~signal->mask)
+	{
+		struct signal_packet packet;
+		packet.type = SIGNAL_PACKET_DELIVER;
+		send_packet(signal->sigwrite, &packet);
+	}
 	LeaveCriticalSection(&signal->mutex);
 	return 0;
 }
