@@ -57,8 +57,35 @@ struct signal_packet
 
 static struct signal_data *const signal = (struct signal_data *)SIGNAL_DATA_BASE;
 
+static void signal_default_handler(siginfo_t *info)
+{
+	switch (info->si_signo)
+	{
+	case SIGHUP:
+	case SIGINT:
+	case SIGQUIT:
+	case SIGILL:
+	case SIGABRT:
+	case SIGFPE:
+	case SIGKILL:
+	case SIGSEGV:
+	case SIGPIPE:
+	case SIGALRM:
+	case SIGTERM:
+	case SIGUSR1:
+	case SIGUSR2:
+		ExitProcess(0);
+		break;
+	}
+}
+
 static void signal_deliver(siginfo_t *info)
 {
+	if (signal->actions[info->si_signo].sa_handler == NULL)
+	{
+		signal_default_handler(info);
+		return;
+	}
 	signal->can_accept_signal = false;
 	CONTEXT context;
 	SuspendThread(signal->main_thread);
