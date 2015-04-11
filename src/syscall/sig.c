@@ -81,7 +81,9 @@ static void signal_default_handler(siginfo_t *info)
 
 static void signal_deliver(siginfo_t *info)
 {
-	if (signal->actions[info->si_signo].sa_handler == NULL)
+	if (signal->actions[info->si_signo].sa_handler == SIG_IGN)
+		return;
+	else if (signal->actions[info->si_signo].sa_handler == SIG_DFL)
 	{
 		signal_default_handler(info);
 		return;

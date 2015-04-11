@@ -149,6 +149,11 @@ struct sigaction
 #define SIG_UNBLOCK		1
 #define SIG_SETMASK		2
 
+typedef void (*__sighandler_t)(int);
+#define SIG_DFL			((__sighandler_t)0)		/* default signal handling */
+#define SIG_IGN			((__sighandler_t)1)		/* ignore signal */
+#define SIG_ERR			((__sighandler_t)-1)	/* error return from signal */
+
 #define MINSIGSTKSZ     2048
 #define SIGSTKSZ        8192
 
