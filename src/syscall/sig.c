@@ -90,6 +90,7 @@ static void signal_deliver(siginfo_t *info)
 	}
 	signal->can_accept_signal = false;
 	CONTEXT context;
+	context.ContextFlags = CONTEXT_INTEGER | CONTEXT_CONTROL;
 	SuspendThread(signal->main_thread);
 	GetThreadContext(signal->main_thread, &context);
 	dbt_deliver_signal(signal->main_thread, &context);

@@ -708,7 +708,7 @@ static void dbt_gen_tables()
 	dbt_gen_restore_fork_trampoline();
 	dbt_gen_signal_trampoline();
 	dbt_gen_sigreturn_trampoline();
-	dbt->internal_trampoline_end = dbt->end;
+	dbt->internal_trampoline_end = dbt->out;
 	dbt_gen_sieve_dispatch();
 	for (int i = 0; i < DBT_RETURN_CACHE_ENTRIES; i++)
 		dbt->return_cache[i] = (uint8_t*)&dbt_sieve_fallback;
@@ -1213,7 +1213,7 @@ static struct dbt_block *dbt_translate(size_t pc, struct syscall_context *contex
 		}
 		/* Not in a trampoline */
 		struct dbt_block probe;
-		probe.start = (uint8_t *)pc;
+		probe.start = (uint8_t *)context->eip;
 		struct rb_node *node = rb_upper_bound(&dbt->cache_tree, &probe.cache_tree, cache_tree_cmp);
 		if (node == NULL)
 		{
@@ -1221,6 +1221,7 @@ static struct dbt_block *dbt_translate(size_t pc, struct syscall_context *contex
 			__debugbreak();
 		}
 		block = rb_entry(node, struct dbt_block, cache_tree);
+		pc = block->pc;
 	}
 	else
 	{
