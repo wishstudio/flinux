@@ -22,6 +22,9 @@ struct itimerval
 	struct linux_timeval it_value;		/* current value */
 };
 
+typedef int clockid_t;
+typedef int timer_t;
+
 #define CLOCK_REALTIME				0
 #define CLOCK_MONOTONIC				1
 #define CLOCK_PROCESS_CPUTIME_ID	2
