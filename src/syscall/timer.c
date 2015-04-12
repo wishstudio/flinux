@@ -145,3 +145,38 @@ DEFINE_SYSCALL(setitimer, int, which, const struct itimerval *, new_value, struc
 	log_error("setitimer() not implemented.\n");
 	return 0;
 }
+
+DEFINE_SYSCALL(timer_create, clockid_t, which_clock, struct sigevent *, timer_event_spec, timer_t, created_timer_id)
+{
+	log_info("timer_create(%d, %p, %p)\n", which_clock, timer_event_spec, created_timer_id);
+	log_error("timer_create() not implemented.\n");
+	return 0;
+}
+
+DEFINE_SYSCALL(timer_settime, timer_t, timer_id, int, flags, const struct itimerspec *, new_setting, struct itimerspec *, old_setting)
+{
+	log_info("timer_settime(%d, 0x%x, %p, %p)\n", timer_id, flags, new_setting, old_setting);
+	log_error("timer_settime() not implemented.\n");
+	return 0;
+}
+
+DEFINE_SYSCALL(timer_gettime, timer_t, timer_id, struct itimerspec *, setting)
+{
+	log_info("timer_gettime(%d, %p)\n", timer_id, setting);
+	log_error("timer_gettime() not implemented.\n");
+	return 0;
+}
+
+DEFINE_SYSCALL(timer_getoverrun, timer_t, timer_id)
+{
+	log_info("timer_getoverrun(%d)\n", timer_id);
+	log_error("timer_getoverrun() not implemented.\n");
+	return 0;
+}
+
+DEFINE_SYSCALL(timer_delete, timer_t, timer_id)
+{
+	log_info("timer_delete(%d)\n", timer_id);
+	log_error("timer_delete() not implemented.\n");
+	return 0;
+}
