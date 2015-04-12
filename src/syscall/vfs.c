@@ -26,6 +26,7 @@
 #include <fs/pipe.h>
 #include <fs/socket.h>
 #include <fs/winfs.h>
+#include <fs/eventfd.h>
 #include <syscall/mm.h>
 #include <syscall/sig.h>
 #include <syscall/syscall.h>
@@ -99,6 +100,14 @@ void vfs_close(int fd)
 	vfs->fds_cloexec[fd] = 0;
 }
 
+static __inline void vfs_handle_fork(struct file *f)
+{
+	if (f && f->op_vtable->after_fork)
+	{
+		f->op_vtable->after_fork(f);
+	}
+}
+
 void vfs_init()
 {
 	log_info("vfs subsystem initializing...\n");
@@ -157,6 +166,15 @@ int vfs_fork(HANDLE process)
 void vfs_afterfork()
 {
 	console_afterfork();
+
+	for (int i = 0; i < MAX_FD_COUNT; i++)
+	{
+		struct file *f = vfs->fds[i];
+		if (f)
+		{
+			vfs_handle_fork(f);
+		}
+	}
 }
 
 int vfs_store_file(struct file *f, int cloexec)
@@ -216,6 +234,26 @@ DEFINE_SYSCALL(pipe2, int *, pipefd, int, flags)
 DEFINE_SYSCALL(pipe, int *, pipefd)
 {
 	return sys_pipe2(pipefd, 0);
+}
+
+DEFINE_SYSCALL(eventfd2, unsigned int, count, int, flags)
+{
+	log_info("eventfd2(%u, %d)\n", count, flags);
+
+	struct file* eventfd;
+	int rv = eventfd_alloc(&eventfd, count, flags);
+	if (rv)
+	{
+		return rv;
+	}
+
+	int fd = vfs_store_file(eventfd, (flags & O_CLOEXEC) > 0);
+	if (fd < 0)
+	{
+		vfs_release(eventfd);
+	}
+
+	return fd;
 }
 
 static int vfs_dup(int fd, int newfd, int flags)
