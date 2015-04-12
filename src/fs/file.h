@@ -34,6 +34,7 @@ struct file_ops
 {
 	int (*get_poll_status)(struct file *f);
 	HANDLE (*get_poll_handle)(struct file *f, int *poll_events);
+	void (*after_fork)(struct file *f);
 	int (*close)(struct file *f);
 	int (*getpath)(struct file *f, char *buf);
 	size_t (*read)(struct file *f, void *buf, size_t count);

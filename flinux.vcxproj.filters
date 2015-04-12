@@ -211,6 +211,9 @@
     <ClInclude Include="src\common\sigframe.h">
       <Filter>common</Filter>
     </ClInclude>
+    <ClInclude Include="src\fs\eventfd.h">
+      <Filter>fs</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
@@ -282,6 +285,9 @@
     <ClCompile Include="src\wcwidth.c" />
     <ClCompile Include="src\lib\rbtree.c">
       <Filter>lib</Filter>
+    </ClCompile>
+    <ClCompile Include="src\fs\eventfd.c">
+      <Filter>fs</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
