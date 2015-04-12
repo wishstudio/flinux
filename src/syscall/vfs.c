@@ -53,10 +53,15 @@
    a component, the whole operation immediately fails.
 */
 
+struct filed
+{
+	struct file *fd;
+	int cloexec;
+};
+
 struct vfs_data
 {
-	struct file *fds[MAX_FD_COUNT];
-	int fds_cloexec[MAX_FD_COUNT];
+	struct filed filed[MAX_FD_COUNT];
 	struct file_system *fs_first;
 	struct file *cwd;
 	int umask;
@@ -75,7 +80,8 @@ struct file *vfs_get(int fd)
 {
 	if (fd < 0 || fd >= MAX_FD_COUNT)
 		return NULL;
-	return vfs->fds[fd];
+
+	return vfs->filed[fd].fd;
 }
 
 /* Reference a file, only used on raw file handles not created by sys_open() */
@@ -94,10 +100,10 @@ void vfs_release(struct file *f)
 /* Close a file descriptor fd */
 void vfs_close(int fd)
 {
-	struct file *f = vfs->fds[fd];
+	struct file *f = vfs->filed[fd].fd;
 	vfs_release(f);
-	vfs->fds[fd] = NULL;
-	vfs->fds_cloexec[fd] = 0;
+	vfs->filed[fd].fd = NULL;
+	vfs->filed[fd].cloexec = 0;
 }
 
 static __inline void vfs_handle_fork(struct file *f)
@@ -116,9 +122,9 @@ void vfs_init()
 	console_init();
 	struct file *console = console_alloc();
 	console->ref += 2;
-	vfs->fds[0] = console;
-	vfs->fds[1] = console;
-	vfs->fds[2] = console;
+	vfs->filed[0].fd = console;
+	vfs->filed[1].fd = console;
+	vfs->filed[2].fd = console;
 	vfs_add(winfs_alloc());
 	vfs_add(devfs_alloc());
 	/* Initialize CWD */
@@ -137,8 +143,8 @@ void vfs_reset()
 	/* Handle O_CLOEXEC */
 	for (int i = 0; i < MAX_FD_COUNT; i++)
 	{
-		struct file *f = vfs->fds[i];
-		if (f && vfs->fds_cloexec[i])
+		struct file *f = vfs->filed[i].fd;
+		if (f && vfs->filed[i].cloexec)
 			vfs_close(i);
 	}
 	vfs->umask = S_IWGRP | S_IWOTH;
@@ -148,7 +154,7 @@ void vfs_shutdown()
 {
 	for (int i = 0; i < MAX_FD_COUNT; i++)
 	{
-		struct file *f = vfs->fds[i];
+		struct file *f = vfs->filed[i].fd;
 		if (f)
 			vfs_close(i);
 	}
@@ -169,7 +175,7 @@ void vfs_afterfork()
 
 	for (int i = 0; i < MAX_FD_COUNT; i++)
 	{
-		struct file *f = vfs->fds[i];
+		struct file *f = vfs->filed[i].fd;
 		if (f)
 		{
 			vfs_handle_fork(f);
@@ -180,10 +186,10 @@ void vfs_afterfork()
 int vfs_store_file(struct file *f, int cloexec)
 {
 	for (int i = 0; i < MAX_FD_COUNT; i++)
-		if (vfs->fds[i] == NULL)
+		if (vfs->filed[i].fd == NULL)
 		{
-			vfs->fds[i] = f;
-			vfs->fds_cloexec[i] = cloexec;
+			vfs->filed[i].fd = f;
+			vfs->filed[i].cloexec = cloexec;
 			return i;
 		}
 	return -EMFILE;
@@ -264,7 +270,7 @@ static int vfs_dup(int fd, int newfd, int flags)
 	if (newfd == -1)
 	{
 		for (int i = 0; i < MAX_FD_COUNT; i++)
-			if (vfs->fds[i] == NULL)
+			if (vfs->filed[i].fd == NULL)
 			{
 				newfd = i;
 				break;
@@ -276,11 +282,11 @@ static int vfs_dup(int fd, int newfd, int flags)
 	{
 		if (newfd == fd || newfd < 0 || newfd >= MAX_FD_COUNT)
 			return -EINVAL;
-		if (vfs->fds[newfd])
+		if (vfs->filed[newfd].fd)
 			vfs_close(newfd);
 	}
-	vfs->fds[newfd] = f;
-	vfs->fds_cloexec[newfd] = !!(flags & O_CLOEXEC);
+	vfs->filed[newfd].fd = f;
+	vfs->filed[newfd].cloexec = !!(flags & O_CLOEXEC);
 	f->ref++;
 	return newfd;
 }
@@ -306,7 +312,7 @@ DEFINE_SYSCALL(dup3, int, fd, int, newfd, int, flags)
 DEFINE_SYSCALL(read, int, fd, char *, buf, size_t, count)
 {
 	log_info("read(%d, %p, %p)\n", fd, buf, count);
-	struct file *f = vfs->fds[fd];
+	struct file *f = vfs->filed[fd].fd;
 	if (f && f->op_vtable->read)
 	{
 		if (!mm_check_write(buf, count))
@@ -320,7 +326,7 @@ DEFINE_SYSCALL(read, int, fd, char *, buf, size_t, count)
 DEFINE_SYSCALL(write, int, fd, const char *, buf, size_t, count)
 {
 	log_info("write(%d, %p, %p)\n", fd, buf, count);
-	struct file *f = vfs->fds[fd];
+	struct file *f = vfs->filed[fd].fd;
 	if (f && f->op_vtable->write)
 	{
 		if (!mm_check_read(buf, count))
@@ -334,7 +340,7 @@ DEFINE_SYSCALL(write, int, fd, const char *, buf, size_t, count)
 DEFINE_SYSCALL(pread64, int, fd, char *, buf, size_t, count, loff_t, offset)
 {
 	log_info("pread64(%d, %p, %p, %lld)\n", fd, buf, count, offset);
-	struct file *f = vfs->fds[fd];
+	struct file *f = vfs->filed[fd].fd;
 	if (f && f->op_vtable->pread)
 	{
 		if (!mm_check_write(buf, count))
@@ -348,7 +354,7 @@ DEFINE_SYSCALL(pread64, int, fd, char *, buf, size_t, count, loff_t, offset)
 DEFINE_SYSCALL(pwrite64, int, fd, const char *, buf, size_t, count, loff_t, offset)
 {
 	log_info("pwrite64(%d, %p, %p, %lld)\n", fd, buf, count, offset);
-	struct file *f = vfs->fds[fd];
+	struct file *f = vfs->filed[fd].fd;
 	if (f && f->op_vtable->pwrite)
 	{
 		if (!mm_check_read(buf, count))
@@ -362,7 +368,7 @@ DEFINE_SYSCALL(pwrite64, int, fd, const char *, buf, size_t, count, loff_t, offs
 DEFINE_SYSCALL(readv, int, fd, const struct iovec *, iov, int, iovcnt)
 {
 	log_info("readv(%d, 0x%p, %d)\n", fd, iov, iovcnt);
-	struct file *f = vfs->fds[fd];
+	struct file *f = vfs->filed[fd].fd;
 	if (f && f->op_vtable->read)
 	{
 		for (int i = 0; i < iovcnt; i++)
@@ -387,7 +393,7 @@ DEFINE_SYSCALL(readv, int, fd, const struct iovec *, iov, int, iovcnt)
 DEFINE_SYSCALL(writev, int, fd, const struct iovec *, iov, int, iovcnt)
 {
 	log_info("writev(%d, 0x%p, %d)\n", fd, iov, iovcnt);
-	struct file *f = vfs->fds[fd];
+	struct file *f = vfs->filed[fd].fd;
 	if (f && f->op_vtable->write)
 	{
 		for (int i = 0; i < iovcnt; i++)
@@ -412,7 +418,7 @@ DEFINE_SYSCALL(writev, int, fd, const struct iovec *, iov, int, iovcnt)
 DEFINE_SYSCALL(preadv, int, fd, const struct iovec *, iov, int, iovcnt, off_t, offset)
 {
 	log_info("preadv(%d, 0x%p, %d, 0x%x)\n", fd, iov, iovcnt, offset);
-	struct file *f = vfs->fds[fd];
+	struct file *f = vfs->filed[fd].fd;
 	if (f && f->op_vtable->pread)
 	{
 		for (int i = 0; i < iovcnt; i++)
@@ -438,7 +444,7 @@ DEFINE_SYSCALL(preadv, int, fd, const struct iovec *, iov, int, iovcnt, off_t, o
 DEFINE_SYSCALL(pwritev, int, fd, const struct iovec *, iov, int, iovcnt, off_t, offset)
 {
 	log_info("pwritev(%d, 0x%p, %d, 0x%x)\n", fd, iov, iovcnt, offset);
-	struct file *f = vfs->fds[fd];
+	struct file *f = vfs->filed[fd].fd;
 	if (f && f->op_vtable->pwrite)
 	{
 		for (int i = 0; i < iovcnt; i++)
@@ -528,7 +534,7 @@ DEFINE_SYSCALL(fdatasync, int, fd)
 DEFINE_SYSCALL(lseek, int, fd, off_t, offset, int, whence)
 {
 	log_info("lseek(%d, %d, %d)\n", fd, offset, whence);
-	struct file *f = vfs->fds[fd];
+	struct file *f = vfs->filed[fd].fd;
 	if (f && f->op_vtable->llseek)
 	{
 		loff_t n;
@@ -547,7 +553,7 @@ DEFINE_SYSCALL(llseek, int, fd, unsigned long, offset_high, unsigned long, offse
 {
 	loff_t offset = ((uint64_t) offset_high << 32ULL) + offset_low;
 	log_info("llseek(%d, %lld, %p, %d)\n", fd, offset, result, whence);
-	struct file *f = vfs->fds[fd];
+	struct file *f = vfs->filed[fd].fd;
 	if (f && f->op_vtable->llseek)
 	{
 		if (!mm_check_write(result, sizeof(loff_t)))
@@ -817,7 +823,7 @@ DEFINE_SYSCALL(close, int, fd)
 	if (fd < 0) {
 		return -EBADF;
 	}
-	struct file *f = vfs->fds[fd];
+	struct file *f = vfs->filed[fd].fd;
 	if (!f)
 		return -EBADF;
 	vfs_close(fd);
@@ -1091,7 +1097,7 @@ DEFINE_SYSCALL(getdents, int, fd, struct linux_dirent *, dirent, unsigned int, c
 	log_info("getdents(%d, %p, %d)\n", fd, dirent, count);
 	if (!mm_check_write(dirent, count))
 		return -EFAULT;
-	struct file *f = vfs->fds[fd];
+	struct file *f = vfs->filed[fd].fd;
 	if (f && f->op_vtable->getdents)
 		return f->op_vtable->getdents(f, dirent, count, getdents_fill);
 	else
@@ -1103,7 +1109,7 @@ DEFINE_SYSCALL(getdents64, int, fd, struct linux_dirent64 *, dirent, unsigned in
 	log_info("getdents64(%d, %p, %d)\n", fd, dirent, count);
 	if (!mm_check_write(dirent, count))
 		return -EFAULT;
-	struct file *f = vfs->fds[fd];
+	struct file *f = vfs->filed[fd].fd;
 	if (f && f->op_vtable->getdents)
 		return f->op_vtable->getdents(f, dirent, count, getdents64_fill);
 	else
@@ -1336,7 +1342,7 @@ static int statfs_from_statfs64(struct statfs *statfs, struct statfs64 *statfs64
 
 static int vfs_fstatfs(int fd, struct statfs64 *buf)
 {
-	struct file *f = vfs->fds[fd];
+	struct file *f = vfs->filed[fd].fd;
 	if (f && f->op_vtable->statfs)
 		return f->op_vtable->statfs(f, buf);
 	else
@@ -1407,7 +1413,7 @@ DEFINE_SYSCALL(fadvise64_64, int, fd, loff_t, offset, loff_t, len, int, advice)
 	/* It seems windows does not support any of the fadvise semantics
 	 * We simply check the validity of parameters and return
 	 */
-	if (!vfs->fds[fd])
+	if (!vfs->filed[fd].fd)
 		return -EBADF;
 	switch (advice)
 	{
@@ -1430,7 +1436,7 @@ DEFINE_SYSCALL(fadvise64, int, fd, loff_t, offset, size_t, len, int, advice)
 DEFINE_SYSCALL(ioctl, int, fd, unsigned int, cmd, unsigned long, arg)
 {
 	log_info("ioctl(%d, %x, %x)\n", fd, cmd, arg);
-	struct file *f = vfs->fds[fd];
+	struct file *f = vfs->filed[fd].fd;
 	if (!f)
 		return -EBADF;
 	switch (cmd)
@@ -1563,7 +1569,7 @@ DEFINE_SYSCALL(getcwd, char *, buf, size_t, size)
 DEFINE_SYSCALL(fcntl, int, fd, int, cmd, int, arg)
 {
 	log_info("fcntl(%d, %d)\n", fd, cmd);
-	struct file *f = vfs->fds[fd];
+	struct file *f = vfs->filed[fd].fd;
 	if (!f)
 		return -EBADF;
 	switch (cmd)
@@ -1572,7 +1578,7 @@ DEFINE_SYSCALL(fcntl, int, fd, int, cmd, int, arg)
 		return sys_dup(fd);
 	case F_GETFD:
 	{
-		int cloexec = vfs->fds_cloexec[fd];
+		int cloexec = vfs->filed[fd].cloexec;
 		log_info("F_GETFD: CLOEXEC: %d\n", cloexec);
 		return cloexec? FD_CLOEXEC: 0;
 	}
@@ -1580,7 +1586,7 @@ DEFINE_SYSCALL(fcntl, int, fd, int, cmd, int, arg)
 	{
 		int cloexec = (arg & FD_CLOEXEC)? 1: 0;
 		log_info("F_SETFD: CLOEXEC: %d\n", cloexec);
-		vfs->fds_cloexec[fd] = cloexec;
+		vfs->filed[fd].cloexec = cloexec;
 		return 0;
 	}
 	case F_GETFL:
@@ -1732,7 +1738,7 @@ DEFINE_SYSCALL(poll, struct linux_pollfd *, fds, int, nfds, int, timeout)
 	{
 		if (fds[i].fd < 0)
 			continue;
-		struct file *f = vfs->fds[fds[i].fd];
+		struct file *f = vfs->filed[fds[i].fd].fd;
 		/* TODO: Support for regular files */
 		if (!f)
 		{
@@ -1788,7 +1794,7 @@ DEFINE_SYSCALL(poll, struct linux_pollfd *, fds, int, nfds, int, timeout)
 			{
 				/* Wait successfully, fill in the revents field of that handle */
 				int id = indices[result - WAIT_OBJECT_0];
-				struct file *f = vfs->fds[fds[id].fd];
+				struct file *f = vfs->filed[fds[id].fd].fd;
 				/* Retrieve current event flags */
 				int e;
 				if (f->op_vtable->get_poll_status)
