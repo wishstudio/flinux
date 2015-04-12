@@ -97,40 +97,46 @@ struct sigaction
 	void (*sa_restorer)();
 };
 
-/* ISO C99 signals.  */
-#define	SIGINT		2	/* Interactive attention signal.  */
-#define	SIGILL		4	/* Illegal instruction.  */
-#define	SIGABRT		6	/* Abnormal termination.  */
-#define	SIGFPE		8	/* Erroneous arithmetic operation.  */
-#define	SIGSEGV		11	/* Invalid access to storage.  */
-#define	SIGTERM		15	/* Termination request.  */
+#define SIGHUP			1
+#define SIGINT			2
+#define SIGQUIT			3
+#define SIGILL			4
+#define SIGTRAP			5
+#define SIGABRT			6
+#define SIGIOT			6
+#define SIGBUS			7
+#define SIGFPE			8
+#define SIGKILL			9
+#define SIGUSR1			10
+#define SIGSEGV			11
+#define SIGUSR2			12
+#define SIGPIPE			13
+#define SIGALRM			14
+#define SIGTERM			15
+#define SIGSTKFLT		16
+#define SIGCHLD			17
+#define SIGCONT			18
+#define SIGSTOP			19
+#define SIGTSTP			20
+#define SIGTTIN			21
+#define SIGTTOU			22
+#define SIGURG			23
+#define SIGXCPU			24
+#define SIGXFSZ			25
+#define SIGVTALRM		26
+#define SIGPROF			27
+#define SIGWINCH		28
+#define SIGIO			29
+#define SIGPOLL			SIGIO
+/*
+#define SIGLOST			29
+*/
+#define SIGPWR			30
+#define SIGSYS			31
+#define SIGUNUSED		31
 
-/* Historical signals specified by POSIX. */
-#define	SIGHUP		1	/* Hangup.  */
-#define	SIGQUIT		3	/* Quit.  */
-#define	SIGTRAP		5	/* Trace/breakpoint trap.  */
-#define	SIGKILL		9	/* Killed.  */
-#define SIGBUS		10	/* Bus error.  */
-#define	SIGSYS		12	/* Bad system call.  */
-#define	SIGPIPE		13	/* Broken pipe.  */
-#define	SIGALRM		14	/* Alarm clock.  */
-
-/* New(er) POSIX signals (1003.1-2008).  */
-#define	SIGURG		16	/* High bandwidth data is available at a socket.  */
-#define	SIGSTOP		17	/* Stopped (signal).  */
-#define	SIGTSTP		18	/* Stopped.  */
-#define	SIGCONT		19	/* Continued.  */
-#define	SIGCHLD		20	/* Child terminated or stopped.  */
-#define	SIGTTIN		21	/* Background read from control terminal.  */
-#define	SIGTTOU		22	/* Background write to control terminal.  */
-#define	SIGPOLL 	23	/* Pollable event occurred (System V).  */
-#define	SIGIO		SIGPOLL	/* I/O now possible (4.2 BSD).  */
-#define	SIGXCPU		24	/* CPU time limit exceeded.  */
-#define	SIGXFSZ		25	/* File size limit exceeded.  */
-#define	SIGVTALRM	26	/* Virtual timer expired.  */
-#define	SIGPROF		27	/* Profiling timer expired.  */
-#define	SIGUSR1		30	/* User-defined signal 1.  */
-#define	SIGUSR2		31	/* User-defined signal 2.  */
+#define SIGRTMIN		32
+#define SIGRTMAX		_NSIG
 
 #define SA_NOCLDSTOP	0x00000001u
 #define SA_NOCLDWAIT	0x00000002u
