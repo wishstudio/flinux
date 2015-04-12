@@ -1346,6 +1346,12 @@ static size_t console_read(struct file *f, void *b, size_t count)
 		{
 			INPUT_RECORD ir;
 			DWORD read;
+			if (signal_wait(1, &console->in, INFINITE) == WAIT_INTERRUPTED)
+			{
+				if (bytes_read == 0)
+					bytes_read = -EINTR;
+				break;
+			}
 			ReadConsoleInputA(console->in, &ir, 1, &read);
 			if (ir.EventType == KEY_EVENT && ir.Event.KeyEvent.bKeyDown)
 			{
