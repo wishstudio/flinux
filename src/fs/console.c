@@ -240,7 +240,7 @@ void console_init()
 	console->input_buffer_head = console->input_buffer_tail = 0;
 	console->processor = NULL;
 
-	SetConsoleMode(in, ENABLE_PROCESSED_INPUT);
+	SetConsoleMode(in, ENABLE_PROCESSED_INPUT | ENABLE_WINDOW_INPUT);
 	SetConsoleMode(out, ENABLE_PROCESSED_OUTPUT);
 	SetConsoleCtrlHandler(console_ctrlc_handler, TRUE);
 
@@ -361,8 +361,18 @@ static void console_retrieve_state()
 {
 	CONSOLE_SCREEN_BUFFER_INFO info;
 	GetConsoleScreenBufferInfo(console->out, &info);
-	console->width = info.dwSize.X;
-	console->height = info.srWindow.Bottom - info.srWindow.Top + 1;
+	int new_width = info.dwSize.X;
+	int new_height = info.srWindow.Bottom - info.srWindow.Top + 1;
+	if (console->width != new_width || console->height != new_height)
+	{
+		console->width = new_width;
+		console->height = new_height;
+		struct siginfo info;
+		info.si_signo = SIGWINCH;
+		info.si_code = 0;
+		info.si_errno = 0;
+		signal_kill(GetCurrentProcessId(), &info);
+	}
 	console->buffer_height = info.dwSize.Y;
 	int top_min = max(0, info.dwCursorPosition.Y - console->height + 1);
 	int top_max = min(info.dwCursorPosition.Y, console->buffer_height - console->height);
@@ -1290,6 +1300,8 @@ static int console_get_poll_status(struct file *f)
 			console_unlock();
 			return LINUX_POLLIN | LINUX_POLLOUT;
 		}
+		else if (ir.EventType == WINDOW_BUFFER_SIZE_EVENT)
+			console_retrieve_state();
 		/* Discard the event */
 		ReadConsoleInputW(console->in, &ir, 1, &num_read);
 	}
@@ -1381,6 +1393,8 @@ static size_t console_read(struct file *f, void *b, size_t count)
 				}
 				}
 			}
+			else if (ir.EventType == WINDOW_BUFFER_SIZE_EVENT)
+				console_retrieve_state();
 		}
 	}
 	else /* Non canonical mode */
@@ -1490,6 +1504,8 @@ static size_t console_read(struct file *f, void *b, size_t count)
 				}
 				}
 			}
+			else if (ir.EventType == WINDOW_BUFFER_SIZE_EVENT)
+				console_retrieve_state();
 			else
 			{
 				/* TODO: Other types of input */
