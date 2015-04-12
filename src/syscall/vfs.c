@@ -40,6 +40,8 @@
 #include <limits.h>
 #include <malloc.h>
 
+#include <stdlib.h>
+
 /* Notes on symlink solving:
 
    Sometimes we need to perform file operation and symlink checking at
@@ -169,17 +171,49 @@ int vfs_fork(HANDLE process)
 	return 1;
 }
 
+static int cmpfiled(const void *a, const void *b)
+{
+	int fda = *(int *)a;
+	int fdb = *(int *)b;
+
+	struct file *filea = vfs->filed[fda].fd;
+	struct file *fileb = vfs->filed[fdb].fd;
+
+	if (filea > fileb)
+	{
+		return 1;
+	}
+	else if (filea < fileb)
+	{
+		return -1;
+	}
+	else
+	{
+		return 0;
+	}
+}
+
 void vfs_afterfork()
 {
 	console_afterfork();
 
+	int index[MAX_FD_COUNT];
 	for (int i = 0; i < MAX_FD_COUNT; i++)
 	{
-		struct file *f = vfs->filed[i].fd;
-		if (f)
+		index[i] = i;
+	}
+
+	qsort(index, MAX_FD_COUNT, sizeof(int), cmpfiled);
+
+	struct file *last = NULL;
+	for (int i = 0; i < MAX_FD_COUNT; i++)
+	{
+		struct file *f = vfs->filed[index[i]].fd;
+		if (f && f != last)
 		{
 			vfs_handle_fork(f);
 		}
+		last = f;
 	}
 }
 
