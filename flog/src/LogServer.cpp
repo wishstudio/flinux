@@ -21,6 +21,12 @@
 
 #include "LogServer.h"
 
+static DWORD WINAPI ThreadProc(LPVOID lpParameter)
+{
+	((LogServer *)lpParameter)->RunWorker();
+	return 0;
+}
+
 LogServer::~LogServer()
 {
 	Stop();
@@ -29,7 +35,7 @@ LogServer::~LogServer()
 void LogServer::Start(HWND hMainWnd)
 {
 	m_hMainWnd = hMainWnd;
-	m_worker = std::thread([=]() { RunWorker(); });
+	m_hWorker = CreateThread(NULL, 0, ThreadProc, this, 0, NULL);
 	m_started = true;
 }
 
@@ -38,7 +44,7 @@ void LogServer::Stop()
 	if (m_started)
 	{
 		PostQueuedCompletionStatus(m_hCompletionPort, 0, NULL, NULL);
-		m_worker.join();
+		WaitForSingleObject(m_hWorker, INFINITE);
 	}
 }
 
