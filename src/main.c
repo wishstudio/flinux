@@ -41,9 +41,8 @@
  * This is to prevent data corruption when the arguments of execve() used pointers at data inside the startup area
  * The first uintptr_t data itme in each side is set to 1 when the part is currently in use
  */
-static char *const startup = (char *)STARTUP_DATA_BASE;
+char *startup;
 
-#define ALIGN_TO(x, a) ((uintptr_t)((x) + (a) - 1) & -(a))
 #define ENV(x) \
 	do { \
 		memcpy(envbuf, x, sizeof(x) + 1); \
@@ -59,8 +58,8 @@ void main()
 	mm_init();
 	install_syscall_handler();
 	heap_init();
-	vfs_init();
 	tls_init();
+	vfs_init();
 	dbt_init();
 	signal_init();
 	process_init(NULL);
@@ -74,7 +73,8 @@ void main()
 		ExitProcess(1);
 	}
 
-	mm_mmap(startup, BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, 0, NULL, 0);
+	startup = mm_mmap(NULL, BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS,
+		INTERNAL_MAP_TOPDOWN | INTERNAL_MAP_NORESET, NULL, 0);
 	*(uintptr_t*) startup = 1;
 	char *current_startup_base = startup + sizeof(uintptr_t);
 	memcpy(current_startup_base, cmdline, len + 1);

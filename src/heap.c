@@ -48,12 +48,12 @@ struct heap_data
 	struct pool pools[POOL_COUNT];
 };
 
-static struct heap_data *const heap = (struct heap_data *)MM_HEAP_BASE;
+static struct heap_data *heap;
 
 void heap_init()
 {
 	log_info("heap subsystem initializating...\n");
-	mm_mmap(heap, sizeof(struct heap_data), PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, 0, NULL, 0);
+	heap = mm_static_alloc(sizeof(struct heap_data));
 	heap->pools[0].objsize = 16;   heap->pools[0].first = NULL;
 	heap->pools[1].objsize = 32;   heap->pools[1].first = NULL;
 	heap->pools[2].objsize = 64;   heap->pools[2].first = NULL;
@@ -70,10 +70,16 @@ void heap_shutdown()
 {
 }
 
+void heap_afterfork()
+{
+	heap = mm_static_alloc(sizeof(struct heap_data));
+}
+
 #define ALIGN(x, align) (((x) + ((align) - 1)) & -(align))
 static struct bucket *alloc_bucket(int objsize)
 {
-	struct bucket *b = mm_mmap(0, BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, INTERNAL_MAP_HEAP, NULL, 0);
+	struct bucket *b = mm_mmap(0, BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE,
+		INTERNAL_MAP_TOPDOWN | INTERNAL_MAP_NORESET, NULL, 0);
 	b->ref_cnt = 0;
 	b->next_bucket = NULL;
 

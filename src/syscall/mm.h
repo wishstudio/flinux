@@ -39,74 +39,19 @@
 #define PAGE_SIZE 0x00001000U
 #endif
 
-#ifdef _WIN64
+#define ALIGN_TO(x, a) ((uintptr_t)((x) + (a) - 1) & -(a))
 
-/* Base address of mm_data structure */
-#define MM_DATA_BASE			0x0000000020000000ULL
-/* Base address of section handles table */
-#define MM_SECTION_HANDLE_BASE	0x0000000030000000ULL
-/* Base address of process_data structure */
-#define PROCESS_DATA_BASE		0x00000000EC000000ULL
-/* Base address of mm_heap structure */
-#define MM_HEAP_BASE			0x00000000ED000000ULL
-/* Base address of vfs_data structure */
-#define VFS_DATA_BASE			0x00000000EE000000ULL
-/* Base address of tls_data structure */
-#define TLS_DATA_BASE			0x00000000EFFD0000ULL
-/* Base address of executable startup data */
-#define STARTUP_DATA_BASE		0x00000000EFFE0000ULL
-/* Base address of fork_info structure */
-#define FORK_INFO_BASE			0x00000000EFFF0000ULL
-/* Low address of kernel heap */
-#define ADDRESS_HEAP_LOW		0x00000000F0000000ULL
-/* High address of kernel heap */
-#define ADDRESS_HEAP_HIGH		0x0000000100000000ULL
+#ifdef _WIN64
 
 /* x64 Special: brk() base address */
 #define MM_BRK_BASE				0x0000000300000000ULL
 
-#else
-
-/* Base address of mm_data structure */
-#define MM_DATA_BASE			0x70000000U
-/* Base address of section handles table */
-#define MM_SECTION_HANDLE_BASE	0x70200000U
-/* Base address of process_data structure */
-#define PROCESS_DATA_BASE		0x70700000U
-/* Base address of dbt_data structure */
-#define DBT_DATA_BASE			0x70800000U
-/* Base address of vfs_data structure */
-#define VFS_DATA_BASE			0x70900000U
-/* Base address of signal_data structure */
-#define SIGNAL_DATA_BASE		0x70FA0000U
-/* Base address of console_data structure */
-#define CONSOLE_DATA_BASE		0x70FB0000U
-/* Base address of mm_heap structure */
-#define MM_HEAP_BASE			0x70FC0000U
-/* Base address of tls_data structure */
-#define TLS_DATA_BASE			0x70FD0000U
-/* Base address of executable startup data */
-#define STARTUP_DATA_BASE		0x70FE0000U
-/* Base address of fork_info structure */
-#define FORK_INFO_BASE			0x70FF0000U
-/* Low address of kernel heap */
-#define ADDRESS_HEAP_LOW		0x71000000U
-/* High address of kernel heap */
-#define ADDRESS_HEAP_HIGH		0x72000000U
-/* Base address of dbt blocks table */
-#define DBT_BLOCKS_BASE			0x72000000U
-/* Size of dbt blocks table */
-#define DBT_BLOCKS_SIZE			0x00800000U
-/* Base address of dbt cache */
-#define DBT_CACHE_BASE			0x72800000U
-/* Size of dbt cache (8 MiB) */
-#define DBT_CACHE_SIZE			0x00800000U
-
 #endif
 
 /* Internal flags for mm_mmap() */
-#define INTERNAL_MAP_HEAP			1	/* Find an address in heap address space range */
+#define INTERNAL_MAP_TOPDOWN		1	/* Allocate at highest possible address */
 #define INTERNAL_MAP_NOOVERWRITE	2	/* Don't automatically overwrite existing mappings, report error in such case */
+#define INTERNAL_MAP_NORESET		4	/* Don't unmap the memory region at mm_reset() */
 
 void mm_init();
 void mm_reset();
@@ -124,8 +69,18 @@ int mm_check_write(void *addr, size_t size);
 
 int mm_handle_page_fault(void *addr);
 int mm_fork(HANDLE process);
+void mm_afterfork();
 
 size_t mm_find_free_pages(size_t count_bytes);
 struct file;
 void *mm_mmap(void *addr, size_t len, int prot, int flags, int internal_flags, struct file *f, off_t offset_pages);
 int mm_munmap(void *addr, size_t len);
+
+/* Static allocation
+ * Many subsystems need to use static storage which are automatically forked
+ * Since mm only accepts allocation granularity at PAGE_SIZE, there could be much space lost
+ * Instead of allocating pages by their own, we preallocate a sufficient block
+ * and let the subsystems to allocate their static forkable memory at initialization.
+ */
+#define MM_STATIC_ALLOC_SIZE	3 * BLOCK_SIZE	/* The total size */
+void *mm_static_alloc(size_t size);

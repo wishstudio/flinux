@@ -32,8 +32,6 @@
 #include <Windows.h>
 #include <ntdll.h>
 
-#define ALIGN_TO(x, a) ((uintptr_t)((x) + (a) - 1) & -(a))
-
 #define GET_MODRM_MOD(c)	(((c) >> 6) & 7)
 #define GET_MODRM_R(c)		(((c) >> 3) & 7)
 #define GET_MODRM_RM(c)		((c) & 7)
@@ -454,7 +452,9 @@ static int cache_tree_cmp(const struct rb_node *left, const struct rb_node *righ
 #define DBT_TRAMPOLINE_ALIGN	32
 #define DBT_BLOCK_HASH_BUCKETS	4096
 #define DBT_BLOCK_MAXSIZE		1024 /* Maximum size of a translated basic block */
-#define MAX_DBT_BLOCKS			(DBT_BLOCKS_SIZE / sizeof(struct dbt_block))
+#define DBT_BLOCKS_TABLE_SIZE	0x00800000U
+#define DBT_CACHE_SIZE			0x00800000U
+#define MAX_DBT_BLOCKS			(DBT_BLOCKS_TABLE_SIZE / sizeof(struct dbt_block))
 
 /* Do not modify these unless you know what you are doing */
 #define DBT_SIEVE_ENTRIES			65536
@@ -491,7 +491,7 @@ struct dbt_data
 	/* Information of current signal to be delivered */
 	bool signal_pending;
 	bool signal_need_fixup;
-};
+} _dbt;
 
 extern void dbt_find_direct_internal();
 extern void dbt_find_indirect_internal();
@@ -503,8 +503,8 @@ extern void dbt_restore_simd_state();
 extern void dbt_cpuid_internal();
 extern void syscall_handler();
 
-static struct dbt_data *const dbt = (struct dbt_data *)DBT_DATA_BASE;
-static uint8_t *const dbt_cache = (uint8_t *)DBT_CACHE_BASE;
+static struct dbt_data *const dbt = &_dbt;
+static uint8_t *dbt_cache;
 
 /* We use a return trampoline for returning to user code from kernel code
  * The return address is stored in TLS and set up in kernel code
@@ -717,13 +717,10 @@ static void dbt_gen_tables()
 void dbt_init()
 {
 	log_info("Initializing dbt subsystem...\n");
-	if (!VirtualAlloc(dbt, sizeof(struct dbt_data), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE))
-		log_error("VirtualAlloc() for dbt_data failed.\n");
-	if (!VirtualAlloc((LPVOID)DBT_BLOCKS_BASE, DBT_BLOCKS_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE))
+	if (!(dbt->blocks = VirtualAlloc(NULL, DBT_BLOCKS_TABLE_SIZE, MEM_RESERVE | MEM_COMMIT | MEM_TOP_DOWN, PAGE_READWRITE)))
 		log_error("VirtualAlloc() for dbt_blocks failed.\n");
-	if (!VirtualAlloc(dbt_cache, DBT_CACHE_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE))
+	if (!(dbt_cache = VirtualAlloc(NULL, DBT_CACHE_SIZE, MEM_RESERVE | MEM_COMMIT | MEM_TOP_DOWN, PAGE_EXECUTE_READWRITE)))
 		log_error("VirtualAlloc() for dbt_cache failed.\n");
-	dbt->blocks = (struct dbt_block *)DBT_BLOCKS_BASE;
 	dbt->tls_scratch_offset = tls_kernel_entry_to_offset(TLS_ENTRY_SCRATCH);
 	dbt->tls_gs_offset = tls_kernel_entry_to_offset(TLS_ENTRY_GS);
 	dbt->tls_gs_addr_offset = tls_kernel_entry_to_offset(TLS_ENTRY_GS_ADDR);
@@ -736,7 +733,6 @@ void dbt_init()
 
 void dbt_shutdown()
 {
-	VirtualFree(dbt, 0, MEM_RELEASE);
 	VirtualFree(dbt_cache, 0, MEM_RELEASE);
 }
 
@@ -1927,7 +1923,7 @@ void dbt_deliver_signal(HANDLE thread, CONTEXT *context)
 	THREAD_BASIC_INFORMATION info;
 	NtQueryInformationThread(thread, ThreadBasicInformation, &info, sizeof(info), NULL);
 	/* Are we inside code cache? */
-	if (context->Eip >= (DWORD)dbt->internal_trampoline_end && context->Eip < DBT_CACHE_BASE + DBT_CACHE_SIZE)
+	if (context->Eip >= (DWORD)dbt->internal_trampoline_end && context->Eip < (DWORD)dbt_cache + DBT_CACHE_SIZE)
 	{
 		dbt->signal_need_fixup = true;
 		*(DWORD *)((uint8_t*)info.TebBaseAddress + dbt->tls_eip_offset) = context->Eip;

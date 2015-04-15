@@ -394,7 +394,7 @@ int do_execve(const char *filename, int argc, char *argv[], int env_size, char *
 	return 0; /* Would never reach here */
 }
 
-static char *const startup = (char *)STARTUP_DATA_BASE;
+extern char *startup;
 
 static void execve_initialize_routine()
 {
@@ -479,4 +479,11 @@ DEFINE_SYSCALL(execve, const char *, filename, char **, argv, char **, envp)
 		flip_startup_base();
 	}
 	return r;
+}
+
+int exec_fork(HANDLE process)
+{
+	if (!WriteProcessMemory(process, &startup, &startup, sizeof(startup), NULL))
+		return 0;
+	return 1;
 }

@@ -104,7 +104,7 @@ struct console_data
 	void (*processor)(char ch);
 };
 
-static struct console_data *const console = (struct console_data *)CONSOLE_DATA_BASE;
+static struct console_data *console;
 
 static uint32_t default_charset(uint32_t ch)
 {
@@ -169,14 +169,15 @@ void console_init()
 		log_error("NtCreateSection() failed, status: %x\n", status);
 		return;
 	}
-	PVOID base_addr = console;
+	PVOID base_addr = NULL;
 	SIZE_T view_size = sizeof(struct console_data);
-	status = NtMapViewOfSection(section, NtCurrentProcess(), &base_addr, 0, sizeof(struct console_data), NULL, &view_size, ViewUnmap, 0, PAGE_READWRITE);
+	status = NtMapViewOfSection(section, NtCurrentProcess(), &base_addr, 0, sizeof(struct console_data), NULL, &view_size, ViewUnmap, MEM_TOP_DOWN, PAGE_READWRITE);
 	if (!NT_SUCCESS(status))
 	{
 		log_error("NtMapViewOfSection() failed, status: %x\n", status);
 		return;
 	}
+	console = (struct console_data *)base_addr;
 
 	SECURITY_ATTRIBUTES attr;
 	attr.nLength = sizeof(SECURITY_ATTRIBUTES);
@@ -250,13 +251,18 @@ void console_init()
 int console_fork(HANDLE process)
 {
 	log_info("Mapping console shared memory region to child process...\n");
-	PVOID base_addr = console;
+	PVOID base_addr = NULL;
 	SIZE_T view_size = sizeof(struct console_data);
 	NTSTATUS status;
-	status = NtMapViewOfSection(console->section, process, &base_addr, 0, sizeof(struct console_data), NULL, &view_size, ViewUnmap, 0, PAGE_READWRITE);
+	status = NtMapViewOfSection(console->section, process, &base_addr, 0, sizeof(struct console_data), NULL, &view_size, ViewUnmap, MEM_TOP_DOWN, PAGE_READWRITE);
 	if (!NT_SUCCESS(status))
 	{
 		log_error("NtMapViewOfSection() failed, status: %x\n", status);
+		return 0;
+	}
+	if (!WriteProcessMemory(process, &console, &base_addr, sizeof(PVOID), NULL))
+	{
+		log_error("WriteProcessMemory() failed, error code: %d\n", GetLastError());
 		return 0;
 	}
 	return 1;

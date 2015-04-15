@@ -26,6 +26,7 @@
 #include <syscall/process.h>
 #include <syscall/syscall.h>
 #include <syscall/tls.h>
+#include <heap.h>
 #include <log.h>
 
 #define WIN32_LEAN_AND_MEAN
@@ -45,13 +46,15 @@ struct fork_info
 	struct syscall_context context;
 	void *stack_base;
 	void *ctid;
-};
+} _fork;
 
-static struct fork_info * const fork = (struct fork_info *)FORK_INFO_BASE;
+static struct fork_info *fork = &_fork;
 
 __declspec(noreturn) static void fork_child()
 {
 	install_syscall_handler();
+	mm_afterfork();
+	heap_afterfork();
 	tls_afterfork();
 	vfs_afterfork();
 	signal_afterfork();
@@ -120,8 +123,6 @@ void fork_init()
 			ExitProcess(0);
 		}
 #endif
-		/* Allocate fork_info memory early to avoid possible VirtualAlloc() collision */
-		VirtualAlloc(fork, BLOCK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 		/* Return control flow to main() */
 	}
 }
@@ -171,9 +172,11 @@ static pid_t fork_process(struct syscall_context *context, unsigned long flags, 
 	if (!vfs_fork(info.hProcess))
 		goto fail;
 
+	if (!exec_fork(info.hProcess))
+		goto fail;
+
 	/* Set up fork_info in child process */
 	void *stack_base = process_get_stack_base();
-	VirtualAllocEx(info.hProcess, fork, BLOCK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 	WriteProcessMemory(info.hProcess, &fork->context, context, sizeof(struct syscall_context), NULL);
 	WriteProcessMemory(info.hProcess, &fork->stack_base, &stack_base, sizeof(stack_base), NULL);
 	if (flags & CLONE_CHILD_SETTID)

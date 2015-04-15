@@ -48,111 +48,6 @@
  *     MAP_FIXED with MAP_SHARED or MAP_PRIVATE on non 64kB aligned address.
  */
 
-/* Overall memory layout (x86)
- *
- * FFFFFFFF ------------------------------
- * ...        Win32 kernel address space
- * ...         (unused if 4gt enabled)
- * 80000000 ------------------------------
- * ...                win32 dlls
- * 73000000 ------------------------------
- * ...        Foreign Linux kernel data
- * 70000000 ------------------------------
- * ...
- * ...          Application code/data
- * ...
- * 04000000 ------------------------------
- * ...            Win32 system heaps
- * ...        Foreign Linux kernel code
- * 00000000 ------------------------------
- *
- *
- * Foreign Linux kernel data memory layout (x86), u for unmappable
- *
- * 73000000 ------------------------------
- *                 dbt code cache (u)
- * 72800000 ------------------------------
- *                dbt blocks table (u)
- * 72000000 ------------------------------
- *                    kernel heap
- * 71000000 ------------------------------
- *                fork_info structure
- * 70FF0000 ------------------------------
- *             startup (argv, env) data
- * 70FE0000 ------------------------------
- *                tls_data structure
- * 70FD0000 ------------------------------
- *              mm_heap_data structure
- * 70FC0000 ------------------------------
- *              console_data structure
- * 70FB0000 ------------------------------
- *               signal_data structure
- * 70FA0000 ------------------------------
- *                vfs_data structure
- * 70900000 ------------------------------
- *               dbt_data structure (u)
- * 70800000 ------------------------------
- *             process_data structure (u)
- * 70700000 ------------------------------
- *                 section handles (u)
- * 70200000 ------------------------------
- *                mm_data structure (u)
- * 70000000 ------------------------------
- */
-
-/* Overall memory layout (x64)
- * TODO: This hasn't been updated for a long time since the introduction of DBT.
- * Need redesign once we want to support x64 again.
- *
- * FFFFFFFF FFFFFFFF ------------------------------
- * ...                 Win32 kernel address space
- * FFFF8000 00000000 ------------------------------
- * ...                         (unusable)
- * 00007FFF FFFFFFFF ------------------------------
- *                             Win32 dlls
- * 00007FF0 00000000 ------------------------------
- *                      (unused in Foreign Linux)
- *                    we reduce the available address space to limit the size of section handles store
- * 00001000 00000000 ------------------------------
- * ...                   Application code/data
- * 00000003 00000000 ------------------------------  <-- brk base (x64 special to avoid collisions in low address)
- * ...                   Application code/data
- * 00000002 00000000 ------------------------------
- * ...                 Foreign Linux kernel code
- * 00000001 00000000 ------------------------------
- * ...                 Foreign Linux kernel data
- * 00000000 20000000 ------------------------------
- * ...                     Win32 system heaps
- * 00000000 10400000 ------------------------------
- * ...                      Application code
- * 00000000 00400000 ------------------------------
- *                         Win32 system heaps
- * 00000000 00000000 ------------------------------
- *
- *
- * Foreign Linux kernel data memory layout (x64), u for unmappable
- *
- * 00000001 00000000 ------------------------------
- *                             kernel heap
- * 00000000 F0000000 ------------------------------
- *                         fork_info structure
- * 00000000 EFFF0000 ------------------------------
- *                      startup (argv, env) data
- * 00000000 EFFE0000 ------------------------------
- *                         tls_data structure
- * 00000000 EFFD0000 ------------------------------
- *                         vfs_data structure
- * 00000000 EE000000 ------------------------------
- *                        mm_heap_data structure
- * 00000000 ED000000 ------------------------------
- *                      process_data structure (u)
- * 00000000 EC000000 ------------------------------
- *                         section handles (u)
- * 00000000 30000000 ------------------------------
- *                        mm_data structure (u)
- * 00000000 20000000 ------------------------------
- */
-
 /* Hard limits */
 /* Maximum number of mmap()-ed areas */
 #define MAX_MMAP_COUNT 65535
@@ -167,10 +62,6 @@
 #define ADDRESS_ALLOCATION_LOW	0x0000000200000000ULL
 /* The highest non fixed allocation address we can make */
 #define ADDRESS_ALLOCATION_HIGH	0x0001000000000000ULL
-/* The lowest address of reserved kernel data */
-#define ADDRESS_RESERVED_LOW	0x0000000020000000ULL
-/* The highest address of reserved kernel data */
-#define ADDRESS_RESERVED_HIGH	0x0000000100000000ULL
 
 #else
 
@@ -182,10 +73,6 @@
 #define ADDRESS_ALLOCATION_LOW	0x10000000U
 /* The highest non fixed allocation address we can make */
 #define ADDRESS_ALLOCATION_HIGH	0x70000000U
-/* The lowest address of reserved kernel data */
-#define ADDRESS_RESERVED_LOW	0x70000000U
-/* The highest address of reserved kernel data */
-#define ADDRESS_RESERVED_HIGH	0x72000000U
 
 #endif
 
@@ -225,7 +112,7 @@ struct map_entry
 		{
 			size_t start_page;
 			size_t end_page;
-			int prot;
+			int prot, flags;
 			struct file *f;
 			off_t offset_pages;
 		};
@@ -249,6 +136,9 @@ struct mm_data
 	/* Program break address, brk() will use this */
 	void *brk;
 
+	/* Used for mm_static_alloc() */
+	void *static_alloc_begin, *static_alloc_end;
+
 	/* Information for all existing mappings */
 	struct rb_tree entry_tree;
 	struct slist entry_free_list;
@@ -256,9 +146,9 @@ struct mm_data
 
 	/* Section handle count for each table */
 	uint16_t section_table_handle_count[SECTION_TABLE_COUNT];
-};
-static struct mm_data *const mm = (struct mm_data *)MM_DATA_BASE;
-static HANDLE *mm_section_handle = (HANDLE *)MM_SECTION_HANDLE_BASE;
+} _mm;
+static struct mm_data *const mm = &_mm;
+static HANDLE *mm_section_handle;
 
 static __forceinline HANDLE get_section_handle(size_t i)
 {
@@ -276,7 +166,7 @@ static __forceinline void add_section_handle(size_t i, HANDLE handle)
 		mm_section_handle[i] = handle;
 	else
 	{
-		VirtualAlloc(&mm_section_handle[t * SECTION_HANDLE_PER_TABLE], BLOCK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+		VirtualAlloc(&mm_section_handle[t * SECTION_HANDLE_PER_TABLE], BLOCK_SIZE, MEM_COMMIT, PAGE_READWRITE);
 		mm_section_handle[i] = handle;
 	}
 }
@@ -291,7 +181,7 @@ static __forceinline void remove_section_handle(size_t i)
 	mm_section_handle[i] = NULL;
 	size_t t = GET_SECTION_TABLE(i);
 	if (--mm->section_table_handle_count[t] == 0)
-		VirtualFree(&mm_section_handle[t * SECTION_HANDLE_PER_TABLE], BLOCK_SIZE, MEM_RELEASE);
+		VirtualFree(&mm_section_handle[t * SECTION_HANDLE_PER_TABLE], BLOCK_SIZE, MEM_DECOMMIT);
 }
 
 static struct map_entry *new_map_entry()
@@ -387,32 +277,30 @@ static void free_map_entry_blocks(struct map_entry *e)
 
 void mm_init()
 {
-	VirtualAlloc(mm, sizeof(struct mm_data), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 	/* Initialize mapping info freelist */
 	rb_init(&mm->entry_tree);
 	slist_init(&mm->entry_free_list);
 	for (size_t i = 0; i + 1 < MAX_MMAP_COUNT; i++)
 		slist_add(&mm->entry_free_list, &mm->entries[i].free_list);
 	mm->brk = 0;
+	/* Initialize section handle table */
+	mm_section_handle = VirtualAlloc(NULL, BLOCK_COUNT * sizeof(HANDLE), MEM_RESERVE | MEM_TOP_DOWN, PAGE_READWRITE);
+	/* Initialize static alloc */
+	mm->static_alloc_begin = mm_mmap(NULL, MM_STATIC_ALLOC_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS,
+		INTERNAL_MAP_TOPDOWN | INTERNAL_MAP_NORESET, NULL, 0);
+	mm->static_alloc_end = (uint8_t*)mm->static_alloc_begin + MM_STATIC_ALLOC_SIZE;
 }
 
 void mm_reset()
 {
 	/* Release all user memory */
 	size_t last_block = 0;
-	size_t reserved_start = GET_BLOCK(ADDRESS_RESERVED_LOW);
-	size_t reserved_end = GET_BLOCK(ADDRESS_RESERVED_HIGH) - 1;
 	for (struct rb_node *cur = rb_first(&mm->entry_tree); cur;)
 	{
 		struct map_entry *e = rb_entry(cur, struct map_entry, tree);
 		size_t start_block = GET_BLOCK_OF_PAGE(e->start_page);
 		size_t end_block = GET_BLOCK_OF_PAGE(e->end_page);
-		if (reserved_start <= start_block && start_block <= reserved_end)
-		{
-			cur = rb_next(cur);
-			continue;
-		}
-		if (reserved_start <= end_block && end_block <= reserved_end)
+		if (e->flags & INTERNAL_MAP_NORESET)
 		{
 			cur = rb_next(cur);
 			continue;
@@ -454,7 +342,21 @@ void mm_shutdown()
 			remove_section_handle(i);
 		}
 	}
-	VirtualFree(mm, 0, MEM_RELEASE);
+	VirtualFree(mm_section_handle, 0, MEM_RELEASE);
+}
+
+void *mm_static_alloc(size_t size)
+{
+	if ((uint8_t*)mm->static_alloc_begin + size > mm->static_alloc_end)
+	{
+		log_error("mm_static_alloc(): Overlarge static block size, remain: %p, requested: %p\n",
+			(uint8_t*)mm->static_alloc_end - (uint8_t*)mm->static_alloc_begin, size);
+		log_error("Please enlarge MM_STATIC_ALLOC_SIZE manually.\n");
+		__debugbreak();
+	}
+	void *ret = mm->static_alloc_begin;
+	mm->static_alloc_begin = (void*)ALIGN_TO((uint8_t*)mm->static_alloc_begin + size, 16);
+	return ret;
 }
 
 void mm_update_brk(void *brk)
@@ -467,28 +369,49 @@ void mm_update_brk(void *brk)
 #endif
 }
 
-/* Find 'count' consecutive free pages in address range [low, high), return 0 if not found */
-static size_t find_free_pages(size_t count, size_t low, size_t high)
+/* Find 'count' consecutive free pages, return 0 if not found */
+static size_t find_free_pages(size_t count)
 {
-	size_t last = GET_PAGE(low);
+	size_t last = GET_PAGE(ADDRESS_ALLOCATION_LOW);
 	for (struct rb_node *cur = rb_first(&mm->entry_tree); cur; cur = rb_next(cur))
 	{
 		struct map_entry *e = rb_entry(cur, struct map_entry, tree);
-		if (e->start_page >= GET_PAGE(low))
-			if (e->start_page - last >= count)
-				return last;
-			else
-				last = e->end_page + 1;
+		if (e->start_page >= last && e->start_page - last >= count)
+			return last;
+		else if (e->end_page >= last)
+			last = e->end_page + 1;
+		if (last >= GET_PAGE(ADDRESS_ALLOCATION_HIGH))
+			return 0;
 	}
-	if (GET_PAGE(high) - last >= count)
+	if (GET_PAGE(ADDRESS_ALLOCATION_HIGH) > last && GET_PAGE(ADDRESS_ALLOCATION_HIGH) - last >= count)
 		return last;
+	else
+		return 0;
+}
+
+/* Find 'count' consecutive free pages at the highest possible address, return 0 if not found */
+static size_t find_free_pages_topdown(size_t count)
+{
+	size_t last = GET_PAGE(ADDRESS_ALLOCATION_HIGH) - 1;
+	for (struct rb_node *cur = rb_last(&mm->entry_tree); cur; cur = rb_prev(cur))
+	{
+		struct map_entry *e = rb_entry(cur, struct map_entry, tree);
+		if (e->end_page <= last && e->end_page + count <= last)
+			return last - count;
+		else if (e->start_page <= last)
+			last = e->start_page - 1;
+		if (last <= GET_PAGE(ADDRESS_ALLOCATION_LOW))
+			return 0;
+	}
+	if (GET_PAGE(ADDRESS_ALLOCATION_LOW) < last && GET_PAGE(ADDRESS_ALLOCATION_LOW) + count < last)
+		return last - count;
 	else
 		return 0;
 }
 
 size_t mm_find_free_pages(size_t count_bytes)
 {
-	return find_free_pages(GET_PAGE(ALIGN_TO_PAGE(count_bytes)), ADDRESS_ALLOCATION_LOW, ADDRESS_ALLOCATION_HIGH);
+	return find_free_pages(GET_PAGE(ALIGN_TO_PAGE(count_bytes)));
 }
 
 static DWORD prot_linux2win(int prot)
@@ -859,27 +782,24 @@ int mm_handle_page_fault(void *addr)
 int mm_fork(HANDLE process)
 {
 	/* Copy mm_data struct */
-	if (!VirtualAllocEx(process, mm, sizeof(struct mm_data), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE))
-	{
-		log_error("mm_fork(): Allocate mm_data structure failed, error code: %d\n", GetLastError());
-		return 0;
-	}
 	if (!WriteProcessMemory(process, mm, mm, sizeof(struct mm_data), NULL))
 	{
 		log_error("mm_fork(): Write mm_data structure failed, error code: %d\n", GetLastError());
 		return 0;
 	}
 	/* Copy section handle tables */
+	HANDLE *forked_section_handle = VirtualAllocEx(process, NULL, BLOCK_COUNT * sizeof(HANDLE), MEM_RESERVE | MEM_TOP_DOWN, PAGE_READWRITE);
+	WriteProcessMemory(process, &mm_section_handle, &forked_section_handle, sizeof(HANDLE *), NULL);
 	for (size_t i = 0; i < SECTION_TABLE_COUNT; i++)
 		if (mm->section_table_handle_count[i])
 		{
-			size_t offset = i * BLOCK_SIZE;
-			if (!VirtualAllocEx(process, (char*)MM_SECTION_HANDLE_BASE + offset, BLOCK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE))
+			size_t j = i * SECTION_HANDLE_PER_TABLE;
+			if (!VirtualAllocEx(process, &forked_section_handle[j], BLOCK_SIZE, MEM_COMMIT, PAGE_READWRITE))
 			{
 				log_error("mm_fork(): Allocate section table 0x%p failed, error code: %d\n", i, GetLastError());
 				return 0;
 			}
-			if (!WriteProcessMemory(process, (char*)MM_SECTION_HANDLE_BASE + offset, (char*)MM_SECTION_HANDLE_BASE + offset, BLOCK_SIZE, NULL))
+			if (!WriteProcessMemory(process, &forked_section_handle[j], &mm_section_handle[j], BLOCK_SIZE, NULL))
 			{
 				log_error("mm_fork(): Write section table 0x%p failed, error code: %d\n", i, GetLastError());
 				return 0;
@@ -928,6 +848,11 @@ int mm_fork(HANDLE process)
 	return 1;
 }
 
+void mm_afterfork()
+{
+	mm->static_alloc_begin = (uint8_t *)mm->static_alloc_end - MM_STATIC_ALLOC_SIZE;
+}
+
 void *mm_mmap(void *addr, size_t length, int prot, int flags, int internal_flags, struct file *f, off_t offset_pages)
 {
 	if (length == 0)
@@ -957,10 +882,10 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, int internal_flags
 	if (!(flags & MAP_FIXED))
 	{
 		size_t alloc_page;
-		if (internal_flags & INTERNAL_MAP_HEAP)
-			alloc_page = find_free_pages(GET_PAGE(ALIGN_TO_PAGE(length)), ADDRESS_HEAP_LOW, ADDRESS_HEAP_HIGH);
+		if (internal_flags & INTERNAL_MAP_TOPDOWN)
+			alloc_page = find_free_pages_topdown(GET_PAGE(ALIGN_TO_PAGE(length)));
 		else
-			alloc_page = find_free_pages(GET_PAGE(ALIGN_TO_PAGE(length)), ADDRESS_ALLOCATION_LOW, ADDRESS_ALLOCATION_HIGH);
+			alloc_page = find_free_pages(GET_PAGE(ALIGN_TO_PAGE(length)));
 		if (!alloc_page)
 		{
 			log_error("Cannot find free pages.\n");
@@ -1013,6 +938,9 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, int internal_flags
 	entry->prot = prot;
 	if (f)
 		vfs_ref(f);
+	entry->flags = 0;
+	if (internal_flags & INTERNAL_MAP_NORESET)
+		entry->flags |= INTERNAL_MAP_NORESET;
 
 	rb_add(&mm->entry_tree, &entry->tree, map_entry_cmp);
 

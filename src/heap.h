@@ -21,6 +21,7 @@
 
 void heap_init();
 void heap_shutdown();
+void heap_afterfork();
 
 void *kmalloc(int size);
 void kfree(void *mem, int size);

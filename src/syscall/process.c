@@ -47,13 +47,12 @@ struct process_data
 	pid_t child_pids[MAX_CHILD_COUNT];
 	/* Use a separated array for handles allows direct WaitForMultipleObjects() invocation */
 	HANDLE child_handles[MAX_CHILD_COUNT];
-};
+} _process;
 
-static struct process_data *const process = (struct process_data *)PROCESS_DATA_BASE;
+static struct process_data *const process = &_process;
 
 void process_init(void *stack_base)
 {
-	VirtualAlloc(process, sizeof(struct process_data), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 	process->child_count = 0;
 	/* TODO: Avoid VirtualAlloc() to reduce potential virtual address space collision */
 	if (stack_base)

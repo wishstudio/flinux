@@ -55,7 +55,7 @@ struct signal_packet
 	siginfo_t info;
 };
 
-static struct signal_data *const signal = (struct signal_data *)SIGNAL_DATA_BASE;
+static struct signal_data *signal;
 
 static void signal_default_handler(siginfo_t *info)
 {
@@ -334,7 +334,7 @@ static void signal_init_private()
 void signal_init()
 {
 	/* Initialize signal structures */
-	mm_mmap(signal, sizeof(struct signal_data), PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, 0, NULL, 0);
+	signal = mm_static_alloc(sizeof(struct signal_data));
 	for (int i = 0; i < _NSIG; i++)
 	{
 		signal->actions[i].sa_sigaction = NULL;
@@ -348,6 +348,7 @@ void signal_init()
 
 void signal_afterfork()
 {
+	signal = mm_static_alloc(sizeof(struct signal_data));
 	signal_init_private();
 }
 
@@ -361,7 +362,6 @@ void signal_shutdown()
 	DeleteCriticalSection(&signal->mutex);
 	CloseHandle(signal->sigread);
 	CloseHandle(signal->sigwrite);
-	mm_munmap(signal, sizeof(struct signal_data));
 }
 
 int signal_kill(pid_t pid, siginfo_t *info)

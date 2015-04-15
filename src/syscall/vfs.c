@@ -69,7 +69,7 @@ struct vfs_data
 	int umask;
 };
 
-static struct vfs_data * const vfs = (struct vfs_data *)VFS_DATA_BASE;
+static struct vfs_data *vfs;
 
 static void vfs_add(struct file_system *fs)
 {
@@ -119,7 +119,7 @@ static __inline void vfs_handle_fork(struct file *f)
 void vfs_init()
 {
 	log_info("vfs subsystem initializing...\n");
-	mm_mmap(vfs, sizeof(struct vfs_data), PROT_READ | PROT_WRITE, MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, 0, NULL, 0);
+	vfs = mm_static_alloc(sizeof(struct vfs_data));
 	struct file *console_in, *console_out;
 	console_init();
 	struct file *console = console_alloc();
@@ -161,7 +161,6 @@ void vfs_shutdown()
 			vfs_close(i);
 	}
 	socket_shutdown();
-	mm_munmap(vfs, sizeof(struct vfs_data));
 }
 
 int vfs_fork(HANDLE process)
@@ -195,6 +194,7 @@ static int cmpfiled(const void *a, const void *b)
 
 void vfs_afterfork()
 {
+	vfs = mm_static_alloc(sizeof(struct vfs_data));
 	console_afterfork();
 
 	int index[MAX_FD_COUNT];

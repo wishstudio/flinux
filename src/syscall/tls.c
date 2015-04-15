@@ -128,11 +128,11 @@ struct tls_data
 	XWORD current_kernel_values[TLS_KERNEL_ENTRY_COUNT];
 };
 
-static struct tls_data *const tls = (struct tls_data *)TLS_DATA_BASE;
+static struct tls_data *tls;
 
 void tls_init()
 {
-	mm_mmap(tls, sizeof(struct tls_data), PROT_READ | PROT_WRITE | PROT_EXEC, MAP_FIXED | MAP_PRIVATE | MAP_ANONYMOUS, 0, NULL, 0);
+	tls = mm_static_alloc(sizeof(struct tls_data));
 	for (int i = 0; i < TLS_KERNEL_ENTRY_COUNT; i++)
 	{
 		tls->kernel_entries[i] = TlsAlloc();
@@ -153,7 +153,6 @@ void tls_shutdown()
 		TlsFree(tls->entries[i]);
 	for (int i = 0; i < TLS_KERNEL_ENTRY_COUNT; i++)
 		TlsFree(tls->kernel_entries[i]);
-	mm_munmap(tls, sizeof(struct tls_data));
 }
 
 void tls_beforefork()
@@ -175,6 +174,7 @@ void tls_beforefork()
 void tls_afterfork()
 {
 	log_info("Restoring TLS context...\n");
+	tls = mm_static_alloc(sizeof(struct tls_data));
 	for (int i = 0; i < tls->entry_count; i++)
 	{
 		tls->entries[i] = TlsAlloc();
