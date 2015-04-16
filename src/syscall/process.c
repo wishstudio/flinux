@@ -91,8 +91,6 @@ void process_add_child(pid_t pid, HANDLE handle)
 
 static pid_t process_wait(pid_t pid, int *status, int options, struct rusage *rusage)
 {
-	if (options & WNOHANG)
-		log_error("Unhandled option WNOHANG\n");
 	if (options & WUNTRACED)
 		log_error("Unhandled option WUNTRACED\n");
 	if (options & WCONTINUED)
@@ -108,9 +106,17 @@ static pid_t process_wait(pid_t pid, int *status, int options, struct rusage *ru
 			if (p->pid == pid)
 			{
 				proc = p;
-				DWORD result = signal_wait(1, &proc->hProcess, INFINITE);
-				if (result == WAIT_INTERRUPTED)
-					return -EINTR;
+				if (options & WNOHANG)
+				{
+					if (!proc->terminated)
+						return -ECHILD;
+				}
+				else
+				{
+					DWORD result = signal_wait(1, &proc->hProcess, INFINITE);
+					if (result == WAIT_INTERRUPTED)
+						return -EINTR;
+				}
 				/* Decrement semaphore */
 				WaitForSingleObject(signal_get_process_wait_semaphore(), INFINITE);
 				/* Remove from child list */
@@ -132,16 +138,24 @@ static pid_t process_wait(pid_t pid, int *status, int options, struct rusage *ru
 			log_warning("No childs.\n");
 			return -ECHILD;
 		}
-		HANDLE sem = signal_get_process_wait_semaphore();
-		DWORD result = signal_wait(1, &sem, INFINITE);
-		if (result == WAIT_INTERRUPTED)
-			return -EINTR;
+		if (!(options & WNOHANG))
+		{
+			HANDLE sem = signal_get_process_wait_semaphore();
+			DWORD result = signal_wait(1, &sem, INFINITE);
+			if (result == WAIT_INTERRUPTED)
+				return -EINTR;
+		}
 		/* Find the terminated child */
 		slist_iterate_safe(&process->child_list, prev, cur)
 		{
 			struct process *p = slist_entry(cur, struct process, list);
 			if (p->terminated)
 			{
+				if (options & WNOHANG)
+				{
+					/* Decrement semaphore */
+					WaitForSingleObject(signal_get_process_wait_semaphore(), INFINITE);
+				}
 				proc = p;
 				/* Remove from child list */
 				slist_remove(prev, cur);
@@ -149,6 +163,8 @@ static pid_t process_wait(pid_t pid, int *status, int options, struct rusage *ru
 				break;
 			}
 		}
+		if (proc == NULL) /* WNOHANG and no unwaited child */
+			return -ECHILD;
 	}
 	else
 	{
