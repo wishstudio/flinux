@@ -45,7 +45,7 @@ struct winfs_file
 	char pathname[]; /* Not necessary null-terminated */
 };
 
-/* Convert an utf-8 file name to NT file name, return converted name length in bytes, no NULL terminator is appended */
+/* Convert an utf-8 file name to NT file name, return converted name length in characters, no NULL terminator is appended */
 static int filename_to_nt_pathname(const char *filename, WCHAR *buf, int buf_size)
 {
 	if (buf_size < 4)
@@ -788,85 +788,82 @@ static int winfs_rmdir(const char *pathname)
 	return 0;
 }
 
-static int winfs_open(const char *pathname, int flags, int mode, struct file **fp, char *target, int buflen)
+/* Open a file
+ * Return values:
+ *  < 0 => errno
+ * == 0 => Opening file succeeded
+ *  > 0 => It is a symlink which needs to be redirected (target written)
+ */
+static int open_file(HANDLE *hFile, const char *pathname, DWORD desired_access, DWORD create_disposition,
+	int flags, BOOL bInherit, char *target, int buflen)
 {
-	/* TODO: mode */
-	DWORD desiredAccess, shareMode, creationDisposition;
-	HANDLE handle;
-	FILE_ATTRIBUTE_TAG_INFO attributeInfo;
-	WCHAR wpathname[PATH_MAX];
-	struct winfs_file *file;
-	int pathlen = strlen(pathname);
-
-	if (utf8_to_utf16_filename(pathname, pathlen + 1, wpathname, PATH_MAX) <= 0)
+	WCHAR buf[PATH_MAX];
+	UNICODE_STRING name;
+	name.Buffer = buf;
+	name.MaximumLength = name.Length = 2 * filename_to_nt_pathname(pathname, buf, PATH_MAX);
+	if (name.Length == 0)
 		return -ENOENT;
-	if (wpathname[0] == 0)
-	{
-		/* CreateFile() does not accept empty filename. */
-		wpathname[0] = '.';
-		wpathname[1] = 0;
-	}
-	
-	if (flags & O_PATH)
-		desiredAccess = 0;
-	else if (flags & O_RDWR)
-		desiredAccess = GENERIC_READ | GENERIC_WRITE;
-	else if (flags & O_WRONLY)
-		desiredAccess = GENERIC_WRITE;
+
+	OBJECT_ATTRIBUTES attr;
+	attr.Length = sizeof(OBJECT_ATTRIBUTES);
+	attr.RootDirectory = NULL;
+	attr.ObjectName = &name;
+	attr.Attributes = (bInherit? OBJ_INHERIT: 0);
+	attr.SecurityDescriptor = NULL;
+	attr.SecurityQualityOfService = NULL;
+
+	NTSTATUS status;
+	IO_STATUS_BLOCK status_block;
+	HANDLE handle;
+	DWORD create_options = FILE_SYNCHRONOUS_IO_NONALERT; /* For synchronous I/O */
+	if (desired_access & GENERIC_ALL)
+		create_options |= FILE_OPEN_FOR_BACKUP_INTENT | FILE_OPEN_REMOTE_INSTANCE;
 	else
-		desiredAccess = GENERIC_READ;
-	if (flags & __O_DELETE)
-		desiredAccess |= DELETE;
-	shareMode = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
-	creationDisposition;
-	if (flags & O_EXCL)
-		creationDisposition = CREATE_NEW;
-	else if (flags & O_CREAT)
-		creationDisposition = OPEN_ALWAYS;
-	else
-		creationDisposition = OPEN_EXISTING;
-	//log_debug("CreateFileW(): %s\n", pathname);
-	SECURITY_ATTRIBUTES attr;
-	attr.nLength = sizeof(SECURITY_ATTRIBUTES);
-	attr.lpSecurityDescriptor = NULL;
-	attr.bInheritHandle = (fp != NULL);
-	handle = CreateFileW(wpathname, desiredAccess, shareMode, &attr, creationDisposition, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_BACKUP_SEMANTICS, NULL);
-	if (handle == INVALID_HANDLE_VALUE)
 	{
-		DWORD err = GetLastError();
-		if (err == ERROR_FILE_EXISTS || err == ERROR_ALREADY_EXISTS)
-		{
-			log_warning("File already exists.\n");
-			return -EEXIST;
-		}
-		else
-		{
-			log_warning("Unhandled CreateFileW() failure, error code: %d, returning ENOENT.\n", GetLastError());
-			return -ENOENT;
-		}
+		if (desired_access & GENERIC_READ)
+			create_options |= FILE_OPEN_FOR_BACKUP_INTENT;
+		if (desired_access & GENERIC_WRITE)
+			create_options |= FILE_OPEN_REMOTE_INSTANCE;
 	}
-	if (!GetFileInformationByHandleEx(handle, FileAttributeTagInfo, &attributeInfo, sizeof(attributeInfo)))
+	desired_access |= SYNCHRONIZE | FILE_READ_ATTRIBUTES;
+	status = NtCreateFile(&handle, desired_access, &attr, &status_block, NULL,
+		FILE_ATTRIBUTE_NORMAL, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+		create_disposition, create_options, NULL, 0);
+	if (status == STATUS_OBJECT_NAME_COLLISION)
 	{
-		CloseHandle(handle);
+		log_warning("File already exists.\n");
+		return -EEXIST;
+	}
+	else if (!NT_SUCCESS(status))
+	{
+		log_warning("Unhandled NtCreateFile error, status: %x, returning ENOENT.\n", status);
+		return -ENOENT;
+	}
+
+	FILE_ATTRIBUTE_TAG_INFORMATION attribute_info;
+	status = NtQueryInformationFile(handle, &status_block, &attribute_info, sizeof(attribute_info), FileAttributeTagInformation);
+	if (!NT_SUCCESS(status))
+	{
+		log_error("NtQueryInformationFile(FileAttributeTagInformation) failed, status: %x\n", status);
+		NtClose(handle);
 		return -EIO;
 	}
 	/* Test if the file is a symlink */
 	int is_symlink = 0;
-	if (attributeInfo.FileAttributes != INVALID_FILE_ATTRIBUTES && (attributeInfo.FileAttributes & FILE_ATTRIBUTE_SYSTEM))
+	if (attribute_info.FileAttributes & FILE_ATTRIBUTE_SYSTEM)
 	{
-		log_info("The file has system flag set.\n");
-		if (!(desiredAccess & GENERIC_READ))
+		/* The file has system flag set. A potential symbolic link. */
+		if (!(desired_access & GENERIC_READ))
 		{
-			/* We need to get a readable handle */
-			log_info("But the handle does not have READ access, try reopening file...\n");
-			HANDLE read_handle = ReOpenFile(handle, desiredAccess | GENERIC_READ, shareMode, FILE_FLAG_BACKUP_SEMANTICS);
+			/* But the handle does not have READ access, try reopening file */
+			HANDLE read_handle = ReOpenFile(handle, desired_access | GENERIC_READ,
+				FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, FILE_FLAG_BACKUP_SEMANTICS);
 			if (read_handle == INVALID_HANDLE_VALUE)
 			{
-				log_warning("Reopen file failed, error code %d. Assume not symlink.\n", GetLastError());
-				goto after_symlink_test;
+				log_warning("Reopen symlink file failed, error code %d. Assume not symlink.\n", GetLastError());
+				return 0;
 			}
 			CloseHandle(handle);
-			log_info("Reopen succeeded.\n");
 			handle = read_handle;
 		}
 		if (winfs_read_symlink(handle, target, buflen) > 0)
@@ -882,18 +879,43 @@ static int winfs_open(const char *pathname, int flags, int mode, struct file **f
 				log_info("Specified O_NOFOLLOW but not O_PATH, returning ELOOP.\n");
 				return -ELOOP;
 			}
-			is_symlink = 1;
 		}
-		log_info("Opening file directly.\n");
 	}
-	else if (attributeInfo.FileAttributes != INVALID_FILE_ATTRIBUTES && !(attributeInfo.FileAttributes & FILE_ATTRIBUTE_DIRECTORY) && (flags & O_DIRECTORY))
+	else if (!(attribute_info.FileAttributes & FILE_ATTRIBUTE_DIRECTORY) && (flags & O_DIRECTORY))
 	{
 		log_warning("Not a directory.\n");
 		return -ENOTDIR;
 	}
+	*hFile = handle;
+	return 0;
+}
 
-after_symlink_test:
-	if (!is_symlink && (flags & O_TRUNC) && ((flags & O_WRONLY) || (flags & O_RDWR)))
+static int winfs_open(const char *pathname, int flags, int mode, struct file **fp, char *target, int buflen)
+{
+	/* TODO: mode */
+	DWORD desired_access, create_disposition;
+	HANDLE handle;
+
+	if (flags & O_PATH)
+		desired_access = 0;
+	else if (flags & O_RDWR)
+		desired_access = GENERIC_READ | GENERIC_WRITE;
+	else if (flags & O_WRONLY)
+		desired_access = GENERIC_WRITE;
+	else
+		desired_access = GENERIC_READ;
+	if (flags & __O_DELETE)
+		desired_access |= DELETE;
+	if (flags & O_EXCL)
+		create_disposition = FILE_CREATE;
+	else if (flags & O_CREAT)
+		create_disposition = FILE_OPEN_IF;
+	else
+		create_disposition = FILE_OPEN;
+	int r = open_file(&handle, pathname, desired_access, create_disposition, flags, fp != NULL, target, buflen);
+	if (r < 0 || r == 1)
+		return r;
+	if ((flags & O_TRUNC) && ((flags & O_WRONLY) || (flags & O_RDWR)))
 	{
 		/* Truncate the file */
 		FILE_END_OF_FILE_INFORMATION info;
@@ -906,7 +928,8 @@ after_symlink_test:
 
 	if (fp)
 	{
-		file = (struct winfs_file *)kmalloc(sizeof(struct winfs_file) + pathlen);
+		int pathlen = strlen(pathname);
+		struct winfs_file *file = (struct winfs_file *)kmalloc(sizeof(struct winfs_file) + pathlen);
 		file->base_file.op_vtable = &winfs_ops;
 		file->base_file.ref = 1;
 		file->base_file.flags = flags;
