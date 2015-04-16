@@ -22,11 +22,13 @@
 #include <common/sigframe.h>
 #include <common/signal.h>
 #include <syscall/mm.h>
+#include <syscall/process.h>
 #include <syscall/sig.h>
 #include <syscall/syscall.h>
 #include <log.h>
 #include <str.h>
 
+#include <limits.h>
 #include <stdbool.h>
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
@@ -34,9 +36,11 @@
 struct signal_data
 {
 	HANDLE thread;
+	HANDLE iocp;
 	HANDLE sigread, sigwrite;
 	HANDLE sigevent;
 	CRITICAL_SECTION mutex;
+	HANDLE process_wait_semaphore;
 	
 	HANDLE main_thread;
 	struct sigaction actions[_NSIG];
@@ -49,13 +53,51 @@ struct signal_data
 #define SIGNAL_PACKET_SHUTDOWN		0 /* Shutdown signal thread */
 #define SIGNAL_PACKET_KILL			1 /* Send signal */
 #define SIGNAL_PACKET_DELIVER		2 /* Deliver existing pending signal to thread */
+#define SIGNAL_PACKET_ADD_PROCESS	3 /* Add a child process for listening */
 struct signal_packet
 {
 	int type;
-	siginfo_t info;
+	union
+	{
+		siginfo_t info;
+		struct process *proc;
+	};
 };
 
 static struct signal_data *signal;
+
+/* Create a uni-direction, message based pipe */
+static volatile long process_pipe_count = 0;
+static bool create_pipe(HANDLE *read, HANDLE *write)
+{
+	char pipe_name[256];
+	long pipe_id = InterlockedIncrement(&process_pipe_count);
+	ksprintf(pipe_name, "\\\\.\\pipe\\flinux-fsig%d-%d", GetCurrentProcessId(), pipe_id);
+	HANDLE server = CreateNamedPipeA(pipe_name,
+		PIPE_ACCESS_INBOUND | FILE_FLAG_FIRST_PIPE_INSTANCE | FILE_FLAG_OVERLAPPED,
+		PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
+		1,
+		PAGE_SIZE,
+		PAGE_SIZE,
+		0,
+		NULL);
+	if (server == INVALID_HANDLE_VALUE)
+		return false;
+	HANDLE client = CreateFileA(pipe_name, GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+	if (client == INVALID_HANDLE_VALUE)
+	{
+		CloseHandle(server);
+		return false;
+	}
+	if (!ConnectNamedPipe(server, NULL) && GetLastError() != ERROR_PIPE_CONNECTED)
+	{
+		CloseHandle(server);
+		CloseHandle(client);
+	}
+	*read = server;
+	*write = client;
+	return true;
+}
 
 static void signal_default_handler(siginfo_t *info)
 {
@@ -100,58 +142,92 @@ static void signal_deliver(siginfo_t *info)
 	ResumeThread(signal->main_thread);
 }
 
+static void signal_thread_handle_kill(struct siginfo *info)
+{
+	int signo = info->si_signo;
+	EnterCriticalSection(&signal->mutex);
+	if (!sigismember(&signal->pending, signo))
+	{
+		if (sigismember(&signal->mask, signo) || !signal->can_accept_signal)
+		{
+			/* Cannot deliver the signal, mark it as pending and save the info */
+			sigaddset(&signal->pending, signo);
+			signal->info[signo] = *info;
+		}
+		else
+			signal_deliver(info);
+	}
+	LeaveCriticalSection(&signal->mutex);
+}
+
+static void signal_thread_handle_process_terminated(struct process *proc)
+{
+	struct siginfo info;
+	info.si_signo = SIGCHLD;
+	info.si_code = 0;
+	info.si_errno = 0;
+	signal_thread_handle_kill(&info);
+	proc->terminated = true;
+	ReleaseSemaphore(signal->process_wait_semaphore, 1, NULL);
+}
+
 static DWORD WINAPI signal_thread(LPVOID parameter)
 {
 	/* CAUTION: Never use logging in signal thread */
+	OVERLAPPED packet_overlapped;
+	char buf[1];
+	struct signal_packet packet;
+	ReadFile(signal->sigread, &packet, sizeof(struct signal_packet), NULL, &packet_overlapped);
 	for (;;)
 	{
-		struct signal_packet packet;
-		DWORD read;
-		if (!ReadFile(signal->sigread, &packet, sizeof(struct signal_packet), &read, NULL)
-			|| read != sizeof(struct signal_packet))
+		DWORD bytes;
+		ULONG_PTR key;
+		LPOVERLAPPED overlapped;
+		BOOL succeed = GetQueuedCompletionStatus(signal->iocp, &bytes, &key, &overlapped, INFINITE);
+		if (key == 0)
 		{
-			/* TODO: Log error message */
-			return 1;
-		}
-		switch (packet.type)
-		{
-		case SIGNAL_PACKET_SHUTDOWN: return 0;
-		case SIGNAL_PACKET_KILL:
-		{
-			int signo = packet.info.si_signo;
-			EnterCriticalSection(&signal->mutex);
-			if (!sigismember(&signal->pending, signo))
+			/* Signal packet */
+			switch (packet.type)
 			{
-				if (sigismember(&signal->mask, signo) || !signal->can_accept_signal)
-				{
-					/* Cannot deliver the signal, mark it as pending and save the info */
-					sigaddset(&signal->pending, signo);
-					signal->info[signo] = packet.info;
-				}
-				else
-					signal_deliver(&packet.info);
+			case SIGNAL_PACKET_SHUTDOWN: return 0;
+			case SIGNAL_PACKET_KILL:
+			{
+				signal_thread_handle_kill(&packet.info);
+				break;
 			}
-			LeaveCriticalSection(&signal->mutex);
-			break;
+			case SIGNAL_PACKET_DELIVER:
+			{
+				EnterCriticalSection(&signal->mutex);
+				for (int i = 0; i < _NSIG; i++)
+					if (sigismember(&signal->pending, i) && !sigismember(&signal->mask, i) && signal->can_accept_signal)
+					{
+						sigdelset(&signal->pending, i);
+						signal_deliver(&signal->info[i]);
+						break;
+					}
+				LeaveCriticalSection(&signal->mutex);
+				break;
+			}
+			case SIGNAL_PACKET_ADD_PROCESS:
+			{
+				struct process *proc = packet.proc;
+				CreateIoCompletionPort(proc->hPipe, signal->iocp, (ULONG_PTR)proc, 1);
+				if (!ReadFile(proc->hPipe, buf, 1, NULL, &proc->overlapped) && GetLastError() != ERROR_IO_PENDING)
+					signal_thread_handle_process_terminated(proc);
+				break;
+			}
+			default:
+			{
+				/* TODO: Log error message */
+				return 1;
+			}
+			}
+			ReadFile(signal->sigread, &packet, sizeof(struct signal_packet), NULL, &packet_overlapped);
 		}
-		case SIGNAL_PACKET_DELIVER:
+		else
 		{
-			EnterCriticalSection(&signal->mutex);
-			for (int i = 0; i < _NSIG; i++)
-				if (sigismember(&signal->pending, i) && !sigismember(&signal->mask, i) && signal->can_accept_signal)
-				{
-					sigdelset(&signal->pending, i);
-					signal_deliver(&signal->info[i]);
-					break;
-				}
-			LeaveCriticalSection(&signal->mutex);
-			break;
-		}
-		default:
-		{
-			/* TODO: Log error message */
-			return 1;
-		}
+			struct process *proc = (struct process *)key;
+			signal_thread_handle_process_terminated(proc);
 		}
 	}
 }
@@ -240,6 +316,26 @@ static void send_packet(HANDLE sigwrite, struct signal_packet *packet)
 	/* TODO: Handle error */
 }
 
+HANDLE signal_get_process_wait_semaphore()
+{
+	return signal->process_wait_semaphore;
+}
+
+void signal_add_process(struct process *proc)
+{
+	HANDLE read, write;
+	create_pipe(&read, &write);
+	proc->hPipe = read;
+	/* Duplicate and leak write end handle in the child process */
+	HANDLE target;
+	DuplicateHandle(GetCurrentProcess(), write, proc->hProcess, &target, 0, FALSE,
+		DUPLICATE_SAME_ACCESS | DUPLICATE_CLOSE_SOURCE);
+	struct signal_packet packet;
+	packet.type = SIGNAL_PACKET_ADD_PROCESS;
+	packet.proc = proc;
+	send_packet(signal->sigwrite, &packet);
+}
+
 /* Deliver signal when masked pending signal is being unmasked */
 /* Caller ensures the signal mutex is acquired */
 static void send_pending_signal()
@@ -271,39 +367,6 @@ DEFINE_SYSCALL(rt_sigreturn, uintptr_t, bx, uintptr_t, cx, uintptr_t, dx, uintpt
 	dbt_sigreturn(&frame->uc.uc_mcontext);
 }
 
-/* Create a uni-direction, message based pipe */
-static volatile long process_pipe_count = 0;
-static bool create_pipe(HANDLE *read, HANDLE *write)
-{
-	char pipe_name[256];
-	long pipe_id = InterlockedIncrement(&process_pipe_count);
-	ksprintf(pipe_name, "\\\\.\\pipe\\flinux-fsig%d-%d", GetCurrentProcessId(), pipe_id);
-	HANDLE server = CreateNamedPipeA(pipe_name,
-		PIPE_ACCESS_INBOUND | FILE_FLAG_FIRST_PIPE_INSTANCE,
-		PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
-		1,
-		PAGE_SIZE,
-		PAGE_SIZE,
-		0,
-		NULL);
-	if (server == INVALID_HANDLE_VALUE)
-		return false;
-	HANDLE client = CreateFileA(pipe_name, GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
-	if (client == INVALID_HANDLE_VALUE)
-	{
-		CloseHandle(server);
-		return false;
-	}
-	if (!ConnectNamedPipe(server, NULL) && GetLastError() != ERROR_PIPE_CONNECTED)
-	{
-		CloseHandle(server);
-		CloseHandle(client);
-	}
-	*read = server;
-	*write = client;
-	return true;
-}
-
 static void signal_init_private()
 {
 	/* Initialize private structures and handles */
@@ -315,6 +378,8 @@ static void signal_init_private()
 	}
 	signal->sigevent = CreateEvent(NULL, TRUE, FALSE, NULL);
 	signal->can_accept_signal = true;
+	signal->process_wait_semaphore = CreateSemaphoreW(NULL, 0, LONG_MAX, NULL);
+	signal->iocp = CreateIoCompletionPort(signal->sigread, NULL, 0, 1);
 
 	/* Get the handle to main thread */
 	if (!DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &signal->main_thread,

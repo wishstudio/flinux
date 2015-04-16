@@ -24,6 +24,7 @@
 #include <common/wait.h>
 #include <syscall/mm.h>
 #include <syscall/process.h>
+#include <syscall/sig.h>
 #include <syscall/vfs.h>
 #include <syscall/syscall.h>
 #include <datetime.h>
@@ -44,9 +45,8 @@ struct process_data
 {
 	void *stack_base;
 	int child_count;
-	pid_t child_pids[MAX_CHILD_COUNT];
-	/* Use a separated array for handles allows direct WaitForMultipleObjects() invocation */
-	HANDLE child_handles[MAX_CHILD_COUNT];
+	struct slist child_list, child_freelist;
+	struct process child[MAX_CHILD_COUNT];
 } _process;
 
 static struct process_data *const process = &_process;
@@ -54,6 +54,10 @@ static struct process_data *const process = &_process;
 void process_init(void *stack_base)
 {
 	process->child_count = 0;
+	slist_init(&process->child_list);
+	slist_init(&process->child_freelist);
+	for (int i = 0; i < MAX_CHILD_COUNT; i++)
+		slist_add(&process->child_freelist, &process->child[i].list);
 	/* TODO: Avoid VirtualAlloc() to reduce potential virtual address space collision */
 	if (stack_base)
 		process->stack_base = stack_base;
@@ -70,9 +74,19 @@ void *process_get_stack_base()
 
 void process_add_child(pid_t pid, HANDLE handle)
 {
-	int i = process->child_count++;
-	process->child_pids[i] = pid;
-	process->child_handles[i] = handle;
+	if (slist_empty(&process->child_freelist))
+	{
+		log_error("process: Maximum number of process exceeded.\n");
+		__debugbreak();
+	}
+	struct process *proc = slist_entry(slist_next(&process->child_freelist), struct process, list);
+	slist_remove(&process->child_freelist, &proc->list);
+	slist_add(&process->child_list, &proc->list);
+	proc->pid = pid;
+	proc->hProcess = handle;
+	proc->terminated = false;
+	process->child_count++;
+	signal_add_process(proc);
 }
 
 static pid_t process_wait(pid_t pid, int *status, int options, struct rusage *rusage)
@@ -85,17 +99,27 @@ static pid_t process_wait(pid_t pid, int *status, int options, struct rusage *ru
 		log_error("Unhandled option WCONTINUED\n");
 	if (rusage)
 		log_error("rusage not supported.\n");
-	int id = -1;
+	struct process *proc = NULL;
 	if (pid > 0)
 	{
-		for (int i = 0; i < process->child_count; i++)
-			if (process->child_pids[i] == pid)
+		slist_iterate_safe(&process->child_list, prev, cur)
+		{
+			struct process *p = slist_entry(cur, struct process, list);
+			if (p->pid == pid)
 			{
-				DWORD result = WaitForSingleObject(process->child_handles[i], INFINITE);
-				id = i;
+				proc = p;
+				DWORD result = signal_wait(1, &proc->hProcess, INFINITE);
+				if (result == WAIT_INTERRUPTED)
+					return -EINTR;
+				/* Decrement semaphore */
+				WaitForSingleObject(signal_get_process_wait_semaphore(), INFINITE);
+				/* Remove from child list */
+				slist_remove(prev, cur);
+				process->child_count--;
 				break;
 			}
-		if (id == -1)
+		}
+		if (proc == NULL)
 		{
 			log_warning("pid %d is not a child.\n", pid);
 			return -ECHILD;
@@ -108,29 +132,33 @@ static pid_t process_wait(pid_t pid, int *status, int options, struct rusage *ru
 			log_warning("No childs.\n");
 			return -ECHILD;
 		}
-		DWORD result = WaitForMultipleObjects(process->child_count, process->child_handles, FALSE, INFINITE);
-		if (result < WAIT_OBJECT_0 || result >= WAIT_OBJECT_0 + process->child_count)
+		HANDLE sem = signal_get_process_wait_semaphore();
+		DWORD result = signal_wait(1, &sem, INFINITE);
+		if (result == WAIT_INTERRUPTED)
+			return -EINTR;
+		/* Find the terminated child */
+		slist_iterate_safe(&process->child_list, prev, cur)
 		{
-			log_error("WaitForMultipleObjects(): Unexpected return.\n");
-			return -1;
+			struct process *p = slist_entry(cur, struct process, list);
+			if (p->terminated)
+			{
+				proc = p;
+				/* Remove from child list */
+				slist_remove(prev, cur);
+				process->child_count--;
+				break;
+			}
 		}
-		id = result - WAIT_OBJECT_0;
 	}
 	else
 	{
-		log_error("pid != %d unhandled\n");
+		log_error("pid unhandled.\n");
 		return -EINVAL;
 	}
 	DWORD exitCode;
-	GetExitCodeProcess(process->child_handles[id], &exitCode);
-	CloseHandle(process->child_handles[id]);
-	pid = process->child_pids[id];
-	for (int i = id; i + 1 < process->child_count; i++)
-	{
-		process->child_pids[i] = process->child_pids[i + 1];
-		process->child_handles[i] = process->child_handles[i + 1];
-	}
-	process->child_count--;
+	GetExitCodeProcess(proc->hProcess, &exitCode);
+	CloseHandle(proc->hProcess);
+	pid = proc->pid;
 	if (status)
 		*status = W_EXITCODE(exitCode, 0);
 	return pid;

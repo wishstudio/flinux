@@ -21,11 +21,22 @@
 
 #include <common/types.h>
 #include <common/utsname.h>
+#include <lib/slist.h>
 
+#include <stdbool.h>
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
 #define STACK_SIZE	1048576
+
+struct process
+{
+	struct slist list;
+	pid_t pid;
+	HANDLE hProcess, hPipe;
+	OVERLAPPED overlapped;
+	bool terminated;
+};
 
 void process_init(void *stack_base);
 void process_shutdown();

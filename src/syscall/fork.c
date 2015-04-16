@@ -187,12 +187,11 @@ static pid_t fork_process(struct syscall_context *context, unsigned long flags, 
 	WriteProcessMemory(info.hProcess, (LPVOID)context->esp, (LPCVOID)context->esp,
 		(SIZE_T)((char *)stack_base + STACK_SIZE - context->esp), NULL);
 
-	ResumeThread(info.hThread);
-
-	CloseHandle(info.hThread);
-	/* Process handled will be used for wait() */
-	log_info("Child pid: %d\n", info.dwProcessId);
 	process_add_child(info.dwProcessId, info.hProcess);
+	ResumeThread(info.hThread);
+	CloseHandle(info.hThread);
+
+	log_info("Child pid: %d\n", info.dwProcessId);
 	return info.dwProcessId;
 
 fail:
