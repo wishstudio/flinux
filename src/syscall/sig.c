@@ -547,6 +547,23 @@ DEFINE_SYSCALL(rt_sigprocmask, int, how, const sigset_t *, set, sigset_t *, olds
 	return 0;
 }
 
+DEFINE_SYSCALL(rt_sigsuspend, const sigset_t *, mask)
+{
+	log_info("rt_sigsuspend(%p)\n", mask);
+	if (!mm_check_read(mask, sizeof(*mask)))
+		return -EFAULT;
+	sigset_t oldmask;
+	EnterCriticalSection(&signal->mutex);
+	oldmask = signal->mask;
+	signal->mask = *mask;
+	LeaveCriticalSection(&signal->mutex);
+	signal_wait(0, NULL, INFINITE);
+	EnterCriticalSection(&signal->mutex);
+	signal->mask = oldmask;
+	LeaveCriticalSection(&signal->mutex);
+	return -EINTR;
+}
+
 DEFINE_SYSCALL(sigaltstack, const stack_t *, ss, stack_t *, oss)
 {
 	log_info("sigaltstack(ss=%p, oss=%p)\n", ss, oss);
