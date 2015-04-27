@@ -7,14 +7,15 @@ Foreign LINUX is a dynamic binary translator and a Linux system call interface e
 
 This project is in heavy development. It is currently capable of running many Linux utilities. Including but not limiting to:
 
-* Basic utilities: **bash**, **vim**, **nano**
+* Shells: **bash**, **zsh**
+* Editors: **vim**, **nano**
 * Programming environments: **python**, **gcc**
 * Package managers: **pacman**
 * Terminal-based games: **vitetris**, **nethack**
 * Network utilities: **wget**, **curl**, **ssh**
 * X applications: **xeyes**, **xclock**, **glxgears**
 
-Some major missing functions are file permissions, process management, signals, multi-threading, and more. Applications depending on these technologies will not work properly.
+Some major missing functions are file permissions, process management, multi-threading, and more. Applications depending on these technologies will not work properly.
 
 How to use
 =====
