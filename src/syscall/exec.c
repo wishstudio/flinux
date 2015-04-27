@@ -227,7 +227,8 @@ static int load_elf(struct file *f, struct binfmt *binary)
 				prot |= PROT_EXEC;
 			if (eh.e_type == ET_DYN)
 				addr += elf->load_base;
-			mm_mmap((void*)addr, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED, 0, NULL, 0);
+			mm_mmap((void*)addr, size, PROT_READ | PROT_WRITE | PROT_EXEC,
+				MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED | MAP_POPULATE, 0, NULL, 0);
 			char *vaddr = (char *)ph->p_vaddr;
 			if (eh.e_type == ET_DYN)
 				vaddr += elf->load_base;

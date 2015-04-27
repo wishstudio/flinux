@@ -960,8 +960,9 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, int internal_flags
 		map_entry_range(entry, start_page, last_page);
 		if ((prot & PROT_WRITE) == 0)
 			VirtualProtect(GET_PAGE_ADDRESS(start_page), (last_page - start_page + 1) * PAGE_SIZE, prot_linux2win(prot), &oldProtect);
+		start_block++;
 	}
-	if (end_block > start_block && get_section_handle(end_block))
+	if (end_block >= start_block && get_section_handle(end_block))
 	{
 		if (!take_block_ownership(end_block))
 		{
@@ -974,6 +975,13 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, int internal_flags
 		map_entry_range(entry, first_page, end_page);
 		if ((prot & PROT_WRITE) == 0)
 			VirtualProtect(GET_PAGE_ADDRESS(first_page), (end_page - first_page + 1) * PAGE_SIZE, prot_linux2win(prot), &oldProtect);
+		end_block--;
+	}
+	if ((flags & MAP_POPULATE) && start_block < end_block)
+	{
+		for (size_t i = start_block; i <= end_block; i++)
+			allocate_block(i);
+		map_entry_range(entry, GET_FIRST_PAGE_OF_BLOCK(start_block), GET_FIRST_PAGE_OF_BLOCK(end_block));
 	}
 	log_info("Allocated memory: [%p, %p)\n", addr, (size_t)addr + length);
 	return addr;
