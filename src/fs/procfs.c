@@ -18,6 +18,7 @@
  */
 
 #include <fs/procfs.h>
+#include <fs/sysfs.h>
 #include <fs/virtual.h>
 #include <log.h>
 #include <str.h>
@@ -54,8 +55,9 @@ static struct virtualfs_text_desc meminfo_desc = VIRTUALFS_TEXT(meminfo_getbufle
 
 static const struct virtualfs_directory_desc procfs =
 {
-	.mountpoint = "/proc",
+	.type = VIRTUALFS_TYPE_DIRECTORY,
 	.entries = {
+		VIRTUALFS_ENTRY("sys", sysfs_desc)
 		VIRTUALFS_ENTRY("meminfo", meminfo_desc)
 		VIRTUALFS_ENTRY_END()
 	}
@@ -63,5 +65,5 @@ static const struct virtualfs_directory_desc procfs =
 
 struct file_system *procfs_alloc()
 {
-	return virtualfs_alloc(&procfs);
+	return virtualfs_alloc("/proc", &procfs);
 }

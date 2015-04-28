@@ -67,6 +67,7 @@
     <ClInclude Include="src\fs\procfs.h" />
     <ClInclude Include="src\fs\random.h" />
     <ClInclude Include="src\fs\socket.h" />
+    <ClInclude Include="src\fs\sysfs.h" />
     <ClInclude Include="src\fs\virtual.h" />
     <ClInclude Include="src\fs\winfs.h" />
     <ClInclude Include="src\heap.h" />
@@ -99,6 +100,7 @@
     <ClCompile Include="src\fs\devfs.c" />
     <ClCompile Include="src\fs\eventfd.c" />
     <ClCompile Include="src\fs\procfs.c" />
+    <ClCompile Include="src\fs\sysfs.c" />
     <ClCompile Include="src\fs\virtual.c" />
     <ClCompile Include="src\fs\null.c" />
     <ClCompile Include="src\fs\pipe.c" />

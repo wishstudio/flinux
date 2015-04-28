@@ -22,13 +22,31 @@
 #include <fs/file.h>
 
 #define VIRTUALFS_TYPE_INVALID		0	/* Invalid entry */
-#define VIRTUALFS_TYPE_CUSTOM		1	/* Fully custom character file */
-#define VIRTUALFS_TYPE_CHAR			2	/* Character device */
-#define VIRTUALFS_TYPE_TEXT			3	/* In-memory read only text file */
+#define VIRTUALFS_TYPE_DIRECTORY	1	/* Directory */
+#define VIRTUALFS_TYPE_CUSTOM		2	/* Fully custom character file */
+#define VIRTUALFS_TYPE_CHAR			3	/* Character device */
+#define VIRTUALFS_TYPE_TEXT			4	/* In-memory read only text file */
 
 struct virtualfs_desc
 {
 	int type;
+};
+
+struct virtualfs_entry
+{
+	char name[32];
+	struct virtualfs_desc *desc;
+};
+#define VIRTUALFS_ENTRY(_name, _desc) \
+	{ .name = _name, .desc = (struct virtualfs_desc *)&_desc },
+#define VIRTUALFS_ENTRY_END() \
+	{ .name = "", .desc = NULL },
+
+/* VIRTUALFS_TYPE_DIRECTORY */
+struct virtualfs_directory_desc
+{
+	int type;
+	struct virtualfs_entry entries[];
 };
 
 /* VIRTUALFS_TYPE_CUSTOM */
@@ -79,22 +97,6 @@ struct virtualfs_text_desc
 		.gettext = _gettext, \
 	}
 
-struct virtualfs_entry
-{
-	char name[32];
-	struct virtualfs_desc *desc;
-};
-#define VIRTUALFS_ENTRY(_name, _desc) \
-	{ .name = _name, .desc = (struct virtualfs_desc *)&_desc },
-#define VIRTUALFS_ENTRY_END() \
-	{ .name = "", .desc = NULL },
-
-struct virtualfs_directory_desc
-{
-	char mountpoint[32];
-	struct virtualfs_entry entries[];
-};
-
 struct virtualfs_custom
 {
 	struct file base_file;
@@ -108,4 +110,4 @@ void virtualfs_custom_init(void *file, struct virtualfs_desc *desc);
 int virtualfs_custom_stat(struct file *f, struct newstat *buf);
 
 /* File system calls */
-struct file_system *virtualfs_alloc(const struct virtualfs_directory_desc *dir);
+struct file_system *virtualfs_alloc(const char *mountpoint, const struct virtualfs_directory_desc *dir);

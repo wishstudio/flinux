@@ -220,6 +220,9 @@
     <ClInclude Include="src\fs\procfs.h">
       <Filter>fs</Filter>
     </ClInclude>
+    <ClInclude Include="src\fs\sysfs.h">
+      <Filter>fs</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
@@ -296,6 +299,9 @@
       <Filter>fs</Filter>
     </ClCompile>
     <ClCompile Include="src\fs\procfs.c">
+      <Filter>fs</Filter>
+    </ClCompile>
+    <ClCompile Include="src\fs\sysfs.c">
       <Filter>fs</Filter>
     </ClCompile>
   </ItemGroup>

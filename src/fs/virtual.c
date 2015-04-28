@@ -218,6 +218,7 @@ static struct file *virtualfs_text_alloc(struct virtualfs_text_desc *desc)
 struct virtualfs_directory
 {
 	struct file base_file;
+	const char *mountpoint;
 	const struct virtualfs_directory_desc *desc;
 	int position; /* Current position for getdents() */
 	int pathlen;
@@ -235,8 +236,8 @@ static int virtualfs_directory_getpath(struct file *f, char *buf)
 {
 	struct virtualfs_directory *file = (struct virtualfs_directory *)f;
 	/* Copy mountpoint */
-	int len_mountpoint = strlen(file->desc->mountpoint);
-	memcpy(buf, file->desc->mountpoint, len_mountpoint);
+	int len_mountpoint = strlen(file->mountpoint);
+	memcpy(buf, file->mountpoint, len_mountpoint);
 	buf[len_mountpoint] = '/';
 	/* Copy subpath */
 	memcpy(buf + len_mountpoint + 1, file->path, file->pathlen);
@@ -306,6 +307,7 @@ static int virtualfs_directory_getdents(struct file *f, void *dirent, size_t cou
 			name = file->desc->entries[i].name;
 			switch (file->desc->entries[i].desc->type)
 			{
+			case VIRTUALFS_TYPE_DIRECTORY: type = DT_DIR; break;
 			case VIRTUALFS_TYPE_CUSTOM: type = DT_CHR; break;
 			case VIRTUALFS_TYPE_CHAR: type = DT_CHR; break;
 			case VIRTUALFS_TYPE_TEXT: type = DT_REG; break;
@@ -336,13 +338,14 @@ static const struct file_ops virtualfs_directory_ops =
 	.getdents = virtualfs_directory_getdents,
 };
 
-static struct file *virtualfs_directory_alloc(const struct virtualfs_directory_desc *desc, const char *path)
+static struct file *virtualfs_directory_alloc(const struct virtualfs_directory_desc *desc, const char *mountpoint, const char *path)
 {
 	int pathlen = strlen(path);
 	struct virtualfs_directory *file = (struct virtualfs_directory *)kmalloc(sizeof(struct virtualfs_directory) + pathlen);
 	file->base_file.op_vtable = &virtualfs_directory_ops;
 	file->base_file.flags = O_RDWR;
 	file->base_file.ref = 1;
+	file->mountpoint = mountpoint;
 	file->desc = desc;
 	file->position = 0;
 	file->pathlen = strlen(path);
@@ -359,16 +362,32 @@ struct virtualfs
 static int virtualfs_open(struct file_system *fs, const char *path, int flags, int mode, struct file **p, char *target, int buflen)
 {
 	const struct virtualfs_directory_desc *dir = ((struct virtualfs *)fs)->dir;
-	if (*path == 0 || !strcmp(path, "."))
+	const char *fullpath = path;
+do_component:;
+	/* Get current component */
+	const char *end = path;
+	while (*end && *end != '/')
+		end++;
+	if (path == end || (path + 1 == end && *path == '.'))
 	{
 		if (p)
-			*p = virtualfs_directory_alloc(dir, path);
+			*p = virtualfs_directory_alloc(dir, fs->mountpoint, fullpath);
 		return 0;
 	}
 	for (int i = 0; dir->entries[i].desc; i++)
 	{
-		if (!strcmp(dir->entries[i].name, path))
+		if (!strncmp(dir->entries[i].name, path, end - path))
 		{
+			if (dir->entries[i].desc->type == VIRTUALFS_TYPE_DIRECTORY)
+			{
+				dir = (struct virtualfs_directory_desc *)dir->entries[i].desc;
+				path = end;
+				if (*path == '/')
+					path++;
+				goto do_component;
+			}
+			if (*end)
+				return -ENOTDIR;
 			if (flags & O_DIRECTORY)
 				return -ENOTDIR;
 			if (!p) /* Don't need allocate file */
@@ -381,7 +400,7 @@ static int virtualfs_open(struct file_system *fs, const char *path, int flags, i
 				*p = desc->alloc();
 				return 0;
 			}
-				
+
 			case VIRTUALFS_TYPE_CHAR:
 			{
 				struct virtualfs_char_desc *desc = (struct virtualfs_char_desc *)dir->entries[i].desc;
@@ -407,10 +426,10 @@ static int virtualfs_open(struct file_system *fs, const char *path, int flags, i
 	return -ENOENT;
 }
 
-struct file_system *virtualfs_alloc(const struct virtualfs_directory_desc *dir)
+struct file_system *virtualfs_alloc(const char *mountpoint, const struct virtualfs_directory_desc *dir)
 {
 	struct virtualfs *fs = (struct virtualfs *)kmalloc(sizeof(struct virtualfs));
-	fs->base_fs.mountpoint = dir->mountpoint;
+	fs->base_fs.mountpoint = mountpoint;
 	fs->base_fs.open = virtualfs_open;
 	fs->dir = dir;
 	return (struct file_system *)fs;
