@@ -501,7 +501,10 @@ static int winfs_getdents(struct file *f, void *dirent, size_t count, getdents_c
 
 	for (;;)
 	{
-		int buffer_size = (count - size) / 2; /* In worst case, a UTF-16 character (2 bytes) requires 4 bytes to store */
+		/* sizeof(FILE_ID_FULL_DIR_INFORMATION) is larger than both sizeof(struct dirent) and sizeof(struct dirent64)
+		 * So we don't need to worry about header size.
+		 * For the file name, in worst case, a UTF-16 character (2 bytes) requires 4 bytes to store */
+		int buffer_size = (count - size) / 2;
 		if (buffer_size >= BUFFER_SIZE)
 			buffer_size = BUFFER_SIZE;
 		status = NtQueryDirectoryFile(winfile->handle, NULL, NULL, NULL, &status_block, buffer, buffer_size, FileIdFullDirectoryInformation, FALSE, NULL, winfile->restart_scan);
@@ -559,7 +562,7 @@ static int winfs_getdents(struct file *f, void *dirent, size_t count, getdents_c
 				else
 					log_warning("NtCreateFile() failed, status: %x\n", status);
 			}
-			intptr_t reclen = fill_callback(p, inode, info->FileName, info->FileNameLength / 2, type, count - size);
+			intptr_t reclen = fill_callback(p, inode, info->FileName, info->FileNameLength / 2, type, count - size, GETDENTS_UTF16);
 			if (reclen < 0)
 				return reclen;
 			size += reclen;

@@ -18,6 +18,7 @@
  */
 
 #include <common/fcntl.h>
+#include <common/fs.h>
 #include <common/poll.h>
 #include <fs/virtual.h>
 #include <syscall/mm.h>
@@ -126,6 +127,139 @@ static struct file *virtualfs_char_alloc(struct virtualfs_char_desc *desc)
 	return (struct file *)file;
 }
 
+struct virtualfs_directory
+{
+	struct file base_file;
+	const struct virtualfs_directory_desc *desc;
+	int position; /* Current position for getdents() */
+	int pathlen;
+	char path[];
+};
+
+static int virtualfs_directory_close(struct file *f)
+{
+	kfree(f, sizeof(struct virtualfs_directory));
+	return 0;
+}
+
+static int virtualfs_directory_getpath(struct file *f, char *buf)
+{
+	struct virtualfs_directory *file = (struct virtualfs_directory *)f;
+	/* Copy mountpoint */
+	int len_mountpoint = strlen(file->desc->mountpoint);
+	memcpy(buf, file->desc->mountpoint, len_mountpoint);
+	buf[len_mountpoint] = '/';
+	/* Copy subpath */
+	memcpy(buf + len_mountpoint + 1, file->path, file->pathlen);
+	buf[len_mountpoint + 1 + file->pathlen] = 0;
+	return len_mountpoint + 1 + file->pathlen;
+}
+
+static int virtualfs_directory_llseek(struct file *f, loff_t offset, loff_t *newoffset, int whence)
+{
+	struct virtualfs_directory *file = (struct virtualfs_directory *)f;
+	if (whence == SEEK_SET && offset == 0)
+	{
+		file->position = 0;
+		*newoffset = 0;
+		return 0;
+	}
+	else
+		return -EINVAL;
+}
+
+static int virtualfs_directory_stat(struct file *f, struct newstat *buf)
+{
+	INIT_STRUCT_NEWSTAT_PADDING(buf);
+	buf->st_dev = mkdev(0, 1);
+	buf->st_ino = 0;
+	buf->st_mode = S_IFDIR + 0644;
+	buf->st_nlink = 1;
+	buf->st_uid = 0;
+	buf->st_gid = 0;
+	buf->st_rdev = 0;
+	buf->st_size = 0;
+	buf->st_blksize = PAGE_SIZE;
+	buf->st_blocks = 0;
+	buf->st_atime = 0;
+	buf->st_atime_nsec = 0;
+	buf->st_mtime = 0;
+	buf->st_mtime_nsec = 0;
+	buf->st_ctime = 0;
+	buf->st_ctime_nsec = 0;
+	return 0;
+}
+
+static int virtualfs_directory_getdents(struct file *f, void *dirent, size_t count, getdents_callback *fill_callback)
+{
+	struct virtualfs_directory *file = (struct virtualfs_directory *)f;
+	size_t size = 0;
+	char *buf = (char *)dirent;
+	for (;; file->position++)
+	{
+		const char *name;
+		int type;
+		if (file->position == 0)
+		{
+			name = ".";
+			type = DT_DIR;
+		}
+		else if (file->position == 1)
+		{
+			name = "..";
+			type = DT_DIR;
+		}
+		else
+		{
+			int i = file->position - 2;
+			if (file->desc->entries[i].desc == NULL)
+				return size;
+			name = file->desc->entries[i].name;
+			switch (file->desc->entries[i].desc->type)
+			{
+			case VIRTUALFS_TYPE_CUSTOM: type = DT_CHR; break;
+			case VIRTUALFS_TYPE_CHAR: type = DT_CHR; break;
+			default:
+				log_error("Invalid virtual fs file type. Corrupted internal data structure.\n");
+				__debugbreak();
+				return -EIO;
+			}
+		}
+		/* FIXME: Proper inode support (sync with stat()) */
+		intptr_t r = (*fill_callback)(buf, file->position, name, strlen(name), type, count, GETDENTS_UTF8);
+		if (r == GETDENTS_ERR_BUFFER_OVERFLOW)
+			return size;
+		if (r < 0)
+			return r;
+		count -= r;
+		size += r;
+		buf += r;
+	}
+}
+
+static const struct file_ops virtualfs_directory_ops =
+{
+	.close = virtualfs_directory_close,
+	.getpath = virtualfs_directory_getpath,
+	.llseek = virtualfs_directory_llseek,
+	.stat = virtualfs_directory_stat,
+	.getdents = virtualfs_directory_getdents,
+};
+
+static struct file *virtualfs_directory_alloc(const struct virtualfs_directory_desc *desc, const char *path)
+{
+	int pathlen = strlen(path);
+	struct virtualfs_directory *file = (struct virtualfs_directory *)kmalloc(sizeof(struct virtualfs_directory) + pathlen);
+	file->base_file.op_vtable = &virtualfs_directory_ops;
+	file->base_file.flags = O_RDWR;
+	file->base_file.ref = 1;
+	file->desc = desc;
+	file->position = 0;
+	file->pathlen = strlen(path);
+	memcpy(file->path, path, file->pathlen);
+	return (struct file *)file;
+}
+
 struct virtualfs
 {
 	struct file_system base_fs;
@@ -134,17 +268,13 @@ struct virtualfs
 
 static int virtualfs_open(struct file_system *fs, const char *path, int flags, int mode, struct file **p, char *target, int buflen)
 {
+	const struct virtualfs_directory_desc *dir = ((struct virtualfs *)fs)->dir;
 	if (*path == 0 || !strcmp(path, "."))
 	{
 		if (p)
-		{
-			log_error("Opening virtual fs directory unsupported.\n");
-			return -ENOENT;
-		}
-		else
-			return 0;
+			*p = virtualfs_directory_alloc(dir, path);
+		return 0;
 	}
-	const struct virtualfs_directory_desc *dir = ((struct virtualfs *)fs)->dir;
 	for (int i = 0; dir->entries[i].desc; i++)
 	{
 		if (!strcmp(dir->entries[i].name, path))
@@ -179,10 +309,10 @@ static int virtualfs_open(struct file_system *fs, const char *path, int flags, i
 	return -ENOENT;
 }
 
-struct file_system *virtualfs_alloc(char *mountpoint, const struct virtualfs_directory_desc *dir)
+struct file_system *virtualfs_alloc(const struct virtualfs_directory_desc *dir)
 {
 	struct virtualfs *fs = (struct virtualfs *)kmalloc(sizeof(struct virtualfs));
-	fs->base_fs.mountpoint = mountpoint;
+	fs->base_fs.mountpoint = dir->mountpoint;
 	fs->base_fs.open = virtualfs_open;
 	fs->dir = dir;
 	return (struct file_system *)fs;

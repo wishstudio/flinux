@@ -76,6 +76,7 @@ struct virtualfs_entry
 
 struct virtualfs_directory_desc
 {
+	char mountpoint[32];
 	struct virtualfs_entry entries[];
 };
 
@@ -92,4 +93,4 @@ void virtualfs_custom_init(void *file, struct virtualfs_desc *desc);
 int virtualfs_custom_stat(struct file *f, struct newstat *buf);
 
 /* File system calls */
-struct file_system *virtualfs_alloc(char *mountpoint, const struct virtualfs_directory_desc *dir);
+struct file_system *virtualfs_alloc(const struct virtualfs_directory_desc *dir);

@@ -28,7 +28,11 @@
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
-typedef intptr_t getdents_callback(void *buffer, uint64_t inode, const wchar_t *name, int namelen, char type, size_t size);
+#define GETDENTS_UTF8	1
+#define GETDENTS_UTF16	2
+
+#define GETDENTS_ERR_BUFFER_OVERFLOW	-100
+typedef intptr_t getdents_callback(void *buffer, uint64_t inode, const void *name, int namelen, char type, size_t size, int flags);
 
 struct file_ops
 {
@@ -62,7 +66,7 @@ struct file
 struct file_system
 {
 	struct file_system *next;
-	char *mountpoint;
+	const char *mountpoint;
 	int (*open)(struct file_system *fs, const char *path, int flags, int mode, struct file **fp, char *target, int buflen);
 	int (*symlink)(struct file_system *fs, const char *target, const char *linkpath);
 	int (*link)(struct file_system *fs, struct file *f, const char *newpath);

@@ -603,7 +603,7 @@ static int find_filesystem(const char *path, struct file_system **out_fs, const 
 	struct file_system *fs;
 	for (fs = vfs->fs_first; fs; fs = fs->next)
 	{
-		char *p = fs->mountpoint;
+		const char *p = fs->mountpoint;
 		const char *subpath = path;
 		while (*p && *p == *subpath)
 		{
@@ -1096,29 +1096,58 @@ DEFINE_SYSCALL(rmdir, const char *, pathname)
 	return sys_unlinkat(AT_FDCWD, pathname, AT_REMOVEDIR);
 }
 
-static intptr_t getdents_fill(void *buffer, uint64_t inode, const wchar_t *name, int namelen, char type, size_t size)
+static intptr_t getdents_fill(void *buffer, uint64_t inode, const void *name, int namelen, char type, size_t size, int flags)
 {
+	/* For UTF-16, there is guaranteed to be enough room */
+	if (flags & GETDENTS_UTF8)
+	{
+		/* For UTF-8, check whether we have enough room */
+		int reclen = (sizeof(struct linux_dirent) + namelen + 1 + 8) & ~(uintptr_t)8;
+		if (size < reclen)
+			return GETDENTS_ERR_BUFFER_OVERFLOW;
+	}
 	struct linux_dirent *dirent = (struct linux_dirent *)buffer;
 	dirent->d_ino = inode;
 	if (dirent->d_ino != inode)
 		return -EOVERFLOW;
 	dirent->d_off = 0; /* TODO */
-	intptr_t len = utf16_to_utf8_filename(name, namelen, dirent->d_name, size);
+	intptr_t len;
+	if (flags & GETDENTS_UTF16)
+		len = utf16_to_utf8_filename(name, namelen, dirent->d_name, size);
+	else
+	{
+		len = namelen;
+		memcpy(dirent->d_name, name, namelen + 1);
+	}
 	/* Don't care much about the size, there is guaranteed to be enough room */
 	dirent->d_name[len] = 0;
 	dirent->d_name[len + 1] = type;
 	log_info("Added %s, inode = %llx, type = %d\n", dirent->d_name, inode, type);
-	dirent->d_reclen = (sizeof(struct linux_dirent64) + len + 1 + 8) & ~(uintptr_t)8;
+	dirent->d_reclen = (sizeof(struct linux_dirent) + len + 1 + 8) & ~(uintptr_t)8;
 	return dirent->d_reclen;
 }
 
-static intptr_t getdents64_fill(void *buffer, uint64_t inode, const wchar_t *name, int namelen, char type, size_t size)
+static intptr_t getdents64_fill(void *buffer, uint64_t inode, const void *name, int namelen, char type, size_t size, int flags)
 {
+	if (flags & GETDENTS_UTF8)
+	{
+		/* For UTF-8, check whether we have enough room */
+		int reclen = (sizeof(struct linux_dirent) + namelen + 1 + 8) & ~(uintptr_t)8;
+		if (size < reclen)
+			return GETDENTS_ERR_BUFFER_OVERFLOW;
+	}
 	struct linux_dirent64 *dirent = (struct linux_dirent64 *)buffer;
 	dirent->d_ino = inode;
 	dirent->d_off = 0; /* TODO */
 	dirent->d_type = type;
-	intptr_t len = utf16_to_utf8_filename(name, namelen, dirent->d_name, size);
+	intptr_t len;
+	if (flags & GETDENTS_UTF16)
+		len = utf16_to_utf8_filename(name, namelen, dirent->d_name, size);
+	else
+	{
+		len = namelen;
+		memcpy(dirent->d_name, name, namelen + 1);
+	}
 	/* Don't care much about the size, there is guaranteed to be enough room */
 	dirent->d_name[len] = 0;
 	log_info("Added %s, inode = %llx, type = %d\n", dirent->d_name, inode, type);

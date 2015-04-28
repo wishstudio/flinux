@@ -33,6 +33,7 @@ struct devfs
 
 static const struct virtualfs_directory_desc devfs =
 {
+	.mountpoint = "/dev",
 	.entries = {
 		VIRTUALFS_ENTRY("null", null_desc)
 		VIRTUALFS_ENTRY("random", random_desc)
@@ -45,5 +46,5 @@ static const struct virtualfs_directory_desc devfs =
 
 struct file_system *devfs_alloc()
 {
-	return virtualfs_alloc("/dev", &devfs);
+	return virtualfs_alloc(&devfs);
 }
