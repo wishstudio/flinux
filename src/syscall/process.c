@@ -121,6 +121,7 @@ static pid_t process_wait(pid_t pid, int *status, int options, struct rusage *ru
 				WaitForSingleObject(signal_get_process_wait_semaphore(), INFINITE);
 				/* Remove from child list */
 				slist_remove(prev, cur);
+				slist_add(&process->child_freelist, cur);
 				process->child_count--;
 				break;
 			}
@@ -159,6 +160,7 @@ static pid_t process_wait(pid_t pid, int *status, int options, struct rusage *ru
 				proc = p;
 				/* Remove from child list */
 				slist_remove(prev, cur);
+				slist_add(&process->child_freelist, cur);
 				process->child_count--;
 				break;
 			}
