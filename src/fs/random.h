@@ -19,5 +19,7 @@
 
 #pragma once
 
-struct file *random_dev_alloc();
-struct file *urandom_dev_alloc();
+#include <fs/virtual.h>
+
+struct virtualfs_char_desc random_desc;
+struct virtualfs_char_desc urandom_desc;

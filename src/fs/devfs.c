@@ -22,6 +22,7 @@
 #include <fs/devfs.h>
 #include <fs/null.h>
 #include <fs/random.h>
+#include <fs/virtual.h>
 #include <heap.h>
 #include <log.h>
 
@@ -30,54 +31,19 @@ struct devfs
 	struct file_system base_fs;
 };
 
-static int devfs_open(const char *path, int flags, int mode, struct file **fp, char *target, int buflen)
+static const struct virtualfs_directory_desc devfs =
 {
-	if (*path == 0 || !strcmp(path, "."))
-	{
-		if (fp)
-		{
-			log_error("Opening /dev not handled.\n");
-			return -ENOENT;
-		}
-		else
-			return 0;
+	.entries = {
+		VIRTUALFS_ENTRY("null", null_desc)
+		VIRTUALFS_ENTRY("random", random_desc)
+		VIRTUALFS_ENTRY("urandom", urandom_desc)
+		VIRTUALFS_ENTRY("console", console_desc)
+		VIRTUALFS_ENTRY("tty", console_desc)
+		VIRTUALFS_ENTRY_END()
 	}
-	else if (!strcmp(path, "null"))
-	{
-		*fp = null_dev_alloc();
-		return 0;
-	}
-	else if (!strcmp(path, "random"))
-	{
-		*fp = random_dev_alloc();
-		return 0;
-	}
-	else if (!strcmp(path, "urandom"))
-	{
-		*fp = urandom_dev_alloc();
-		return 0;
-	}
-	else if (!strcmp(path, "console"))
-	{
-		*fp = console_alloc();
-		return 0;
-	}
-	else if (!strcmp(path, "tty"))
-	{
-		*fp = console_alloc();
-		return 0;
-	}
-	else
-	{
-		log_warning("devfs: '%s' not found.\n", path);
-		return -ENOENT;
-	}
-}
+};
 
 struct file_system *devfs_alloc()
 {
-	struct devfs *fs = (struct devfs *)kmalloc(sizeof(struct devfs));
-	fs->base_fs.mountpoint = "/dev";
-	fs->base_fs.open = devfs_open;
-	return (struct file_system *)fs;
+	return virtualfs_alloc("/dev", &devfs);
 }

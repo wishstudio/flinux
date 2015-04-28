@@ -19,6 +19,6 @@
 
 #pragma once
 
-#include <fs/file.h>
+#include <fs/virtual.h>
 
-struct file *null_dev_alloc();
+struct virtualfs_char_desc null_desc;

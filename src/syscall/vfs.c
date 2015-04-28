@@ -687,7 +687,7 @@ static int resolve_path(const char *dirpath, const char *pathname, char *realpat
 						return -ENOTDIR;
 					if (!fs->open)
 						return -ENOTDIR;
-					int r = fs->open(subpath, O_PATH | O_DIRECTORY, 0, NULL, target, PATH_MAX);
+					int r = fs->open(fs, subpath, O_PATH | O_DIRECTORY, 0, NULL, target, PATH_MAX);
 					if (r < 0)
 						return r;
 					else if (r == 0) /* It is a regular file, go forward */
@@ -802,7 +802,7 @@ int vfs_openat(int dirfd, const char *pathname, int flags, int mode, struct file
 		char *subpath;
 		if (!find_filesystem(realpath, &fs, &subpath))
 			return -ENOENT;
-		int ret = fs->open(subpath, flags, mode, f, target, PATH_MAX);
+		int ret = fs->open(fs, subpath, flags, mode, f, target, PATH_MAX);
 		if (ret <= 0)
 			return ret;
 		else if (ret == 1)
@@ -910,7 +910,7 @@ DEFINE_SYSCALL(linkat, int, olddirfd, const char *, oldpath, int, newdirfd, cons
 	else if (!fs->link)
 		r = -EXDEV;
 	else
-		r = fs->link(f, subpath);
+		r = fs->link(fs, f, subpath);
 	vfs_release(f);
 	return r;
 }
@@ -941,14 +941,14 @@ DEFINE_SYSCALL(unlinkat, int, dirfd, const char *, pathname, int, flags)
 		if (!fs->rmdir)
 			return -EPERM;
 		else
-			return fs->rmdir(subpath);
+			return fs->rmdir(fs, subpath);
 	}
 	else
 	{
 		if (!fs->unlink)
 			return -EPERM;
 		else
-			return fs->unlink(subpath);
+			return fs->unlink(fs, subpath);
 	}
 }
 
@@ -975,7 +975,7 @@ DEFINE_SYSCALL(symlinkat, const char *, target, int, newdirfd, const char *, lin
 	else if (!fs->symlink)
 		return -EPERM;
 	else
-		return fs->symlink(target, subpath);
+		return fs->symlink(fs, target, subpath);
 }
 
 DEFINE_SYSCALL(symlink, const char *, target, const char *, linkpath)
@@ -1034,7 +1034,7 @@ DEFINE_SYSCALL(renameat2, int, olddirfd, const char *, oldpath, int, newdirfd, c
 	else if (!fs->rename)
 		r = -EXDEV;
 	else
-		r = fs->rename(f, subpath);
+		r = fs->rename(fs, f, subpath);
 	vfs_release(f);
 	return r;
 }
@@ -1081,7 +1081,7 @@ DEFINE_SYSCALL(mkdirat, int, dirfd, const char *, pathname, int, mode)
 	else if (!fs->mkdir)
 		return -EPERM;
 	else
-		return fs->mkdir(subpath, mode);
+		return fs->mkdir(fs, subpath, mode);
 }
 
 DEFINE_SYSCALL(mkdir, const char *, pathname, int, mode)

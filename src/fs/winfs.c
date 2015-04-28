@@ -617,7 +617,7 @@ static struct file_ops winfs_ops =
 	.statfs = winfs_statfs,
 };
 
-static int winfs_symlink(const char *target, const char *linkpath)
+static int winfs_symlink(struct file_system *fs, const char *target, const char *linkpath)
 {
 	HANDLE handle;
 	WCHAR wlinkpath[PATH_MAX];
@@ -656,7 +656,7 @@ static int winfs_symlink(const char *target, const char *linkpath)
 	return 0;
 }
 
-static int winfs_link(struct file *f, const char *newpath)
+static int winfs_link(struct file_system *fs, struct file *f, const char *newpath)
 {
 	struct winfs_file *winfile = (struct winfs_file *) f;
 	NTSTATUS status;
@@ -677,7 +677,7 @@ static int winfs_link(struct file *f, const char *newpath)
 	return 0;
 }
 
-static int winfs_unlink(const char *pathname)
+static int winfs_unlink(struct file_system *fs, const char *pathname)
 {
 	WCHAR wpathname[PATH_MAX];
 	int len = filename_to_nt_pathname(pathname, wpathname, PATH_MAX);
@@ -734,7 +734,7 @@ static int winfs_unlink(const char *pathname)
 	return 0;
 }
 
-static int winfs_rename(struct file *f, const char *newpath)
+static int winfs_rename(struct file_system *fs, struct file *f, const char *newpath)
 {
 	struct winfs_file *winfile = (struct winfs_file *)f;
 	char buf[sizeof(FILE_RENAME_INFORMATION) + PATH_MAX * 2];
@@ -755,7 +755,7 @@ static int winfs_rename(struct file *f, const char *newpath)
 	return 0;
 }
 
-static int winfs_mkdir(const char *pathname, int mode)
+static int winfs_mkdir(struct file_system *fs, const char *pathname, int mode)
 {
 	WCHAR wpathname[PATH_MAX];
 
@@ -775,7 +775,7 @@ static int winfs_mkdir(const char *pathname, int mode)
 	return 0;
 }
 
-static int winfs_rmdir(const char *pathname)
+static int winfs_rmdir(struct file_system *fs, const char *pathname)
 {
 	WCHAR wpathname[PATH_MAX];
 	if (utf8_to_utf16_filename(pathname, strlen(pathname) + 1, wpathname, PATH_MAX) <= 0)
@@ -890,7 +890,7 @@ static int open_file(HANDLE *hFile, const char *pathname, DWORD desired_access, 
 	return 0;
 }
 
-static int winfs_open(const char *pathname, int flags, int mode, struct file **fp, char *target, int buflen)
+static int winfs_open(struct file_system *fs, const char *pathname, int flags, int mode, struct file **fp, char *target, int buflen)
 {
 	/* TODO: mode */
 	DWORD desired_access, create_disposition;

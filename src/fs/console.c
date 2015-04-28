@@ -23,6 +23,7 @@
 #include <common/poll.h>
 #include <common/termios.h>
 #include <fs/console.h>
+#include <fs/virtual.h>
 #include <syscall/mm.h>
 #include <syscall/sig.h>
 #include <heap.h>
@@ -285,7 +286,7 @@ static void console_unlock()
 
 struct console_file
 {
-	struct file base_file;
+	struct virtualfs_custom custom_file;
 };
 
 static WORD get_text_attribute()
@@ -1620,28 +1621,6 @@ static size_t console_write(struct file *f, const void *b, size_t count)
 	return count;
 }
 
-static int console_stat(struct file *f, struct newstat *buf)
-{
-	INIT_STRUCT_NEWSTAT_PADDING(buf);
-	buf->st_dev = mkdev(0, 1);
-	buf->st_ino = 0;
-	buf->st_mode = S_IFCHR + 0644;
-	buf->st_nlink = 1;
-	buf->st_uid = 0;
-	buf->st_gid = 0;
-	buf->st_rdev = mkdev(5, 1);
-	buf->st_size = 0;
-	buf->st_blksize = 4096;
-	buf->st_blocks = 0;
-	buf->st_atime = 0;
-	buf->st_atime_nsec = 0;
-	buf->st_mtime = 0;
-	buf->st_mtime_nsec = 0;
-	buf->st_ctime = 0;
-	buf->st_ctime_nsec = 0;
-	return 0;
-}
-
 static void console_update_termios()
 {
 	/* Nothing to do for now */
@@ -1726,15 +1705,18 @@ static const struct file_ops console_ops = {
 	.close = console_close,
 	.read = console_read,
 	.write = console_write,
-	.stat = console_stat,
+	.stat = virtualfs_custom_stat,
 	.ioctl = console_ioctl,
 };
+
+struct virtualfs_custom_desc console_desc = VIRTUALFS_CUSTOM(mkdev(5, 1), console_alloc);
 
 struct file *console_alloc()
 {
 	struct console_file *f = (struct console_file *)kmalloc(sizeof(struct console_file));
-	f->base_file.op_vtable = &console_ops;
-	f->base_file.ref = 1;
-	f->base_file.flags = O_LARGEFILE | O_RDWR;
+	f->custom_file.base_file.op_vtable = &console_ops;
+	f->custom_file.base_file.ref = 1;
+	f->custom_file.base_file.flags = O_LARGEFILE | O_RDWR;
+	virtualfs_init_custom(f, &console_desc);
 	return (struct file *)f;
 }

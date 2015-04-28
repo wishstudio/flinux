@@ -63,11 +63,11 @@ struct file_system
 {
 	struct file_system *next;
 	char *mountpoint;
-	int (*open)(const char *path, int flags, int mode, struct file **fp, char *target, int buflen);
-	int (*symlink)(const char *target, const char *linkpath);
-	int (*link)(struct file *f, const char *newpath);
-	int (*unlink)(const char *pathname);
-	int (*rename)(struct file *f, const char *newpath);
-	int (*mkdir)(const char *pathname, int mode);
-	int (*rmdir)(const char *pathname);
+	int (*open)(struct file_system *fs, const char *path, int flags, int mode, struct file **fp, char *target, int buflen);
+	int (*symlink)(struct file_system *fs, const char *target, const char *linkpath);
+	int (*link)(struct file_system *fs, struct file *f, const char *newpath);
+	int (*unlink)(struct file_system *fs, const char *pathname);
+	int (*rename)(struct file_system *fs, struct file *f, const char *newpath);
+	int (*mkdir)(struct file_system *fs, const char *pathname, int mode);
+	int (*rmdir)(struct file_system *fs, const char *pathname);
 };
