@@ -19,7 +19,7 @@ Some major missing functions are file permissions, process management, multi-thr
 
 How to use
 =====
-Foreign LINUX is still in early stage, bad things like *crashing your system* or *eating your harddisk* may happen. **You have been warned.**
+Foreign LINUX is still in early stage, so bad things like *crashing your system* or *eating your harddisk* may happen. **You have been warned.**
 
 For users who just want to give it a try. Download a premade Arch Linux environment [here](https://xysun.me/static/flinux-archlinux.7z). Then visit [Beginner's Guide](https://github.com/wishstudio/flinux/wiki/Beginner's-Guide).
 
