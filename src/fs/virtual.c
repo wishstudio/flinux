@@ -17,12 +17,12 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <common/errno.h>
 #include <common/fcntl.h>
 #include <common/fs.h>
 #include <common/poll.h>
 #include <fs/virtual.h>
 #include <syscall/mm.h>
-#include <errno.h>
 #include <heap.h>
 #include <log.h>
 
@@ -127,6 +127,94 @@ static struct file *virtualfs_char_alloc(struct virtualfs_char_desc *desc)
 	return (struct file *)file;
 }
 
+struct virtualfs_text
+{
+	struct file base_file;
+	int position;
+	int textlen;
+	char text[];
+};
+
+static int virtualfs_text_close(struct file *f)
+{
+	struct virtualfs_text *file = (struct virtualfs_text *)f;
+	kfree(file, sizeof(struct virtualfs_text) + file->textlen);
+	return 0;
+}
+
+static size_t virtualfs_text_read(struct file *f, void *buf, size_t count)
+{
+	struct virtualfs_text *file = (struct virtualfs_text *)f;
+	int read_count = (int)min(count, (size_t)file->textlen);
+	memcpy(buf, file->text + file->position, read_count);
+	file->position += read_count;
+	return read_count;
+}
+
+static int virtualfs_text_llseek(struct file *f, loff_t offset, loff_t *newoffset, int whence)
+{
+	struct virtualfs_text *file = (struct virtualfs_text *)f;
+	loff_t target;
+	switch (whence)
+	{
+	case SEEK_SET: target = offset; break;
+	case SEEK_CUR: target = file->position + offset; break;
+	case SEEK_END: target = file->textlen - offset; break;
+	default: return -EINVAL;
+	}
+	if (target >= 0 && target < file->textlen)
+	{
+		file->position = (int)target;
+		*newoffset = target;
+		return 0;
+	}
+	else
+		return -EINVAL;
+}
+
+static int virtualfs_text_stat(struct file *f, struct newstat *buf)
+{
+	INIT_STRUCT_NEWSTAT_PADDING(buf);
+	buf->st_dev = mkdev(0, 1);
+	buf->st_ino = 0;
+	buf->st_mode = S_IFREG + 0644;
+	buf->st_nlink = 1;
+	buf->st_uid = 0;
+	buf->st_gid = 0;
+	buf->st_rdev = 0;
+	buf->st_size = 0;
+	buf->st_blksize = PAGE_SIZE;
+	buf->st_blocks = 0;
+	buf->st_atime = 0;
+	buf->st_atime_nsec = 0;
+	buf->st_mtime = 0;
+	buf->st_mtime_nsec = 0;
+	buf->st_ctime = 0;
+	buf->st_ctime_nsec = 0;
+	return 0;
+}
+
+static const struct file_ops virtualfs_text_ops =
+{
+	.close = virtualfs_text_close,
+	.read = virtualfs_text_read,
+	.llseek = virtualfs_text_llseek,
+	.stat = virtualfs_text_stat,
+};
+
+static struct file *virtualfs_text_alloc(struct virtualfs_text_desc *desc)
+{
+	int len = desc->getbuflen();
+	struct virtualfs_text *file = (struct virtualfs_text *)kmalloc(sizeof(struct virtualfs_text) + len);
+	file->base_file.op_vtable = &virtualfs_text_ops;
+	file->base_file.flags = O_RDONLY;
+	file->base_file.ref = 1;
+	desc->gettext(file->text);
+	file->textlen = strlen(file->text);
+	file->position = 0;
+	return (struct file *)file;
+}
+
 struct virtualfs_directory
 {
 	struct file base_file;
@@ -138,7 +226,8 @@ struct virtualfs_directory
 
 static int virtualfs_directory_close(struct file *f)
 {
-	kfree(f, sizeof(struct virtualfs_directory));
+	struct virtualfs_directory *file = (struct virtualfs_directory *)f;
+	kfree(file, sizeof(struct virtualfs_directory) + file->pathlen);
 	return 0;
 }
 
@@ -219,6 +308,7 @@ static int virtualfs_directory_getdents(struct file *f, void *dirent, size_t cou
 			{
 			case VIRTUALFS_TYPE_CUSTOM: type = DT_CHR; break;
 			case VIRTUALFS_TYPE_CHAR: type = DT_CHR; break;
+			case VIRTUALFS_TYPE_TEXT: type = DT_REG; break;
 			default:
 				log_error("Invalid virtual fs file type. Corrupted internal data structure.\n");
 				__debugbreak();
@@ -285,11 +375,6 @@ static int virtualfs_open(struct file_system *fs, const char *path, int flags, i
 				return 0;
 			switch (dir->entries[i].desc->type)
 			{
-			case VIRTUALFS_TYPE_INVALID:
-				log_error("Invalid virtual fs file type. Corrupted internal data structure.\n");
-				__debugbreak();
-				return -ENOENT;
-
 			case VIRTUALFS_TYPE_CUSTOM:
 			{
 				struct virtualfs_custom_desc *desc = (struct virtualfs_custom_desc *)dir->entries[i].desc;
@@ -297,11 +382,24 @@ static int virtualfs_open(struct file_system *fs, const char *path, int flags, i
 				return 0;
 			}
 				
-			case VIRTUALFS_TYPE_CHAR: {
+			case VIRTUALFS_TYPE_CHAR:
+			{
 				struct virtualfs_char_desc *desc = (struct virtualfs_char_desc *)dir->entries[i].desc;
 				*p = virtualfs_char_alloc(desc);
 				return 0;
 			}
+
+			case VIRTUALFS_TYPE_TEXT:
+			{
+				struct virtualfs_text_desc *desc = (struct virtualfs_text_desc *)dir->entries[i].desc;
+				*p = virtualfs_text_alloc(desc);
+				return 0;
+			}
+
+			default:
+				log_error("Invalid virtual fs file type. Corrupted internal data structure.\n");
+				__debugbreak();
+				return -ENOENT;
 			}
 		}
 	}

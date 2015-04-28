@@ -24,6 +24,7 @@
 #define VIRTUALFS_TYPE_INVALID		0	/* Invalid entry */
 #define VIRTUALFS_TYPE_CUSTOM		1	/* Fully custom character file */
 #define VIRTUALFS_TYPE_CHAR			2	/* Character device */
+#define VIRTUALFS_TYPE_TEXT			3	/* In-memory read only text file */
 
 struct virtualfs_desc
 {
@@ -62,6 +63,20 @@ struct virtualfs_char_desc
 		.device = _device, \
 		.read = _read, \
 		.write = _write, \
+	}
+
+/* VIRTUALFS_TYPE_TEXT */
+struct virtualfs_text_desc
+{
+	int type;
+	int (*getbuflen)();
+	void (*gettext)(char *buf);
+};
+#define VIRTUALFS_TEXT(_getbuflen, _gettext) \
+	{ \
+		.type = VIRTUALFS_TPYE_TEXT, \
+		.getbuflen = _getbuflen, \
+		.gettext = _gettext, \
 	}
 
 struct virtualfs_entry

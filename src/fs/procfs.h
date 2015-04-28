@@ -17,26 +17,8 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <fs/console.h>
-#include <fs/devfs.h>
-#include <fs/null.h>
-#include <fs/random.h>
-#include <fs/virtual.h>
+#pragma once
 
-static const struct virtualfs_directory_desc devfs =
-{
-	.mountpoint = "/dev",
-	.entries = {
-		VIRTUALFS_ENTRY("null", null_desc)
-		VIRTUALFS_ENTRY("random", random_desc)
-		VIRTUALFS_ENTRY("urandom", urandom_desc)
-		VIRTUALFS_ENTRY("console", console_desc)
-		VIRTUALFS_ENTRY("tty", console_desc)
-		VIRTUALFS_ENTRY_END()
-	}
-};
+#include <fs/file.h>
 
-struct file_system *devfs_alloc()
-{
-	return virtualfs_alloc(&devfs);
-}
+struct file_system *procfs_alloc();

@@ -23,10 +23,11 @@
 #include <common/ioctls.h>
 #include <fs/console.h>
 #include <fs/devfs.h>
+#include <fs/eventfd.h>
 #include <fs/pipe.h>
+#include <fs/procfs.h>
 #include <fs/socket.h>
 #include <fs/winfs.h>
-#include <fs/eventfd.h>
 #include <syscall/mm.h>
 #include <syscall/sig.h>
 #include <syscall/syscall.h>
@@ -129,6 +130,7 @@ void vfs_init()
 	vfs->filed[2].fd = console;
 	vfs_add(winfs_alloc());
 	vfs_add(devfs_alloc());
+	vfs_add(procfs_alloc());
 	/* Initialize CWD */
 	if (vfs_openat(AT_FDCWD, "/", O_DIRECTORY | O_PATH, 0, &vfs->cwd) < 0)
 	{
