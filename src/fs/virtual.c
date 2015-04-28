@@ -145,7 +145,7 @@ static int virtualfs_text_close(struct file *f)
 static size_t virtualfs_text_read(struct file *f, void *buf, size_t count)
 {
 	struct virtualfs_text *file = (struct virtualfs_text *)f;
-	int read_count = (int)min(count, (size_t)file->textlen);
+	int read_count = (int)min(count, (size_t)(file->textlen - file->position));
 	memcpy(buf, file->text + file->position, read_count);
 	file->position += read_count;
 	return read_count;

@@ -378,6 +378,7 @@ DEFINE_SYSCALL(sysinfo, struct sysinfo *, info)
 	if (!mm_check_write(info, sizeof(*info)))
 		return -EFAULT;
 	MEMORYSTATUSEX memory;
+	memory.dwLength = sizeof(memory);
 	GlobalMemoryStatusEx(&memory);
 
 	info->uptime = (intptr_t)(GetTickCount64() / 1000ULL);

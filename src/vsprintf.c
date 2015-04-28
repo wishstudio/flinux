@@ -154,6 +154,12 @@ int kvsprintf(char *buffer, const char *format, va_list args)
 					PRINT_NUM(buf, va_arg(args, int64_t), int64_t, uint64_t, 10, lowercase, width, fillchar);
 					continue;
 				}
+				if (f[0] == 'l' && f[1] == 'u')
+				{
+					format = f + 2;
+					PRINT_NUM(buf, va_arg(args, uint64_t), uint64_t, uint64_t, 10, lowercase, width, fillchar);
+					continue;
+				}
 			}
 
 			case 'p':

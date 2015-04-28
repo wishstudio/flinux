@@ -74,7 +74,7 @@ struct virtualfs_text_desc
 };
 #define VIRTUALFS_TEXT(_getbuflen, _gettext) \
 	{ \
-		.type = VIRTUALFS_TPYE_TEXT, \
+		.type = VIRTUALFS_TYPE_TEXT, \
 		.getbuflen = _getbuflen, \
 		.gettext = _gettext, \
 	}
