@@ -26,6 +26,7 @@
 #define VIRTUALFS_TYPE_CUSTOM		2	/* Fully custom character file */
 #define VIRTUALFS_TYPE_CHAR			3	/* Character device */
 #define VIRTUALFS_TYPE_TEXT			4	/* In-memory read only text file */
+#define VIRTUALFS_TYPE_PARAM		5	/* Kernel sysfs parameter */
 
 struct virtualfs_desc
 {
@@ -96,6 +97,42 @@ struct virtualfs_text_desc
 		.getbuflen = _getbuflen, \
 		.gettext = _gettext, \
 	}
+
+/* VIRTUALFS_TYPE_PARAM */
+#define VIRTUALFS_PARAM_TYPE_RAW		0
+#define VIRTUALFS_PARAM_TYPE_INT		1
+#define VIRTUALFS_PARAM_TYPE_UINT		2
+struct virtualfs_param_desc
+{
+	int type;
+	int valtype;
+	union {
+		size_t (*get)(char *buf, size_t count);
+		int (*get_int)();
+		unsigned int (*get_uint)();
+	};
+	union {
+		void (*set)(const char *buf, size_t count);
+		void (*set_int)(int value);
+		void (*set_uint)(unsigned int value);
+	};
+};
+#define __VIRTUALFS_PARAM_META(_valtype, _suffix, _getter, _setter) \
+	{ \
+		.type = VIRTUALFS_TYPE_PARAM, \
+		.valtype = _valtype, \
+		.get##_suffix = _getter, \
+		.set##_suffix = _setter, \
+	}
+#define VIRTUALFS_PARAM(_getter, _setter) __VIRTUALFS_PARAM_META(VIRTUALFS_PARAM_TYPE_RAW, , _getter, _setter)
+#define VIRTUALFS_PARAM_READONLY(_getter) VIRTUALFS_PARAM(_getter, NULL)
+#define VIRTUALFS_PARAM_WRITEONLY(_setter) VIRTUALFS_PARAM(NULL, _setter)
+#define VIRTUALFS_PARAM_INT(_getter, _setter) __VIRTUALFS_PARAM_META(VIRTUALFS_PARAM_TYPE_INT, _int, _getter, _setter)
+#define VIRTUALFS_PARAM_INT_READONLY(_getter) VIRTUALFS_PARAM_INT(_getter, NULL)
+#define VIRTUALFS_PARAM_INT_WRITEONLY(_setter) VIRTUALFS_PARAM_INT(NULL, _setter)
+#define VIRTUALFS_PARAM_UINT(_getter, _setter) __VIRTUALFS_PARAM_META(VIRTUALFS_PARAM_TYPE_UINT, _uint, _getter, _setter)
+#define VIRTUALFS_PARAM_UINT_READONLY(_getter) VIRTUALFS_PARAM_UINT(_getter, NULL)
+#define VIRTUALFS_PARAM_UINT_WRITEONLY(_setter) VIRTUALFS_PARAM_UINT(NULL, _setter)
 
 struct virtualfs_custom
 {

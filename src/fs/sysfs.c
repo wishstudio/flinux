@@ -24,10 +24,17 @@
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
+static int vm_min_free_kbytes_get()
+{
+	return 4096;
+}
+struct virtualfs_param_desc vm_min_free_kbytes_desc = VIRTUALFS_PARAM_UINT_READONLY(vm_min_free_kbytes_get);
+
 struct virtualfs_directory_desc sys_vm_desc =
 {
 	.type = VIRTUALFS_TYPE_DIRECTORY,
 	.entries = {
+		VIRTUALFS_ENTRY("min_free_kbytes", vm_min_free_kbytes_desc)
 		VIRTUALFS_ENTRY_END()
 	}
 };
