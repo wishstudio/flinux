@@ -19,6 +19,7 @@
 
 #include <common/fcntl.h>
 #include <fs/null.h>
+#include <fs/virtual.h>
 #include <heap.h>
 #include <log.h>
 
@@ -62,7 +63,7 @@ static int null_dev_stat(struct file *f, struct newstat *buf)
 
 static const struct file_ops null_dev_ops =
 {
-	.get_poll_status = fhelper_get_poll_status_inout,
+	.get_poll_status = virtualfs_get_poll_status_inout,
 	.close = null_dev_close,
 	.read = null_dev_read,
 	.write = null_dev_write,

@@ -19,6 +19,7 @@
 
 #include <common/fcntl.h>
 #include <fs/file.h>
+#include <fs/virtual.h>
 #include <syscall/syscall.h>
 #include <errno.h>
 #include <heap.h>
@@ -102,7 +103,7 @@ static int urandom_dev_stat(struct file *f, struct newstat *buf)
 
 static const struct file_ops random_dev_ops =
 {
-	.get_poll_status = fhelper_get_poll_status_inout,
+	.get_poll_status = virtualfs_get_poll_status_inout,
 	.close = random_dev_close,
 	.read = random_dev_read,
 	.write = random_dev_write,
@@ -111,7 +112,7 @@ static const struct file_ops random_dev_ops =
 
 static const struct file_ops urandom_dev_ops =
 {
-	.get_poll_status = fhelper_get_poll_status_inout,
+	.get_poll_status = virtualfs_get_poll_status_inout,
 	.close = random_dev_close,
 	.read = random_dev_read,
 	.write = random_dev_write,

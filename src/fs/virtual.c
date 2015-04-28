@@ -19,7 +19,7 @@
 
 #include <common/poll.h>
 
-int fhelper_get_poll_status_inout(struct file *f)
+int virtualfs_get_poll_status_inout(struct file *f)
 {
 	return LINUX_POLLIN | LINUX_POLLOUT;
 }

@@ -66,6 +66,7 @@
     <ClInclude Include="src\fs\pipe.h" />
     <ClInclude Include="src\fs\random.h" />
     <ClInclude Include="src\fs\socket.h" />
+    <ClInclude Include="src\fs\virtual.h" />
     <ClInclude Include="src\fs\winfs.h" />
     <ClInclude Include="src\heap.h" />
     <ClInclude Include="src\lib\core.h" />
@@ -96,7 +97,7 @@
     <ClCompile Include="src\fs\console.c" />
     <ClCompile Include="src\fs\devfs.c" />
     <ClCompile Include="src\fs\eventfd.c" />
-    <ClCompile Include="src\fs\file.c" />
+    <ClCompile Include="src\fs\virtual.c" />
     <ClCompile Include="src\fs\null.c" />
     <ClCompile Include="src\fs\pipe.c" />
     <ClCompile Include="src\fs\random.c" />
