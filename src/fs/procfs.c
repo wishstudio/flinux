@@ -18,13 +18,36 @@
  */
 
 #include <fs/procfs.h>
-#include <fs/sysfs.h>
 #include <fs/virtual.h>
 #include <log.h>
 #include <str.h>
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
+
+static int sys_vm_min_free_kbytes_get()
+{
+	return 4096;
+}
+struct virtualfs_param_desc sys_vm_min_free_kbytes_desc = VIRTUALFS_PARAM_UINT_READONLY(sys_vm_min_free_kbytes_get);
+
+struct virtualfs_directory_desc sys_vm_desc =
+{
+	.type = VIRTUALFS_TYPE_DIRECTORY,
+	.entries = {
+		VIRTUALFS_ENTRY("min_free_kbytes", sys_vm_min_free_kbytes_desc)
+		VIRTUALFS_ENTRY_END()
+	}
+};
+
+struct virtualfs_directory_desc sys_desc =
+{
+	.type = VIRTUALFS_TYPE_DIRECTORY,
+	.entries = {
+		VIRTUALFS_ENTRY("vm", sys_vm_desc)
+		VIRTUALFS_ENTRY_END()
+	}
+};
 
 static int meminfo_getbuflen()
 {
@@ -57,7 +80,7 @@ static const struct virtualfs_directory_desc procfs =
 {
 	.type = VIRTUALFS_TYPE_DIRECTORY,
 	.entries = {
-		VIRTUALFS_ENTRY("sys", sysfs_desc)
+		VIRTUALFS_ENTRY("sys", sys_desc)
 		VIRTUALFS_ENTRY("meminfo", meminfo_desc)
 		VIRTUALFS_ENTRY_END()
 	}

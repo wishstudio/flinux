@@ -27,6 +27,7 @@
 #include <fs/pipe.h>
 #include <fs/procfs.h>
 #include <fs/socket.h>
+#include <fs/sysfs.h>
 #include <fs/winfs.h>
 #include <syscall/mm.h>
 #include <syscall/sig.h>
@@ -131,6 +132,7 @@ void vfs_init()
 	vfs_add(winfs_alloc());
 	vfs_add(devfs_alloc());
 	vfs_add(procfs_alloc());
+	vfs_add(sysfs_alloc());
 	/* Initialize CWD */
 	if (vfs_openat(AT_FDCWD, "/", O_DIRECTORY | O_PATH, 0, &vfs->cwd) < 0)
 	{

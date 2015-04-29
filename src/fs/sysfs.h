@@ -21,4 +21,4 @@
 
 #include <fs/virtual.h>
 
-struct virtualfs_directory_desc sysfs_desc;
+struct file_system *sysfs_alloc();
