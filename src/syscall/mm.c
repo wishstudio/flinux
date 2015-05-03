@@ -139,6 +139,10 @@ struct mm_data
 	/* Used for mm_static_alloc() */
 	void *static_alloc_begin, *static_alloc_end;
 
+	/* Used for mm_global_shared_alloc() */
+	HANDLE global_shared_section;
+	void *global_shared_alloc_begin, *global_shared_alloc_end;
+
 	/* Information for all existing mappings */
 	struct rb_tree entry_tree;
 	struct slist entry_free_list;
@@ -275,6 +279,18 @@ static void free_map_entry_blocks(struct map_entry *e)
 	}
 }
 
+static void map_global_shared_section()
+{
+	mm->global_shared_alloc_begin = MapViewOfFile(mm->global_shared_section,
+		FILE_MAP_ALL_ACCESS, 0, 0, MM_GLOBAL_SHARED_ALLOC_SIZE);
+	if (mm->global_shared_alloc_begin == NULL)
+	{
+		log_error("mm: Map global shared area failed, error code: %d.\n", GetLastError());
+		ExitProcess(1);
+	}
+	mm->global_shared_alloc_end = (char*)mm->global_shared_alloc_begin + MM_GLOBAL_SHARED_ALLOC_SIZE;
+}
+
 void mm_init()
 {
 	/* Initialize mapping info freelist */
@@ -289,6 +305,22 @@ void mm_init()
 	mm->static_alloc_begin = mm_mmap(NULL, MM_STATIC_ALLOC_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS,
 		INTERNAL_MAP_TOPDOWN | INTERNAL_MAP_NORESET, NULL, 0);
 	mm->static_alloc_end = (uint8_t*)mm->static_alloc_begin + MM_STATIC_ALLOC_SIZE;
+	/* Initialize global shared alloc */
+	LPCWSTR section_name = L"flinux_global_shared";
+	LARGE_INTEGER size;
+	size.QuadPart = MM_GLOBAL_SHARED_ALLOC_SIZE;
+	SECURITY_ATTRIBUTES attr;
+	attr.nLength = sizeof(SECURITY_ATTRIBUTES);
+	attr.bInheritHandle = TRUE;
+	attr.lpSecurityDescriptor = NULL;
+	mm->global_shared_section = CreateFileMappingW(INVALID_HANDLE_VALUE, &attr, PAGE_READWRITE,
+		size.HighPart, size.LowPart, section_name);
+	if (mm->global_shared_section == NULL)
+	{
+		log_error("mm: Create global shared area failed, error code: %d.\n", GetLastError());
+		ExitProcess(1);
+	}
+	map_global_shared_section();
 }
 
 void mm_reset()
@@ -356,6 +388,20 @@ void *mm_static_alloc(size_t size)
 	}
 	void *ret = mm->static_alloc_begin;
 	mm->static_alloc_begin = (void*)ALIGN_TO((uint8_t*)mm->static_alloc_begin + size, 16);
+	return ret;
+}
+
+void *mm_global_shared_alloc(size_t size)
+{
+	if ((uint8_t*)mm->global_shared_alloc_begin + size > mm->global_shared_alloc_end)
+	{
+		log_error("mm_global_shared_alloc(): Overlarge static block size, remain: %p, requested: %p\n",
+			(uint8_t*)mm->global_shared_alloc_end - (uint8_t*)mm->global_shared_alloc_begin, size);
+		log_error("Please enlarge MM_GLOBAL_SHARED_ALLOC_SIZE manually.\n");
+		__debugbreak();
+	}
+	void *ret = mm->global_shared_alloc_begin;
+	mm->global_shared_alloc_begin = (void*)ALIGN_TO((uint8_t*)mm->global_shared_alloc_begin + size, 16);
 	return ret;
 }
 
@@ -851,6 +897,9 @@ int mm_fork(HANDLE process)
 void mm_afterfork()
 {
 	mm->static_alloc_begin = (uint8_t *)mm->static_alloc_end - MM_STATIC_ALLOC_SIZE;
+	/* Remap global shared area */
+	/* TODO: Move this to mm_fork(), since parent may already be terminated at this point */
+	map_global_shared_section();
 }
 
 void *mm_mmap(void *addr, size_t length, int prot, int flags, int internal_flags, struct file *f, off_t offset_pages)

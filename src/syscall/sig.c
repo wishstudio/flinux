@@ -60,7 +60,7 @@ struct signal_packet
 	union
 	{
 		siginfo_t info;
-		struct process *proc;
+		struct child_process *proc;
 	};
 };
 
@@ -160,7 +160,7 @@ static void signal_thread_handle_kill(struct siginfo *info)
 	LeaveCriticalSection(&signal->mutex);
 }
 
-static void signal_thread_handle_process_terminated(struct process *proc)
+static void signal_thread_handle_process_terminated(struct child_process *proc)
 {
 	struct siginfo info;
 	info.si_signo = SIGCHLD;
@@ -210,7 +210,7 @@ static DWORD WINAPI signal_thread(LPVOID parameter)
 			}
 			case SIGNAL_PACKET_ADD_PROCESS:
 			{
-				struct process *proc = packet.proc;
+				struct child_process *proc = packet.proc;
 				CreateIoCompletionPort(proc->hPipe, signal->iocp, (ULONG_PTR)proc, 1);
 				if (!ReadFile(proc->hPipe, buf, 1, NULL, &proc->overlapped) && GetLastError() != ERROR_IO_PENDING)
 					signal_thread_handle_process_terminated(proc);
@@ -226,7 +226,7 @@ static DWORD WINAPI signal_thread(LPVOID parameter)
 		}
 		else
 		{
-			struct process *proc = (struct process *)key;
+			struct child_process *proc = (struct child_process *)key;
 			signal_thread_handle_process_terminated(proc);
 		}
 	}
@@ -321,7 +321,12 @@ HANDLE signal_get_process_wait_semaphore()
 	return signal->process_wait_semaphore;
 }
 
-void signal_add_process(struct process *proc)
+HANDLE signal_get_process_sigwrite()
+{
+	return signal->sigwrite;
+}
+
+void signal_add_process(struct child_process *proc)
 {
 	HANDLE read, write;
 	create_pipe(&read, &write);

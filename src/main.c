@@ -58,11 +58,11 @@ void main()
 	mm_init();
 	install_syscall_handler();
 	heap_init();
+	signal_init();
+	process_init();
 	tls_init();
 	vfs_init();
 	dbt_init();
-	signal_init();
-	process_init(NULL);
 
 	/* Parse command line */
 	const char *cmdline = GetCommandLineA();

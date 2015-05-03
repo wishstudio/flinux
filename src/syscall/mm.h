@@ -80,7 +80,18 @@ int mm_munmap(void *addr, size_t len);
  * Many subsystems need to use static storage which are automatically forked
  * Since mm only accepts allocation granularity at PAGE_SIZE, there could be much space lost
  * Instead of allocating pages by their own, we preallocate a sufficient block
- * and let the subsystems to allocate their static forkable memory at initialization.
+ * and let the subsystems to allocate their static forkable memory at initialization and
+ * on fork(). We keep the initialization order consistent thus they will always get the same
+ * static address.
+ *
+ * TODO: This scheme is really ugly, any better ideas?
  */
 #define MM_STATIC_ALLOC_SIZE	3 * BLOCK_SIZE	/* The total size */
 void *mm_static_alloc(size_t size);
+
+/* Static allocation for globally shared area
+ * Currently the users of this API should make sure to work with zero initialization
+ * Because they do not have any chance of manually initialize their shared data area
+ */
+#define MM_GLOBAL_SHARED_ALLOC_SIZE		3 * BLOCK_SIZE
+void *mm_global_shared_alloc(size_t size);

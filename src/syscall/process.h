@@ -29,7 +29,7 @@
 
 #define STACK_SIZE	1048576
 
-struct process
+struct child_process
 {
 	struct slist list;
 	pid_t pid;
@@ -38,7 +38,13 @@ struct process
 	bool terminated;
 };
 
-void process_init(void *stack_base);
+void process_init();
+void process_after_fork(void *stack_base, pid_t pid);
 void process_shutdown();
 void *process_get_stack_base();
-void process_add_child(pid_t pid, HANDLE handle);
+pid_t process_add_child(DWORD win_pid, HANDLE handle);
+
+pid_t process_get_pid();
+pid_t process_get_ppid();
+pid_t process_get_pgid(pid_t pid);
+pid_t process_get_sid();

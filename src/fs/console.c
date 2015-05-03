@@ -25,6 +25,7 @@
 #include <fs/console.h>
 #include <fs/virtual.h>
 #include <syscall/mm.h>
+#include <syscall/process.h>
 #include <syscall/sig.h>
 #include <heap.h>
 #include <log.h>
@@ -1656,7 +1657,7 @@ static int console_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 	case TIOCGPGRP:
 	{
 		log_warning("Unsupported TIOCGPGRP: Return fake result.\n");
-		*(pid_t *)arg = GetCurrentProcessId();
+		*(pid_t *)arg = process_get_pgid(0);
 		r = 0;
 		break;
 	}

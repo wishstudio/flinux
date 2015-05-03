@@ -27,7 +27,8 @@
 #include <Windows.h>
 
 HANDLE signal_get_process_wait_semaphore();
-void signal_add_process(struct process *proc);
+HANDLE signal_get_process_sigwrite();
+void signal_add_process(struct child_process *proc);
 
 void signal_setup_handler(struct syscall_context *context);
 

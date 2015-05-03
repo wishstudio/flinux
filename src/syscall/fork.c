@@ -46,6 +46,7 @@ struct fork_info
 	struct syscall_context context;
 	void *stack_base;
 	void *ctid;
+	pid_t pid;
 } _fork;
 
 static struct fork_info *fork = &_fork;
@@ -55,13 +56,13 @@ __declspec(noreturn) static void fork_child()
 	install_syscall_handler();
 	mm_afterfork();
 	heap_afterfork();
+	signal_afterfork();
+	process_afterfork(fork->stack_base, fork->pid);
 	tls_afterfork();
 	vfs_afterfork();
-	signal_afterfork();
-	process_init(fork->stack_base);
 	dbt_init();
 	if (fork->ctid)
-		*(pid_t *)fork->ctid = GetCurrentProcessId();
+		*(pid_t *)fork->ctid = fork->pid;
 	dbt_restore_fork_context(&fork->context);
 }
 
@@ -175,10 +176,13 @@ static pid_t fork_process(struct syscall_context *context, unsigned long flags, 
 	if (!exec_fork(info.hProcess))
 		goto fail;
 
+	pid_t pid = process_add_child(info.dwProcessId, info.hProcess);
+
 	/* Set up fork_info in child process */
 	void *stack_base = process_get_stack_base();
 	WriteProcessMemory(info.hProcess, &fork->context, context, sizeof(struct syscall_context), NULL);
 	WriteProcessMemory(info.hProcess, &fork->stack_base, &stack_base, sizeof(stack_base), NULL);
+	WriteProcessMemory(info.hProcess, &fork->pid, &pid, sizeof(pid_t), NULL);
 	if (flags & CLONE_CHILD_SETTID)
 		WriteProcessMemory(info.hProcess, &fork->ctid, &ctid, sizeof(void*), NULL);
 
@@ -186,13 +190,11 @@ static pid_t fork_process(struct syscall_context *context, unsigned long flags, 
 	VirtualAllocEx(info.hProcess, stack_base, STACK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
 	WriteProcessMemory(info.hProcess, (LPVOID)context->esp, (LPCVOID)context->esp,
 		(SIZE_T)((char *)stack_base + STACK_SIZE - context->esp), NULL);
-
-	process_add_child(info.dwProcessId, info.hProcess);
 	ResumeThread(info.hThread);
 	CloseHandle(info.hThread);
 
-	log_info("Child pid: %d\n", info.dwProcessId);
-	return info.dwProcessId;
+	log_info("Child pid: %d, win_pid: %d\n", pid, info.dwProcessId);
+	return pid;
 
 fail:
 	TerminateProcess(info.hProcess, 0);
