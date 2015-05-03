@@ -273,6 +273,7 @@ struct virtualfs_text
 {
 	struct file base_file;
 	int position;
+	int buflen;
 	int textlen;
 	char text[];
 };
@@ -280,7 +281,7 @@ struct virtualfs_text
 static int virtualfs_text_close(struct file *f)
 {
 	struct virtualfs_text *file = (struct virtualfs_text *)f;
-	kfree(file, sizeof(struct virtualfs_text) + file->textlen);
+	kfree(file, sizeof(struct virtualfs_text) + file->buflen);
 	return 0;
 }
 
@@ -353,6 +354,7 @@ static struct file *virtualfs_text_alloc(struct virtualfs_text_desc *desc)
 	file->base_file.ref = 1;
 	desc->gettext(file->text);
 	file->textlen = strlen(file->text);
+	file->buflen = len;
 	file->position = 0;
 	return (struct file *)file;
 }
