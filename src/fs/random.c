@@ -37,14 +37,14 @@ DEFINE_SYSCALL(getrandom, void *, buf, size_t, buflen, unsigned int, flags)
 	return buflen;
 }
 
-static size_t random_read(void *buf, size_t count)
+static size_t random_read(int tag, void *buf, size_t count)
 {
 	if (!RtlGenRandom(buf, count))
 		return 0;
 	return count;
 }
 
-static size_t random_write(const void *buf, size_t count)
+static size_t random_write(int tag, const void *buf, size_t count)
 {
 	return count;
 }

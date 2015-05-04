@@ -33,13 +33,35 @@ struct virtualfs_desc
 	int type;
 };
 
+#define VIRTUALFS_ENTRY_STATIC		0
+#define VIRTUALFS_ENTRY_DYNAMIC		1
+#define VIRTUALFS_ITER_END			-1
 struct virtualfs_entry
 {
-	char name[32];
-	struct virtualfs_desc *desc;
+	int type;
+	union
+	{
+		/* For static entry */
+		struct
+		{
+			char name[32];
+			struct virtualfs_desc *desc;
+		};
+		/* For dynamic entry */
+		struct
+		{
+			void (*begin_iter)(int dir_tag);
+			void (*end_iter)(int dir_tag);
+			int (*iter)(int dir_tag, int iter_tag, int *type, char *name, int namelen);
+			int (*open)(int dir_tag, const char *name, int namelen, int *file_tag, struct virtualfs_desc **desc);
+		};
+	};
 };
 #define VIRTUALFS_ENTRY(_name, _desc) \
-	{ .name = _name, .desc = (struct virtualfs_desc *)&_desc },
+	{ .type = VIRTUALFS_ENTRY_STATIC, .name = _name, .desc = (struct virtualfs_desc *)&_desc },
+#define VIRTUALFS_DYNAMIC_ENTRY(_begin_iter, _end_iter, _iter, _open) \
+	{ .type = VIRTUALFS_ENTRY_DYNAMIC, .begin_iter = _begin_iter, \
+		end_iter = _end_iter, .iter = _iter, .open = _open },
 #define VIRTUALFS_ENTRY_END() \
 	{ .name = "", .desc = NULL },
 
@@ -73,8 +95,8 @@ struct virtualfs_char_desc
 {
 	int type;
 	int device;
-	size_t (*read)(void *buf, size_t count);
-	size_t (*write)(const void *buf, size_t count);
+	size_t (*read)(int tag, void *buf, size_t count);
+	size_t (*write)(int tag, const void *buf, size_t count);
 };
 #define VIRTUALFS_CHAR(_device, _read, _write) \
 	{ \
@@ -88,8 +110,8 @@ struct virtualfs_char_desc
 struct virtualfs_text_desc
 {
 	int type;
-	int (*getbuflen)();
-	void (*gettext)(char *buf);
+	int (*getbuflen)(int tag);
+	void (*gettext)(int tag, char *buf);
 };
 #define VIRTUALFS_TEXT(_getbuflen, _gettext) \
 	{ \
@@ -107,14 +129,14 @@ struct virtualfs_param_desc
 	int type;
 	int valtype;
 	union {
-		size_t (*get)(char *buf, size_t count);
-		int (*get_int)();
-		unsigned int (*get_uint)();
+		size_t (*get)(int tag, char *buf, size_t count);
+		int (*get_int)(int tag);
+		unsigned int (*get_uint)(int tag);
 	};
 	union {
-		void (*set)(const char *buf, size_t count);
-		void (*set_int)(int value);
-		void (*set_uint)(unsigned int value);
+		void (*set)(int tag, const char *buf, size_t count);
+		void (*set_int)(int tag, int value);
+		void (*set_uint)(int tag, unsigned int value);
 	};
 };
 #define __VIRTUALFS_PARAM_META(_valtype, _suffix, _getter, _setter) \

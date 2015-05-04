@@ -39,7 +39,9 @@ struct virtualfs_directory
 	struct file base_file;
 	const char *mountpoint;
 	const struct virtualfs_directory_desc *desc;
+	int tag;
 	int position; /* Current position for getdents() */
+	int iter_tag; /* Current iteration tag for getdents() */
 	int pathlen;
 	char path[];
 };
@@ -104,6 +106,7 @@ static int virtualfs_directory_getdents(struct file *f, void *dirent, size_t cou
 	struct virtualfs_directory *file = (struct virtualfs_directory *)f;
 	size_t size = 0;
 	char *buf = (char *)dirent;
+	char dynamic_name[32];
 	for (;; file->position++)
 	{
 		const char *name;
@@ -123,18 +126,49 @@ static int virtualfs_directory_getdents(struct file *f, void *dirent, size_t cou
 			int i = file->position - 2;
 			if (file->desc->entries[i].desc == NULL)
 				return size;
-			name = file->desc->entries[i].name;
-			switch (file->desc->entries[i].desc->type)
+			if (file->desc->entries[i].type == VIRTUALFS_ENTRY_STATIC)
 			{
-			case VIRTUALFS_TYPE_DIRECTORY: type = DT_DIR; break;
-			case VIRTUALFS_TYPE_CUSTOM: type = DT_CHR; break;
-			case VIRTUALFS_TYPE_CHAR: type = DT_CHR; break;
-			case VIRTUALFS_TYPE_TEXT: type = DT_REG; break;
-			case VIRTUALFS_TYPE_PARAM: type = DT_REG; break;
-			default:
-				log_error("Invalid virtual fs file type. Corrupted internal data structure.\n");
-				__debugbreak();
-				return -EIO;
+				name = file->desc->entries[i].name;
+				switch (file->desc->entries[i].desc->type)
+				{
+				case VIRTUALFS_TYPE_DIRECTORY: type = DT_DIR; break;
+				case VIRTUALFS_TYPE_CUSTOM: type = DT_CHR; break;
+				case VIRTUALFS_TYPE_CHAR: type = DT_CHR; break;
+				case VIRTUALFS_TYPE_TEXT: type = DT_REG; break;
+				case VIRTUALFS_TYPE_PARAM: type = DT_REG; break;
+				default:
+					log_error("Invalid virtual fs file type. Corrupted internal data structure.\n");
+					__debugbreak();
+					return -EIO;
+				}
+			}
+			else //if (file->desc->entries[i].type == VIRTUALFS_ENTRY_DYNAMIC)
+			{
+				file->desc->entries[i].begin_iter(file->tag);
+				for (;;)
+				{
+					int next_tag = file->desc->entries[i].iter(file->tag, file->iter_tag, &type, dynamic_name, sizeof(dynamic_name));
+					intptr_t r = (*fill_callback)(buf, file->position, name, strlen(name), type, count, GETDENTS_UTF8);
+					if (next_tag == VIRTUALFS_ITER_END)
+						break;
+					file->iter_tag = next_tag;
+					if (r == GETDENTS_ERR_BUFFER_OVERFLOW)
+					{
+						file->desc->entries[i].end_iter(file->tag);
+						return size;
+					}
+					if (r < 0)
+					{
+						file->desc->entries[i].end_iter(file->tag);
+						return r;
+					}
+					count -= r;
+					size += r;
+					buf += r;
+				}
+				file->desc->entries[i].end_iter(file->tag);
+				file->iter_tag = 0;
+				continue;
 			}
 		}
 		/* FIXME: Proper inode support (sync with stat()) */
@@ -158,7 +192,8 @@ static const struct file_ops virtualfs_directory_ops =
 	.getdents = virtualfs_directory_getdents,
 };
 
-static struct file *virtualfs_directory_alloc(const struct virtualfs_directory_desc *desc, const char *mountpoint, const char *path)
+static struct file *virtualfs_directory_alloc(const struct virtualfs_directory_desc *desc,
+	const char *mountpoint, const char *path, int tag)
 {
 	int pathlen = strlen(path);
 	struct virtualfs_directory *file = (struct virtualfs_directory *)kmalloc(sizeof(struct virtualfs_directory) + pathlen);
@@ -167,7 +202,9 @@ static struct file *virtualfs_directory_alloc(const struct virtualfs_directory_d
 	file->base_file.ref = 1;
 	file->mountpoint = mountpoint;
 	file->desc = desc;
+	file->tag = tag;
 	file->position = 0;
+	file->iter_tag = 0;
 	file->pathlen = strlen(path);
 	memcpy(file->path, path, file->pathlen);
 	return (struct file *)file;
@@ -207,6 +244,7 @@ struct virtualfs_char
 {
 	struct file base_file;
 	struct virtualfs_char_desc *desc;
+	int tag;
 };
 
 static int virtualfs_char_close(struct file *f)
@@ -218,13 +256,13 @@ static int virtualfs_char_close(struct file *f)
 static size_t virtualfs_char_read(struct file *f, void *buf, size_t count)
 {
 	struct virtualfs_char *file = (struct virtualfs_char *)f;
-	return file->desc->read(buf, count);
+	return file->desc->read(file->tag, buf, count);
 }
 
 static size_t virtualfs_char_write(struct file *f, const void *buf, size_t count)
 {
 	struct virtualfs_char *file = (struct virtualfs_char *)f;
-	return file->desc->write(buf, count);
+	return file->desc->write(file->tag, buf, count);
 }
 
 static int virtualfs_char_stat(struct file *f, struct newstat *buf)
@@ -259,13 +297,14 @@ static const struct file_ops virtualfs_char_ops =
 	.stat = virtualfs_char_stat,
 };
 
-static struct file *virtualfs_char_alloc(struct virtualfs_char_desc *desc)
+static struct file *virtualfs_char_alloc(struct virtualfs_char_desc *desc, int tag)
 {
 	struct virtualfs_char *file = (struct virtualfs_char *)kmalloc(sizeof(struct virtualfs_char));
 	file->base_file.op_vtable = &virtualfs_char_ops;
 	file->base_file.flags = O_RDWR;
 	file->base_file.ref = 1;
 	file->desc = desc;
+	file->tag = tag;
 	return (struct file *)file;
 }
 
@@ -345,14 +384,14 @@ static const struct file_ops virtualfs_text_ops =
 	.stat = virtualfs_text_stat,
 };
 
-static struct file *virtualfs_text_alloc(struct virtualfs_text_desc *desc)
+static struct file *virtualfs_text_alloc(struct virtualfs_text_desc *desc, int tag)
 {
-	int len = desc->getbuflen();
+	int len = desc->getbuflen(tag);
 	struct virtualfs_text *file = (struct virtualfs_text *)kmalloc(sizeof(struct virtualfs_text) + len);
 	file->base_file.op_vtable = &virtualfs_text_ops;
 	file->base_file.flags = O_RDONLY;
 	file->base_file.ref = 1;
-	desc->gettext(file->text);
+	desc->gettext(tag, file->text);
 	file->textlen = strlen(file->text);
 	file->buflen = len;
 	file->position = 0;
@@ -363,6 +402,7 @@ struct virtualfs_param
 {
 	struct file base_file;
 	struct virtualfs_param_desc *desc;
+	int tag;
 	bool read, written;
 };
 
@@ -381,11 +421,11 @@ static size_t virtualfs_param_read(struct file *f, void *buf, size_t count)
 	switch (file->desc->valtype)
 	{
 	case VIRTUALFS_PARAM_TYPE_RAW:
-		return file->desc->get(buf, count);
+		return file->desc->get(file->tag, buf, count);
 	case VIRTUALFS_PARAM_TYPE_INT:
 	{
 		char nbuf[128];
-		int value = file->desc->get_int();
+		int value = file->desc->get_int(file->tag);
 		count = min(count, (size_t)ksprintf(nbuf, "%d\n", value));
 		memcpy(buf, nbuf, count);
 		return count;
@@ -393,7 +433,7 @@ static size_t virtualfs_param_read(struct file *f, void *buf, size_t count)
 	case VIRTUALFS_PARAM_TYPE_UINT:
 	{
 		char nbuf[128];
-		unsigned int value = file->desc->get_uint();
+		unsigned int value = file->desc->get_uint(file->tag);
 		count = min(count, (size_t)ksprintf(nbuf, "%u\n", value));
 		memcpy(buf, nbuf, count);
 		return count;
@@ -414,7 +454,7 @@ static size_t virtualfs_param_write(struct file *f, const void *buf, size_t coun
 	{
 	case VIRTUALFS_PARAM_TYPE_RAW:
 	{
-		file->desc->set(buf, count);
+		file->desc->set(file->tag, buf, count);
 		break;
 	}
 	case VIRTUALFS_PARAM_TYPE_INT:
@@ -463,13 +503,14 @@ static const struct file_ops virtualfs_param_ops =
 	.stat = virtualfs_param_stat,
 };
 
-static struct file *virtualfs_param_alloc(struct virtualfs_param_desc *desc, int flags)
+static struct file *virtualfs_param_alloc(struct virtualfs_param_desc *desc, int tag, int flags)
 {
 	struct virtualfs_param *file = (struct virtualfs_param *)kmalloc(sizeof(struct virtualfs_param));
 	file->base_file.op_vtable = &virtualfs_param_ops;
 	file->base_file.flags = flags;
 	file->base_file.ref = 1;
 	file->desc = desc;
+	file->tag = tag;
 	file->read = false;
 	file->written = false;
 	return (struct file *)file;
@@ -487,6 +528,7 @@ static int virtualfs_open(struct file_system *fs, const char *path, int flags, i
 		return -EPERM;
 	const struct virtualfs_directory_desc *dir = ((struct virtualfs *)fs)->dir;
 	const char *fullpath = path;
+	int tag = 0;
 do_component:;
 	/* Get current component */
 	const char *end = path;
@@ -495,67 +537,80 @@ do_component:;
 	if (path == end || (path + 1 == end && *path == '.'))
 	{
 		if (p)
-			*p = virtualfs_directory_alloc(dir, fs->mountpoint, fullpath);
+			*p = virtualfs_directory_alloc(dir, fs->mountpoint, fullpath, tag);
 		return 0;
 	}
 	for (int i = 0; dir->entries[i].desc; i++)
 	{
-		if (!strncmp(dir->entries[i].name, path, end - path))
+		struct virtualfs_desc *base_desc;
+		if (dir->entries[i].type == VIRTUALFS_ENTRY_STATIC)
 		{
-			if (dir->entries[i].desc->type == VIRTUALFS_TYPE_DIRECTORY)
-			{
-				dir = (struct virtualfs_directory_desc *)dir->entries[i].desc;
-				path = end;
-				if (*path == '/')
-					path++;
-				goto do_component;
-			}
-			if (*end)
-				return -ENOTDIR;
-			if (flags & O_DIRECTORY)
-				return -ENOTDIR;
-			if (!p) /* Don't need allocate file */
-				return 0;
-			switch (dir->entries[i].desc->type)
-			{
-			case VIRTUALFS_TYPE_CUSTOM:
-			{
-				struct virtualfs_custom_desc *desc = (struct virtualfs_custom_desc *)dir->entries[i].desc;
-				*p = desc->alloc();
-				return 0;
-			}
+			if (strncmp(dir->entries[i].name, path, end - path))
+				continue;
+			base_desc = dir->entries[i].desc;
+		}
+		else if (dir->entries[i].type == VIRTUALFS_ENTRY_DYNAMIC)
+		{
+			int file_tag;
+			int r = dir->entries[i].open(tag, path, end - path, &file_tag, &base_desc);
+			if (r < 0)
+				continue;
+			tag = file_tag;
+		}
 
-			case VIRTUALFS_TYPE_CHAR:
-			{
-				struct virtualfs_char_desc *desc = (struct virtualfs_char_desc *)dir->entries[i].desc;
-				*p = virtualfs_char_alloc(desc);
-				return 0;
-			}
+		if (base_desc->type == VIRTUALFS_TYPE_DIRECTORY)
+		{
+			dir = (struct virtualfs_directory_desc *)base_desc;
+			path = end;
+			if (*path == '/')
+				path++;
+			goto do_component;
+		}
+		if (*end)
+			return -ENOTDIR;
+		if (flags & O_DIRECTORY)
+			return -ENOTDIR;
+		if (!p) /* Don't need allocate file */
+			return 0;
+		switch (base_desc->type)
+		{
+		case VIRTUALFS_TYPE_CUSTOM:
+		{
+			struct virtualfs_custom_desc *desc = (struct virtualfs_custom_desc *)base_desc;
+			*p = desc->alloc();
+			return 0;
+		}
 
-			case VIRTUALFS_TYPE_TEXT:
-			{
-				struct virtualfs_text_desc *desc = (struct virtualfs_text_desc *)dir->entries[i].desc;
-				*p = virtualfs_text_alloc(desc);
-				return 0;
-			}
+		case VIRTUALFS_TYPE_CHAR:
+		{
+			struct virtualfs_char_desc *desc = (struct virtualfs_char_desc *)base_desc;
+			*p = virtualfs_char_alloc(desc, tag);
+			return 0;
+		}
 
-			case VIRTUALFS_TYPE_PARAM:
-			{
-				struct virtualfs_param_desc *desc = (struct virtualfs_param_desc *)dir->entries[i].desc;
-				int accmode = flags & O_ACCMODE;
-				if (!desc->get && (accmode == O_RDONLY || accmode == O_RDWR))
-					return -EACCES;
-				if (!desc->set && (accmode == O_WRONLY || accmode == O_RDWR))
-					return -EACCES;
-				*p = virtualfs_param_alloc(desc, flags);
-				return 0;
-			}
+		case VIRTUALFS_TYPE_TEXT:
+		{
+			struct virtualfs_text_desc *desc = (struct virtualfs_text_desc *)base_desc;
+			*p = virtualfs_text_alloc(desc, tag);
+			return 0;
+		}
 
-			default:
-				log_error("Invalid virtual fs file type. Corrupted internal data structure.\n");
-				__debugbreak();
-				return -ENOENT;
-			}
+		case VIRTUALFS_TYPE_PARAM:
+		{
+			struct virtualfs_param_desc *desc = (struct virtualfs_param_desc *)base_desc;
+			int accmode = flags & O_ACCMODE;
+			if (!desc->get && (accmode == O_RDONLY || accmode == O_RDWR))
+				return -EACCES;
+			if (!desc->set && (accmode == O_WRONLY || accmode == O_RDWR))
+				return -EACCES;
+			*p = virtualfs_param_alloc(desc, tag, flags);
+			return 0;
+		}
+
+		default:
+			log_error("Invalid virtual fs file type. Corrupted internal data structure.\n");
+			__debugbreak();
+			return -ENOENT;
 		}
 	}
 	log_warning("File not found in virtual fs.\n");

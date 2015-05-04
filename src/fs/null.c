@@ -19,12 +19,12 @@
 
 #include <fs/null.h>
 
-static size_t null_read(void *buf, size_t count)
+static size_t null_read(int tag, void *buf, size_t count)
 {
 	return 0;
 }
 
-static size_t null_write(const void *buf, size_t count)
+static size_t null_write(int tag, const void *buf, size_t count)
 {
 	return count;
 }

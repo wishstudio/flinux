@@ -25,7 +25,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
-static int sys_vm_min_free_kbytes_get()
+static int sys_vm_min_free_kbytes_get(int tag)
 {
 	return 4096;
 }
@@ -49,12 +49,12 @@ struct virtualfs_directory_desc sys_desc =
 	}
 };
 
-static int meminfo_getbuflen()
+static int meminfo_getbuflen(int tag)
 {
 	return 512;
 }
 
-static void meminfo_gettext(char *buf)
+static void meminfo_gettext(int tag, char *buf)
 {
 	MEMORYSTATUSEX memory;
 	memory.dwLength = sizeof(memory);
