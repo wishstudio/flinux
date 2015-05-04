@@ -42,7 +42,31 @@ int ksprintf(char *buf, const char *format, ...)
 {
 	va_list ap;
 	va_start(ap, format);
-	return kvsprintf(buf, format, ap);
+	int len = kvsprintf(buf, format, ap);
+	buf[len] = 0;
+	return len;
+}
+
+void strip(char *str)
+{
+	int len = strlen(str);
+	int l;
+	for (l = 0; l < len; l++)
+		if (str[l] != ' ')
+			break;
+	if (l == len)
+	{
+		/* The whole string is space */
+		*str = 0;
+		return;
+	}
+	int r;
+	for (r = len - 1; r >= 0; r--)
+		if (str[r] != ' ')
+			break;
+	len = r - l + 1;
+	memmove(str, str + l, len);
+	str[len] = 0;
 }
 
 /*

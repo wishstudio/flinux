@@ -18,6 +18,7 @@
  */
 
 #include <common/errno.h>
+#include <dbt/cpuid.h>
 #include <fs/procfs.h>
 #include <fs/virtual.h>
 #include <log.h>
@@ -58,6 +59,59 @@ struct virtualfs_directory_desc sys_desc =
 	}
 };
 
+static int cpuinfo_getbuflen(int tag)
+{
+	return 1024;
+}
+
+static void cpuinfo_gettext(int tag, char *buf)
+{
+	struct cpuid_t cpuid;
+
+	char vendorid[13];
+	vendorid[12] = 0;
+	dbt_cpuid(0, 0, &cpuid);
+	memcpy(vendorid, &cpuid.ebx, sizeof(cpuid.ebx));
+	memcpy(vendorid + 4, &cpuid.edx, sizeof(cpuid.edx));
+	memcpy(vendorid + 8, &cpuid.ecx, sizeof(cpuid.ecx));
+	strip(vendorid);
+
+	int family, model, stepping;
+	dbt_cpuid(1, 0, &cpuid);
+	stepping = cpuid.eax & 0xF;
+	model = (cpuid.eax & 0xF0) >> 4;
+	family = (cpuid.eax & 0xF00) >> 8;
+
+	char modelname[48];
+	modelname[48] = 0;
+	dbt_cpuid(0x80000002, 0, &cpuid);
+	memcpy(modelname, &cpuid, sizeof(cpuid));
+	dbt_cpuid(0x80000003, 0, &cpuid);
+	memcpy(modelname + 16, &cpuid, sizeof(cpuid));
+	dbt_cpuid(0x80000004, 0, &cpuid);
+	memcpy(modelname + 32, &cpuid, sizeof(cpuid));
+	strip(modelname);
+
+	char flags[256];
+	dbt_get_cpuinfo(flags);
+	ksprintf(buf,
+		"processor\t: 0\n"
+		"vendor_id\t: %s\n"
+		"cpu family\t: %d\n"
+		"model\t\t: %d\n"
+		"model name\t: %s\n"
+		"stepping\t: %d\n"
+		"flags\t\t:%s\n",
+		vendorid,
+		family,
+		model,
+		modelname,
+		stepping,
+		flags);
+}
+
+static struct virtualfs_text_desc cpuinfo_desc = VIRTUALFS_TEXT(cpuinfo_getbuflen, cpuinfo_gettext);
+
 static int meminfo_getbuflen(int tag)
 {
 	return 512;
@@ -91,6 +145,7 @@ static const struct virtualfs_directory_desc procfs =
 	.entries = {
 		VIRTUALFS_ENTRY_DYNAMIC(procfs_pid_begin_iter, procfs_pid_end_iter, procfs_pid_iter, procfs_pid_open)
 		VIRTUALFS_ENTRY("sys", sys_desc)
+		VIRTUALFS_ENTRY("cpuinfo", cpuinfo_desc)
 		VIRTUALFS_ENTRY("meminfo", meminfo_desc)
 		VIRTUALFS_ENTRY_END()
 	}
