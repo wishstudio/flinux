@@ -42,7 +42,7 @@ struct pool
 	struct bucket *first;
 };
 
-#define POOL_COUNT	9
+#define POOL_COUNT	11
 struct heap_data
 {
 	struct pool pools[POOL_COUNT];
@@ -54,15 +54,17 @@ void heap_init()
 {
 	log_info("heap subsystem initializating...\n");
 	heap = mm_static_alloc(sizeof(struct heap_data));
-	heap->pools[0].objsize = 16;   heap->pools[0].first = NULL;
-	heap->pools[1].objsize = 32;   heap->pools[1].first = NULL;
-	heap->pools[2].objsize = 64;   heap->pools[2].first = NULL;
-	heap->pools[3].objsize = 128;  heap->pools[3].first = NULL;
-	heap->pools[4].objsize = 256;  heap->pools[4].first = NULL;
-	heap->pools[5].objsize = 512;  heap->pools[5].first = NULL;
-	heap->pools[6].objsize = 1024; heap->pools[6].first = NULL;
-	heap->pools[7].objsize = 2048; heap->pools[7].first = NULL;
-	heap->pools[8].objsize = 4096; heap->pools[8].first = NULL;
+	heap->pools[0].objsize = 16;		heap->pools[0].first = NULL;
+	heap->pools[1].objsize = 32;		heap->pools[1].first = NULL;
+	heap->pools[2].objsize = 64;		heap->pools[2].first = NULL;
+	heap->pools[3].objsize = 128;		heap->pools[3].first = NULL;
+	heap->pools[4].objsize = 256;		heap->pools[4].first = NULL;
+	heap->pools[5].objsize = 512;		heap->pools[5].first = NULL;
+	heap->pools[6].objsize = 1024;		heap->pools[6].first = NULL;
+	heap->pools[7].objsize = 2048;		heap->pools[7].first = NULL;
+	heap->pools[8].objsize = 4096;		heap->pools[8].first = NULL;
+	heap->pools[9].objsize = 8192;		heap->pools[9].first = NULL;
+	heap->pools[10].objsize = 16384;	heap->pools[10].first = NULL;
 	log_info("heap subsystem initialized.\n");
 }
 
