@@ -124,9 +124,9 @@ static int virtualfs_directory_getdents(struct file *f, void *dirent, size_t cou
 		else
 		{
 			int i = file->position - 2;
-			if (file->desc->entries[i].desc == NULL)
+			if (file->desc->entries[i].type == VIRTUALFS_ENTRY_TYPE_END)
 				return size;
-			if (file->desc->entries[i].type == VIRTUALFS_ENTRY_STATIC)
+			else if (file->desc->entries[i].type == VIRTUALFS_ENTRY_TYPE_STATIC)
 			{
 				name = file->desc->entries[i].name;
 				switch (file->desc->entries[i].desc->type)
@@ -142,13 +142,13 @@ static int virtualfs_directory_getdents(struct file *f, void *dirent, size_t cou
 					return -EIO;
 				}
 			}
-			else //if (file->desc->entries[i].type == VIRTUALFS_ENTRY_DYNAMIC)
+			else //if (file->desc->entries[i].type == VIRTUALFS_ENTRY_TYPE_DYNAMIC)
 			{
 				file->desc->entries[i].begin_iter(file->tag);
 				for (;;)
 				{
 					int next_tag = file->desc->entries[i].iter(file->tag, file->iter_tag, &type, dynamic_name, sizeof(dynamic_name));
-					intptr_t r = (*fill_callback)(buf, file->position, name, strlen(name), type, count, GETDENTS_UTF8);
+					intptr_t r = (*fill_callback)(buf, file->position, dynamic_name, strlen(dynamic_name), type, count, GETDENTS_UTF8);
 					if (next_tag == VIRTUALFS_ITER_END)
 						break;
 					file->iter_tag = next_tag;
@@ -540,16 +540,18 @@ do_component:;
 			*p = virtualfs_directory_alloc(dir, fs->mountpoint, fullpath, tag);
 		return 0;
 	}
-	for (int i = 0; dir->entries[i].desc; i++)
+	for (int i = 0;; i++)
 	{
 		struct virtualfs_desc *base_desc;
-		if (dir->entries[i].type == VIRTUALFS_ENTRY_STATIC)
+		if (dir->entries[i].type == VIRTUALFS_ENTRY_TYPE_END)
+			break;
+		else if (dir->entries[i].type == VIRTUALFS_ENTRY_TYPE_STATIC)
 		{
 			if (strncmp(dir->entries[i].name, path, end - path))
 				continue;
 			base_desc = dir->entries[i].desc;
 		}
-		else if (dir->entries[i].type == VIRTUALFS_ENTRY_DYNAMIC)
+		else //if (dir->entries[i].type == VIRTUALFS_ENTRY_TYPE_DYNAMIC)
 		{
 			int file_tag;
 			int r = dir->entries[i].open(tag, path, end - path, &file_tag, &base_desc);

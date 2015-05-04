@@ -33,9 +33,10 @@ struct virtualfs_desc
 	int type;
 };
 
-#define VIRTUALFS_ENTRY_STATIC		0
-#define VIRTUALFS_ENTRY_DYNAMIC		1
-#define VIRTUALFS_ITER_END			-1
+#define VIRTUALFS_ENTRY_TYPE_END		0
+#define VIRTUALFS_ENTRY_TYPE_STATIC		1
+#define VIRTUALFS_ENTRY_TYPE_DYNAMIC	2
+#define VIRTUALFS_ITER_END				-1
 struct virtualfs_entry
 {
 	int type;
@@ -58,12 +59,12 @@ struct virtualfs_entry
 	};
 };
 #define VIRTUALFS_ENTRY(_name, _desc) \
-	{ .type = VIRTUALFS_ENTRY_STATIC, .name = _name, .desc = (struct virtualfs_desc *)&_desc },
-#define VIRTUALFS_DYNAMIC_ENTRY(_begin_iter, _end_iter, _iter, _open) \
-	{ .type = VIRTUALFS_ENTRY_DYNAMIC, .begin_iter = _begin_iter, \
-		end_iter = _end_iter, .iter = _iter, .open = _open },
+	{ .type = VIRTUALFS_ENTRY_TYPE_STATIC, .name = _name, .desc = (struct virtualfs_desc *)&_desc },
+#define VIRTUALFS_ENTRY_DYNAMIC(_begin_iter, _end_iter, _iter, _open) \
+	{ .type = VIRTUALFS_ENTRY_TYPE_DYNAMIC, .begin_iter = _begin_iter, \
+		.end_iter = _end_iter, .iter = _iter, .open = _open },
 #define VIRTUALFS_ENTRY_END() \
-	{ .name = "", .desc = NULL },
+	{ .type = VIRTUALFS_ENTRY_TYPE_END },
 
 /* VIRTUALFS_TYPE_DIRECTORY */
 struct virtualfs_directory_desc

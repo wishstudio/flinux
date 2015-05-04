@@ -17,6 +17,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <common/errno.h>
 #include <fs/procfs.h>
 #include <fs/virtual.h>
 #include <log.h>
@@ -24,6 +25,14 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
+
+void procfs_pid_begin_iter(int dir_tag);
+void procfs_pid_end_iter(int dir_tag);
+int procfs_pid_iter(int dir_tag, int iter_tag, int *type, char *name, int namelen);
+static int procfs_pid_open(int dir_tag, const char *name, int namelen, int *file_tag, struct virtualfs_desc **desc)
+{
+	return -ENOENT;
+}
 
 static int sys_vm_min_free_kbytes_get(int tag)
 {
@@ -80,6 +89,7 @@ static const struct virtualfs_directory_desc procfs =
 {
 	.type = VIRTUALFS_TYPE_DIRECTORY,
 	.entries = {
+		VIRTUALFS_ENTRY_DYNAMIC(procfs_pid_begin_iter, procfs_pid_end_iter, procfs_pid_iter, procfs_pid_open)
 		VIRTUALFS_ENTRY("sys", sys_desc)
 		VIRTUALFS_ENTRY("meminfo", meminfo_desc)
 		VIRTUALFS_ENTRY_END()

@@ -22,6 +22,7 @@
 #include <common/resource.h>
 #include <common/sysinfo.h>
 #include <common/wait.h>
+#include <fs/virtual.h>
 #include <syscall/mm.h>
 #include <syscall/process.h>
 #include <syscall/sig.h>
@@ -30,6 +31,7 @@
 #include <datetime.h>
 #include <log.h>
 #include <ntdll.h>
+#include <str.h>
 
 #include <stdbool.h>
 #define WIN32_LEAN_AND_MEAN
@@ -388,6 +390,27 @@ DEFINE_SYSCALL(getsid)
 	pid_t sid = process_shared->processes[process->pid].sid;
 	log_info("getsid(): %d\n", sid);
 	return sid;
+}
+
+void procfs_pid_begin_iter(int dir_tag)
+{
+	process_lock_shared();
+}
+
+void procfs_pid_end_iter(int dir_tag)
+{
+	process_unlock_shared();
+}
+
+int procfs_pid_iter(int dir_tag, int iter_tag, int *type, char *name, int namelen)
+{
+	while (iter_tag < MAX_PROCESS_COUNT && process_shared->processes[iter_tag].status == PROCESS_NOTEXIST)
+		iter_tag++;
+	if (iter_tag == MAX_PROCESS_COUNT)
+		return VIRTUALFS_ITER_END;
+	*type = DT_DIR;
+	ksprintf(name, "%d", iter_tag);
+	return iter_tag + 1;
 }
 
 DEFINE_SYSCALL(setsid)
