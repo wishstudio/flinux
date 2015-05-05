@@ -71,16 +71,35 @@ static void cpuinfo_gettext(int tag, char *buf)
 	char vendorid[13];
 	vendorid[12] = 0;
 	dbt_cpuid(0, 0, &cpuid);
+	int cpuid_level = cpuid.eax;
 	memcpy(vendorid, &cpuid.ebx, sizeof(cpuid.ebx));
 	memcpy(vendorid + 4, &cpuid.edx, sizeof(cpuid.edx));
 	memcpy(vendorid + 8, &cpuid.ecx, sizeof(cpuid.ecx));
 	strip(vendorid);
 
-	int family, model, stepping;
 	dbt_cpuid(1, 0, &cpuid);
-	stepping = cpuid.eax & 0xF;
-	model = (cpuid.eax & 0xF0) >> 4;
-	family = (cpuid.eax & 0xF00) >> 8;
+	int clflush_size = ((cpuid.ebx & 0xFF00) >> 8) * 8;
+
+	dbt_cpuid(1, 0, &cpuid);
+	int stepping = cpuid.eax & 0xF;
+	int model = (cpuid.eax & 0xF0) >> 4;
+	int family = (cpuid.eax & 0xF00) >> 8;
+
+	int cache_size = 0;
+	for (int i = 0;; i++)
+	{
+		dbt_cpuid(4, i, &cpuid);
+		if (cpuid.eax == 0)
+			break;
+		struct ebx_struct
+		{
+			int line_size: 12;
+			int partitions: 10;
+			int ways: 10;
+		};
+		struct ebx_struct *ebx = (struct ebx_struct *)&cpuid.ebx;
+		cache_size = (ebx->ways + 1) * (ebx->partitions + 1) * (ebx->line_size + 1) * (cpuid.ecx + 1);
+	}
 
 	char modelname[48];
 	modelname[48] = 0;
@@ -92,6 +111,10 @@ static void cpuinfo_gettext(int tag, char *buf)
 	memcpy(modelname + 32, &cpuid, sizeof(cpuid));
 	strip(modelname);
 
+	dbt_cpuid(0x80000008, 0, &cpuid);
+	int physical_address_bits = cpuid.eax & 0xFF;
+	int virtual_address_bits = (cpuid.eax & 0xFF00) >> 8;
+
 	char flags[256];
 	dbt_get_cpuinfo(flags);
 	ksprintf(buf,
@@ -101,13 +124,21 @@ static void cpuinfo_gettext(int tag, char *buf)
 		"model\t\t: %d\n"
 		"model name\t: %s\n"
 		"stepping\t: %d\n"
-		"flags\t\t:%s\n",
+		"cache size\t: %d KB\n"
+		"cpuid level\t: %d\n"
+		"flags\t\t:%s\n"
+		"clflush size\t: %d\n"
+		"address sizes\t: %d bits physical, %d bits virtual\n",
 		vendorid,
 		family,
 		model,
 		modelname,
 		stepping,
-		flags);
+		cache_size / 1024,
+		cpuid_level,
+		flags,
+		clflush_size,
+		physical_address_bits, virtual_address_bits);
 }
 
 static struct virtualfs_text_desc cpuinfo_desc = VIRTUALFS_TEXT(cpuinfo_getbuflen, cpuinfo_gettext);
