@@ -21,18 +21,39 @@
 #include <dbt/cpuid.h>
 #include <fs/procfs.h>
 #include <fs/virtual.h>
+#include <syscall/process.h>
 #include <log.h>
 #include <str.h>
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
+struct virtualfs_directory_desc proc_pid_desc =
+{
+	.type = VIRTUALFS_TYPE_DIRECTORY,
+	.entries = {
+		VIRTUALFS_ENTRY_END()
+	}
+};
+
 void procfs_pid_begin_iter(int dir_tag);
 void procfs_pid_end_iter(int dir_tag);
 int procfs_pid_iter(int dir_tag, int iter_tag, int *type, char *name, int namelen);
 static int procfs_pid_open(int dir_tag, const char *name, int namelen, int *file_tag, struct virtualfs_desc **desc)
 {
-	return -ENOENT;
+	char buf[32];
+	if (namelen >= sizeof(buf))
+		return -ENOENT;
+	strncpy(buf, name, namelen);
+	buf[namelen] = 0;
+	pid_t pid;
+	if (!katou(buf, &pid))
+		return -ENOENT;
+	if (!process_pid_exist(pid))
+		return -ENOENT;
+	*file_tag = pid;
+	*desc = (struct virtualfs_desc *)&proc_pid_desc;
+	return 0;
 }
 
 static int sys_vm_min_free_kbytes_get(int tag)

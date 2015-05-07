@@ -463,11 +463,17 @@ int dbt_get_cpuinfo(char *buf)
 		if (cpuid_80000001.ecx & cpuinfo_features_80000001_ecx[i].mask)
 			buf += ksprintf(buf, " %s", cpuinfo_features_80000001_ecx[i].name);
 
-	struct cpuid_t cpuid_7_0;
-	dbt_cpuid(7, 0, &cpuid_7_0);
-	for (int i = 0; i < ARRAYSIZE(cpuinfo_features_7_0_ebx); i++)
-		if (cpuid_7_0.ebx & cpuinfo_features_7_0_ebx[i].mask)
-			buf += ksprintf(buf, " %s", cpuinfo_features_7_0_ebx[i].name);
+	struct cpuid_t cpuid_0;
+	dbt_cpuid(0, 0, &cpuid_0);
+	uint32_t max_cpuid_basic = cpuid_0.eax;
+	if (max_cpuid_basic >= 7)
+	{
+		struct cpuid_t cpuid_7_0;
+		dbt_cpuid(7, 0, &cpuid_7_0);
+		for (int i = 0; i < ARRAYSIZE(cpuinfo_features_7_0_ebx); i++)
+			if (cpuid_7_0.ebx & cpuinfo_features_7_0_ebx[i].mask)
+				buf += ksprintf(buf, " %s", cpuinfo_features_7_0_ebx[i].name);
+	}
 	
 	return buf - buf_original;
 }

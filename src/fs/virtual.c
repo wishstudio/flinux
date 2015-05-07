@@ -550,6 +550,7 @@ do_component:;
 			if (strncmp(dir->entries[i].name, path, end - path))
 				continue;
 			base_desc = dir->entries[i].desc;
+			tag = dir->entries[i].tag;
 		}
 		else //if (dir->entries[i].type == VIRTUALFS_ENTRY_TYPE_DYNAMIC)
 		{

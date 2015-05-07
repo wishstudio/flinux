@@ -19,6 +19,7 @@
 
 #include <str.h>
 #include <vsprintf.h>
+#include <vsscanf.h>
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
@@ -45,6 +46,29 @@ int ksprintf(char *buf, const char *format, ...)
 	int len = kvsprintf(buf, format, ap);
 	buf[len] = 0;
 	return len;
+}
+
+int ksscanf(const char *buf, const char *format, ...)
+{
+	va_list ap;
+	va_start(ap, format);
+	return kvsscanf(buf, format, ap);
+}
+
+bool katoi(const char *str, int *out)
+{
+	int len = strlen(str);
+	int readlen;
+	int r = ksscanf(str, "%d%n", out, &readlen);
+	return r == 1 && readlen == len;
+}
+
+bool katou(const char *str, unsigned int *out)
+{
+	int len = strlen(str);
+	int readlen;
+	int r = ksscanf(str, "%u%n", out, &readlen);
+	return r == 1 && readlen == len;
 }
 
 void strip(char *str)

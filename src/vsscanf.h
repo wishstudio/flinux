@@ -19,33 +19,6 @@
 
 #pragma once
 
-#include <common/types.h>
-#include <common/utsname.h>
-#include <lib/slist.h>
+#include <stdarg.h>
 
-#include <stdbool.h>
-#define WIN32_LEAN_AND_MEAN
-#include <Windows.h>
-
-#define STACK_SIZE	1048576
-
-struct child_process
-{
-	struct slist list;
-	pid_t pid;
-	HANDLE hProcess, hPipe;
-	OVERLAPPED overlapped;
-	bool terminated;
-};
-
-void process_init();
-void process_after_fork(void *stack_base, pid_t pid);
-void process_shutdown();
-void *process_get_stack_base();
-pid_t process_add_child(DWORD win_pid, HANDLE handle);
-
-bool process_pid_exist(pid_t pid);
-pid_t process_get_pid();
-pid_t process_get_ppid();
-pid_t process_get_pgid(pid_t pid);
-pid_t process_get_sid();
+int kvsscanf(const char *buffer, const char *format, va_list args);

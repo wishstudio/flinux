@@ -316,6 +316,13 @@ DEFINE_SYSCALL(wait4, pid_t, pid, int *, status, int, options, struct rusage *, 
 	return process_wait(pid, status, options, rusage);
 }
 
+bool process_pid_exist(pid_t pid)
+{
+	if (pid < 0 || pid >= MAX_PROCESS_COUNT)
+		return false;
+	return process_shared->processes[pid].status != PROCESS_NOTEXIST;
+}
+
 pid_t process_get_pid()
 {
 	return process->pid;

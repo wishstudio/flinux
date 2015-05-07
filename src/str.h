@@ -19,10 +19,14 @@
 
 #pragma once
 
+#include <stdbool.h>
 #include <stdint.h>
 
 int kprintf(const char *format, ...);
 int ksprintf(char *buffer, const char *format, ...);
+int ksscanf(const char *buffer, const char *format, ...);
+bool katoi(const char *str, int *out);
+bool katou(const char *str, unsigned int *out);
 
 void strip(char *str);
 
