@@ -80,12 +80,7 @@ struct virtualfs_directory_desc sys_desc =
 	}
 };
 
-static int cpuinfo_getbuflen(int tag)
-{
-	return 1024;
-}
-
-static void cpuinfo_gettext(int tag, char *buf)
+static int cpuinfo_gettext(int tag, char *buf)
 {
 	struct cpuid_t cpuid;
 
@@ -138,7 +133,7 @@ static void cpuinfo_gettext(int tag, char *buf)
 
 	char flags[256];
 	dbt_get_cpuinfo(flags);
-	ksprintf(buf,
+	return ksprintf(buf,
 		"processor\t: 0\n"
 		"vendor_id\t: %s\n"
 		"cpu family\t: %d\n"
@@ -162,19 +157,14 @@ static void cpuinfo_gettext(int tag, char *buf)
 		physical_address_bits, virtual_address_bits);
 }
 
-static struct virtualfs_text_desc cpuinfo_desc = VIRTUALFS_TEXT(cpuinfo_getbuflen, cpuinfo_gettext);
+static struct virtualfs_text_desc cpuinfo_desc = VIRTUALFS_TEXT(cpuinfo_gettext);
 
-static int meminfo_getbuflen(int tag)
-{
-	return 512;
-}
-
-static void meminfo_gettext(int tag, char *buf)
+static int meminfo_gettext(int tag, char *buf)
 {
 	MEMORYSTATUSEX memory;
 	memory.dwLength = sizeof(memory);
 	GlobalMemoryStatusEx(&memory);
-	ksprintf(buf,
+	return ksprintf(buf,
 		"MemTotal:  %13llu kB\n"
 		"MemFree:   %13llu kB\n"
 		"HighTotal: %13llu kB\n"
@@ -189,7 +179,7 @@ static void meminfo_gettext(int tag, char *buf)
 		memory.ullTotalPageFile / 1024ULL, memory.ullAvailPageFile / 1024ULL);
 }
 
-static struct virtualfs_text_desc meminfo_desc = VIRTUALFS_TEXT(meminfo_getbuflen, meminfo_gettext);
+static struct virtualfs_text_desc meminfo_desc = VIRTUALFS_TEXT(meminfo_gettext);
 
 static const struct virtualfs_directory_desc procfs =
 {

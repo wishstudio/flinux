@@ -116,13 +116,11 @@ struct virtualfs_char_desc
 struct virtualfs_text_desc
 {
 	int type;
-	int (*getbuflen)(int tag);
-	void (*gettext)(int tag, char *buf);
+	int (*gettext)(int tag, char *buf);
 };
-#define VIRTUALFS_TEXT(_getbuflen, _gettext) \
+#define VIRTUALFS_TEXT(_gettext) \
 	{ \
 		.type = VIRTUALFS_TYPE_TEXT, \
-		.getbuflen = _getbuflen, \
 		.gettext = _gettext, \
 	}
 

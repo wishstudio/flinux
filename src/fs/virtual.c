@@ -386,13 +386,15 @@ static const struct file_ops virtualfs_text_ops =
 
 static struct file *virtualfs_text_alloc(struct virtualfs_text_desc *desc, int tag)
 {
-	int len = desc->getbuflen(tag);
-	struct virtualfs_text *file = (struct virtualfs_text *)kmalloc(sizeof(struct virtualfs_text) + len);
+	char buf[65536];
+	int len = desc->gettext(tag, buf);
+	struct virtualfs_text *file = (struct virtualfs_text *)kmalloc(sizeof(struct virtualfs_text) + len + 1);
 	file->base_file.op_vtable = &virtualfs_text_ops;
 	file->base_file.flags = O_RDONLY;
 	file->base_file.ref = 1;
-	desc->gettext(tag, file->text);
-	file->textlen = strlen(file->text);
+	file->textlen = len;
+	memcpy(file->text, buf, len);
+	file->text[len] = 0;
 	file->buflen = len;
 	file->position = 0;
 	return (struct file *)file;
