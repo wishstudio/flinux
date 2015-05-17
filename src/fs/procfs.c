@@ -117,7 +117,7 @@ static int cpuinfo_gettext(int tag, char *buf)
 		cache_size = (ebx->ways + 1) * (ebx->partitions + 1) * (ebx->line_size + 1) * (cpuid.ecx + 1);
 	}
 
-	char modelname[48];
+	char modelname[49];
 	modelname[48] = 0;
 	dbt_cpuid(0x80000002, 0, &cpuid);
 	memcpy(modelname, &cpuid, sizeof(cpuid));
@@ -131,7 +131,7 @@ static int cpuinfo_gettext(int tag, char *buf)
 	int physical_address_bits = cpuid.eax & 0xFF;
 	int virtual_address_bits = (cpuid.eax & 0xFF00) >> 8;
 
-	char flags[256];
+	char flags[4096];
 	dbt_get_cpuinfo(flags);
 	return ksprintf(buf,
 		"processor\t: 0\n"
