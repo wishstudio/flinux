@@ -28,10 +28,19 @@
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
+static int proc_stat_gettext(int tag, char *buf)
+{
+	extern int process_get_stat(char *buf);
+	return process_get_stat(buf);
+}
+
+static struct virtualfs_text_desc proc_stat_desc = VIRTUALFS_TEXT(proc_stat_gettext);
+
 struct virtualfs_directory_desc proc_pid_desc =
 {
 	.type = VIRTUALFS_TYPE_DIRECTORY,
 	.entries = {
+		VIRTUALFS_ENTRY("stat", proc_stat_desc)
 		VIRTUALFS_ENTRY_END()
 	}
 };
@@ -60,7 +69,7 @@ static int sys_vm_min_free_kbytes_get(int tag)
 {
 	return 4096;
 }
-struct virtualfs_param_desc sys_vm_min_free_kbytes_desc = VIRTUALFS_PARAM_UINT_READONLY(sys_vm_min_free_kbytes_get);
+static struct virtualfs_param_desc sys_vm_min_free_kbytes_desc = VIRTUALFS_PARAM_UINT_READONLY(sys_vm_min_free_kbytes_get);
 
 struct virtualfs_directory_desc sys_vm_desc =
 {

@@ -45,6 +45,7 @@ void *process_get_stack_base();
 pid_t process_add_child(DWORD win_pid, HANDLE handle);
 
 bool process_pid_exist(pid_t pid);
+int process_get_stat(char *buf);
 pid_t process_get_pid();
 pid_t process_get_ppid();
 pid_t process_get_pgid(pid_t pid);

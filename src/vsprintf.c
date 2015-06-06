@@ -142,6 +142,18 @@ int kvsprintf(char *buffer, const char *format, va_list args)
 
 			case 'l':
 			{
+				if (f[0] == 'd')
+				{
+					format = f + 1;
+					PRINT_NUM(buf, va_arg(args, intptr_t), intptr_t, uintptr_t, 10, lowercase, width, fillchar);
+					continue;
+				}
+				if (f[0] == 'u')
+				{
+					format = f + 1;
+					PRINT_NUM(buf, va_arg(args, uintptr_t), uintptr_t, uintptr_t, 10, lowercase, width, fillchar);
+					continue;
+				}
 				if (f[0] == 'l' && f[1] == 'x')
 				{
 					format = f + 2;

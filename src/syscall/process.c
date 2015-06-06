@@ -420,6 +420,95 @@ int procfs_pid_iter(int dir_tag, int iter_tag, int *type, char *name, int namele
 	return iter_tag + 1;
 }
 
+int process_get_stat(char *buf)
+{
+	char *original = buf;
+	char *comm = "hello";
+	char state = 'R';
+	int tty_nr = 0; /* TODO */
+	int tpgid = 0; /* TODO */
+	uint32_t flags = 0; /* TODO */
+	buf += ksprintf(buf, "%d ", process->pid);
+	buf += ksprintf(buf, "(%s) ", comm);
+	buf += ksprintf(buf, "%c ", state);
+	buf += ksprintf(buf, "%d ", process_get_ppid(process->pid));
+	buf += ksprintf(buf, "%d ", process_get_pgid(process->pid));
+	buf += ksprintf(buf, "%d ", process_get_sid(process->pid));
+	buf += ksprintf(buf, "%d ", tty_nr);
+	buf += ksprintf(buf, "%d ", tpgid);
+	buf += ksprintf(buf, "%u ", flags);
+	uintptr_t minflt = 0, cminflt = 0, majflt = 0, cmajflt = 0; /* TODO */
+	buf += ksprintf(buf, "%lu ", minflt);
+	buf += ksprintf(buf, "%lu ", cminflt);
+	buf += ksprintf(buf, "%lu ", majflt);
+	buf += ksprintf(buf, "%lu ", cmajflt);
+	uintptr_t utime = 0, stime = 0; /* TODO */
+	intptr_t cutime = 0, cstime = 0; /* TODO */
+	buf += ksprintf(buf, "%lu ", utime);
+	buf += ksprintf(buf, "%lu ", stime);
+	buf += ksprintf(buf, "%ld ", cutime);
+	buf += ksprintf(buf, "%ld ", cstime);
+	intptr_t priority = 20, nice = 0; /* TODO */
+	buf += ksprintf(buf, "%ld ", priority);
+	buf += ksprintf(buf, "%ld ", nice);
+	intptr_t num_threads = 0; /* TODO */
+	buf += ksprintf(buf, "%ld ", num_threads);
+	intptr_t itrealvalue = 0; /* Hard-coded in kernel */
+	buf += ksprintf(buf, "%ld ", 0);
+	uint64_t starttime = 0; /* TODO */
+	buf += ksprintf(buf, "%llu ", starttime);
+	/* Virtual Memory Size */
+	uintptr_t vsize = 0;
+	buf += ksprintf(buf, "%lu ", vsize);
+	/* Resident Set Size */
+	intptr_t rss = 0;
+	buf += ksprintf(buf, "%ld ", rss);
+	/* Current soft limit of RSS: RLIMIT_RSS */
+	uintptr_t rsslim = 0;
+	buf += ksprintf(buf, "%lu ", rsslim);
+	uintptr_t startcode = 0, endcode = 0, startstack = 0; /* TODO */
+	buf += ksprintf(buf, "%lu ", startcode);
+	buf += ksprintf(buf, "%lu ", endcode);
+	buf += ksprintf(buf, "%lu ", startstack);
+	uintptr_t kstkesp = 0, kstkeip = 0; /* TODO */
+	buf += ksprintf(buf, "%lu ", kstkesp);
+	buf += ksprintf(buf, "%lu ", kstkeip);
+	uintptr_t signal = 0, blocked = 0, sigignore = 0, sigcatch = 0; /* TODO */
+	buf += ksprintf(buf, "%lu ", signal);
+	buf += ksprintf(buf, "%lu ", blocked);
+	buf += ksprintf(buf, "%lu ", sigignore);
+	buf += ksprintf(buf, "%lu ", sigcatch);
+	uintptr_t wchan = 0;
+	buf += ksprintf(buf, "%lu ", wchan);
+	uintptr_t nswap = 0, cnswap = 0; /* Not maintained */
+	buf += ksprintf(buf, "%lu ", nswap);
+	buf += ksprintf(buf, "%lu ", cnswap);
+	int exit_signal = SIGCHLD;
+	buf += ksprintf(buf, "%d ", exit_signal);
+	int processor = 0; /* TODO */
+	buf += ksprintf(buf, "%d ", processor);
+	uint32_t rt_priority = 0; /* Non real-time process */
+	buf += ksprintf(buf, "%u ", rt_priority);
+	uint32_t policy = 0; /* TODO */
+	buf += ksprintf(buf, "%u ", policy);
+	uint64_t delayacct_blkio_ticks = 0; /* TODO */
+	buf += ksprintf(buf, "%llu ", delayacct_blkio_ticks);
+	uintptr_t guest_time = 0; /* TODO */
+	buf += ksprintf(buf, "%lu ", guest_time);
+	intptr_t cguest_time = 0; /* TODO */
+	buf += ksprintf(buf, "%ld ", cguest_time);
+	uintptr_t start_data = 0, end_data = 0, start_brk = 0; /* TODO */
+	buf += ksprintf(buf, "%lu ", start_data);
+	buf += ksprintf(buf, "%lu ", end_data);
+	buf += ksprintf(buf, "%lu ", start_brk);
+	uintptr_t env_start = 0, env_end = 0; /* TODO */
+	buf += ksprintf(buf, "%lu ", env_start);
+	buf += ksprintf(buf, "%lu ", env_end);
+	int exit_code = 0;
+	buf += ksprintf(buf, "%d\n", exit_code);
+	return buf - original;
+}
+
 DEFINE_SYSCALL(setsid)
 {
 	log_info("setsid().\n");
