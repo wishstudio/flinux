@@ -192,7 +192,6 @@ static pid_t fork_process(struct syscall_context *context, unsigned long flags, 
 		(SIZE_T)((char *)stack_base + STACK_SIZE - context->esp), NULL);
 	ResumeThread(info.hThread);
 	CloseHandle(info.hThread);
-	CloseHandle(info.hProcess);
 
 	log_info("Child pid: %d, win_pid: %d\n", pid, info.dwProcessId);
 	return pid;

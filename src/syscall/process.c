@@ -333,6 +333,7 @@ static pid_t process_wait(pid_t pid, int *status, int options, struct rusage *ru
 		else
 			*status = W_EXITCODE(exit_code, 0);
 	}
+	CloseHandle(proc->hProcess);
 	return pid;
 }
 
