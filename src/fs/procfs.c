@@ -170,6 +170,15 @@ static int cpuinfo_gettext(int tag, char *buf)
 
 static struct virtualfs_text_desc cpuinfo_desc = VIRTUALFS_TEXT(cpuinfo_gettext);
 
+static int loadavg_gettext(int tag, char *buf)
+{
+	return ksprintf(buf,
+		"%u.%02u %u.%02u %u.%02u %d/%d %d\n",
+		0, 0, 0, 0, 0, 0, 0, 0, 0);
+}
+
+static struct virtualfs_text_desc loadavg_desc = VIRTUALFS_TEXT(loadavg_gettext);
+
 static int meminfo_gettext(int tag, char *buf)
 {
 	MEMORYSTATUSEX memory;
@@ -218,6 +227,7 @@ static const struct virtualfs_directory_desc procfs =
 		VIRTUALFS_ENTRY_WITH_TAG("self", proc_pid_desc, 0)
 		VIRTUALFS_ENTRY("sys", sys_desc)
 		VIRTUALFS_ENTRY("cpuinfo", cpuinfo_desc)
+		VIRTUALFS_ENTRY("loadavg", loadavg_desc)
 		VIRTUALFS_ENTRY("meminfo", meminfo_desc)
 		VIRTUALFS_ENTRY("uptime", uptime_desc)
 		VIRTUALFS_ENTRY_END()
