@@ -195,6 +195,7 @@ static const struct virtualfs_directory_desc procfs =
 	.type = VIRTUALFS_TYPE_DIRECTORY,
 	.entries = {
 		VIRTUALFS_ENTRY_DYNAMIC(procfs_pid_begin_iter, procfs_pid_end_iter, procfs_pid_iter, procfs_pid_open)
+		VIRTUALFS_ENTRY_WITH_TAG("self", proc_pid_desc, 0)
 		VIRTUALFS_ENTRY("sys", sys_desc)
 		VIRTUALFS_ENTRY("cpuinfo", cpuinfo_desc)
 		VIRTUALFS_ENTRY("meminfo", meminfo_desc)
