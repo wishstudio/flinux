@@ -232,7 +232,8 @@ static DWORD WINAPI signal_thread(LPVOID parameter)
 				} data;
 				data.len = process_query(packet.query_type, data.buf);
 				DWORD written;
-				WriteFile(signal->sigread, &data, sizeof(data), &written, NULL);
+				WriteFile(signal->sigread, &data, sizeof(int) + data.len, &written, NULL);
+				/* TODO: Avoid blocking when the other end died */
 				break;
 			}
 			default:
