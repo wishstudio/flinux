@@ -87,7 +87,8 @@ static bool create_pipe(HANDLE *read, HANDLE *write, bool is_duplex)
 		NULL);
 	if (server == INVALID_HANDLE_VALUE)
 		return false;
-	HANDLE client = CreateFileA(pipe_name, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+	DWORD desired_access = is_duplex ? GENERIC_READ | GENERIC_WRITE : GENERIC_WRITE;
+	HANDLE client = CreateFileA(pipe_name, desired_access, 0, NULL, OPEN_EXISTING, 0, NULL);
 	if (client == INVALID_HANDLE_VALUE)
 	{
 		CloseHandle(server);
