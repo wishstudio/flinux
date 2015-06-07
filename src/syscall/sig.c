@@ -180,6 +180,7 @@ static DWORD WINAPI signal_thread(LPVOID parameter)
 {
 	/* CAUTION: Never use logging in signal thread */
 	OVERLAPPED packet_overlapped;
+	memset(&packet_overlapped, 0, sizeof(OVERLAPPED));
 	char buf[1];
 	struct signal_packet packet;
 	ReadFile(signal->sigread, &packet, sizeof(struct signal_packet), NULL, &packet_overlapped);
@@ -217,6 +218,7 @@ static DWORD WINAPI signal_thread(LPVOID parameter)
 			{
 				struct child_process *proc = packet.proc;
 				CreateIoCompletionPort(proc->hPipe, signal->iocp, (ULONG_PTR)proc, 1);
+				memset(&proc->overlapped, 0, sizeof(OVERLAPPED));
 				if (!ReadFile(proc->hPipe, buf, 1, NULL, &proc->overlapped) && GetLastError() != ERROR_IO_PENDING)
 					signal_thread_handle_process_terminated(proc);
 				break;
