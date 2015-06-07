@@ -70,7 +70,7 @@ void main()
 	if (len > BLOCK_SIZE) /* TODO: Test if there is sufficient space for argv[] array */
 	{
 		kprintf("Command line too long.\n");
-		ExitProcess(1);
+		process_exit(1, 0);
 	}
 
 	startup = mm_mmap(NULL, BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS,
@@ -131,5 +131,5 @@ void main()
 	if (filename)
 		do_execve(filename, argc - 1, argv + 1, env_size, envp, buffer_base, NULL);
 	kprintf("Usage: flinux <executable> [arguments]\n");
-	ExitProcess(1);
+	process_exit(1, 0);
 }

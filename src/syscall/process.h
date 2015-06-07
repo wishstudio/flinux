@@ -44,6 +44,7 @@ void process_shutdown();
 void *process_get_stack_base();
 pid_t process_add_child(DWORD win_pid, HANDLE handle);
 
+__declspec(noreturn) void process_exit(int exit_code, int exit_signal);
 bool process_pid_exist(pid_t pid);
 int process_get_stat(char *buf);
 pid_t process_get_pid();

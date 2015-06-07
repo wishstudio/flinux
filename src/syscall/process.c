@@ -41,10 +41,15 @@
 
 #define PROCESS_NOTEXIST		0 /* The process does not exist */
 #define PROCESS_RUNNING			1 /* The process is running normally */
+#define PROCESS_ZOMBIE			2 /* The process is a zombie */
 struct process
 {
 	/* Status for current slot */
 	int status;
+	/* Exit code */
+	int exit_code;
+	/* Exit signal */
+	int exit_signal;
 	/* Windows process identifier */
 	pid_t win_pid;
 	/* Process group id */
@@ -292,13 +297,38 @@ static pid_t process_wait(pid_t pid, int *status, int options, struct rusage *ru
 		log_error("pid unhandled.\n");
 		return -EINVAL;
 	}
-	DWORD exitCode;
-	GetExitCodeProcess(proc->hProcess, &exitCode);
-	CloseHandle(proc->hProcess);
 	pid = proc->pid;
-	log_info("pid: %d exit code: %d\n", pid, exitCode);
+	process_lock_shared();
+	int exit_code, exit_signal;
+	if (process_shared->processes[pid].status == PROCESS_RUNNING)
+	{
+		DWORD code;
+		/* The process died abnormally */
+		GetExitCodeProcess(proc->hProcess, &code);
+		exit_code = code;
+		exit_signal = 0;
+	}
+	else if (process_shared->processes[pid].status == PROCESS_ZOMBIE)
+	{
+		/* The process died normally */
+		exit_code = process_shared->processes[pid].exit_code;
+		exit_signal = process_shared->processes[pid].exit_signal;
+	}
+	else
+	{
+		log_error("Invalid process status: %d (pid: %d)\n", process_shared->processes[pid].status, pid);
+		process_exit(1, 0);
+	}
+	process_shared->processes[pid].status = PROCESS_NOTEXIST;
+	process_unlock_shared();
+	log_info("pid: %d exit code: %d exit signal: %d\n", pid, exit_code, exit_signal);
 	if (status)
-		*status = W_EXITCODE(exitCode, 0);
+	{
+		if (exit_signal)
+			*status = W_STOPCODE(exit_signal);
+		else
+			*status = W_EXITCODE(exit_code, 0);
+	}
 	return pid;
 }
 
@@ -314,6 +344,18 @@ DEFINE_SYSCALL(wait4, pid_t, pid, int *, status, int, options, struct rusage *, 
 	if (rusage)
 		log_error("rusage != NULL\n");
 	return process_wait(pid, status, options, rusage);
+}
+
+__declspec(noreturn) void process_exit(int exit_code, int exit_signal)
+{
+	/* TODO: Gracefully shutdown subsystems, but take care of race conditions */
+	process_lock_shared();
+	pid_t pid = process->pid;
+	process_shared->processes[pid].exit_code = exit_code;
+	process_shared->processes[pid].exit_signal = exit_signal;
+	process_shared->processes[pid].status = PROCESS_ZOMBIE;
+	/* Let Windows release process lock for us */
+	ExitProcess(exit_code);
 }
 
 bool process_pid_exist(pid_t pid)
@@ -582,17 +624,15 @@ DEFINE_SYSCALL(getgroups, int, size, gid_t *, list)
 DEFINE_SYSCALL(exit, int, status)
 {
 	log_info("exit(%d)\n", status);
-	/* TODO: Gracefully shutdown mm, vfs, etc. */
 	log_shutdown();
-	ExitProcess(status);
+	process_exit(status, 0);
 }
 
 DEFINE_SYSCALL(exit_group, int, status)
 {
 	log_info("exit_group(%d)\n", status);
-	/* TODO: Gracefully shutdown mm, vfs, etc. */
 	log_shutdown();
-	ExitProcess(status);
+	process_exit(status, 0);
 }
 
 DEFINE_SYSCALL(uname, struct utsname *, buf)

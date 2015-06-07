@@ -17,6 +17,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <syscall/process.h>
 #include <syscall/syscall.h>
 #include <syscall/syscall_dispatch.h>
 #include <log.h>
@@ -63,7 +64,7 @@ void sys_unimplemented_imp(intptr_t id)
 {
 	log_error("FATAL: Unimplemented syscall: %d\n", id);
 	__debugbreak();
-	ExitProcess(1);
+	process_exit(1, 0);
 }
 
 void dispatch_syscall(PCONTEXT context)

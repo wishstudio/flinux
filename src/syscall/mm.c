@@ -286,7 +286,7 @@ static void map_global_shared_section()
 	if (mm->global_shared_alloc_begin == NULL)
 	{
 		log_error("mm: Map global shared area failed, error code: %d.\n", GetLastError());
-		ExitProcess(1);
+		process_exit(1, 0);
 	}
 	mm->global_shared_alloc_end = (char*)mm->global_shared_alloc_begin + MM_GLOBAL_SHARED_ALLOC_SIZE;
 }
@@ -318,7 +318,7 @@ void mm_init()
 	if (mm->global_shared_section == NULL)
 	{
 		log_error("mm: Create global shared area failed, error code: %d.\n", GetLastError());
-		ExitProcess(1);
+		process_exit(1, 0);
 	}
 	map_global_shared_section();
 }

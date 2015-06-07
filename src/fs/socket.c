@@ -26,6 +26,7 @@
 #include <fs/file.h>
 #include <fs/socket.h>
 #include <syscall/mm.h>
+#include <syscall/process.h>
 #include <syscall/sig.h>
 #include <syscall/syscall.h>
 #include <syscall/vfs.h>
@@ -154,7 +155,7 @@ static void socket_ensure_initialized()
 		if (r != 0)
 		{
 			log_error("WSAStartup() failed, error code: %d\n", r);
-			ExitProcess(1);
+			process_exit(1, 0);
 		}
 		socket_inited = 1;
 		log_info("WinSock2 initialized, version: %d.%d\n", LOBYTE(wsa_data.wVersion), HIBYTE(wsa_data.wVersion));

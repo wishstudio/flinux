@@ -116,7 +116,7 @@ static void signal_default_handler(siginfo_t *info)
 	case SIGTERM:
 	case SIGUSR1:
 	case SIGUSR2:
-		ExitProcess(0);
+		process_exit(0, info->si_signo);
 		break;
 	}
 }

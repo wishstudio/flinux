@@ -385,7 +385,7 @@ int do_execve(const char *filename, int argc, char *argv[], int env_size, char *
 	if (r < 0)
 	{
 		log_error("FATAL: Load executable failed, cannot continue.\n");
-		ExitProcess(1);
+		process_exit(1, 0);
 	}
 
 	/* Execute file */

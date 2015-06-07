@@ -110,18 +110,18 @@ void fork_init()
 			if (!CreateProcessW(filename, GetCommandLineW(), NULL, NULL, TRUE, CREATE_SUSPENDED, NULL, NULL, &si, &info))
 			{
 				log_error("CreateProcessW() failed, error code: %d\n", GetLastError());
-				ExitProcess(1);
+				process_exit(1, 0);
 			}
 			/* Pre-reserve the memory */
 			if (!VirtualAllocEx(info.hProcess, region_start, region_size, MEM_RESERVE, PAGE_NOACCESS))
 			{
 				log_error("VirtualAllocEx() failed, error code: %d\n", GetLastError());
-				ExitProcess(1);
+				process_exit(1, 0);
 			}
 			/* All done */
 			log_shutdown();
 			ResumeThread(info.hThread);
-			ExitProcess(0);
+			process_exit(1, 0);
 		}
 #endif
 		/* Return control flow to main() */
