@@ -39,9 +39,10 @@ struct signal_data
 	HANDLE iocp;
 	HANDLE sigread, sigwrite;
 	HANDLE sigevent;
+	HANDLE query_mutex;
 	CRITICAL_SECTION mutex;
 	HANDLE process_wait_semaphore;
-	
+
 	HANDLE main_thread;
 	struct sigaction actions[_NSIG];
 	sigset_t mask, pending;
@@ -54,6 +55,7 @@ struct signal_data
 #define SIGNAL_PACKET_KILL			1 /* Send signal */
 #define SIGNAL_PACKET_DELIVER		2 /* Deliver existing pending signal to thread */
 #define SIGNAL_PACKET_ADD_PROCESS	3 /* Add a child process for listening */
+#define SIGNAL_PACKET_QUERY			4 /* Inter-process information query (used for /proc/[pid]) */
 struct signal_packet
 {
 	int type;
@@ -61,6 +63,7 @@ struct signal_packet
 	{
 		siginfo_t info;
 		struct child_process *proc;
+		int query_type;
 	};
 };
 
@@ -68,13 +71,14 @@ static struct signal_data *signal;
 
 /* Create a uni-direction, message based pipe */
 static volatile long process_pipe_count = 0;
-static bool create_pipe(HANDLE *read, HANDLE *write)
+static bool create_pipe(HANDLE *read, HANDLE *write, bool is_duplex)
 {
+	DWORD open_mode = is_duplex ? PIPE_ACCESS_DUPLEX : PIPE_ACCESS_INBOUND;
 	char pipe_name[256];
 	long pipe_id = InterlockedIncrement(&process_pipe_count);
 	ksprintf(pipe_name, "\\\\.\\pipe\\flinux-fsig%d-%d", GetCurrentProcessId(), pipe_id);
 	HANDLE server = CreateNamedPipeA(pipe_name,
-		PIPE_ACCESS_INBOUND | FILE_FLAG_FIRST_PIPE_INSTANCE | FILE_FLAG_OVERLAPPED,
+		open_mode | FILE_FLAG_FIRST_PIPE_INSTANCE | FILE_FLAG_OVERLAPPED,
 		PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
 		1,
 		PAGE_SIZE,
@@ -83,7 +87,7 @@ static bool create_pipe(HANDLE *read, HANDLE *write)
 		NULL);
 	if (server == INVALID_HANDLE_VALUE)
 		return false;
-	HANDLE client = CreateFileA(pipe_name, GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+	HANDLE client = CreateFileA(pipe_name, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
 	if (client == INVALID_HANDLE_VALUE)
 	{
 		CloseHandle(server);
@@ -216,6 +220,18 @@ static DWORD WINAPI signal_thread(LPVOID parameter)
 					signal_thread_handle_process_terminated(proc);
 				break;
 			}
+			case SIGNAL_PACKET_QUERY:
+			{
+				struct
+				{
+					int len;
+					char buf[65536];
+				} data;
+				data.len = process_query(packet.query_type, data.buf);
+				DWORD written;
+				WriteFile(signal->sigread, &data, sizeof(data), &written, NULL);
+				break;
+			}
 			default:
 			{
 				/* TODO: Log error message */
@@ -226,6 +242,7 @@ static DWORD WINAPI signal_thread(LPVOID parameter)
 		}
 		else
 		{
+			/* One child died */
 			struct child_process *proc = (struct child_process *)key;
 			signal_thread_handle_process_terminated(proc);
 		}
@@ -326,10 +343,22 @@ HANDLE signal_get_process_sigwrite()
 	return signal->sigwrite;
 }
 
+HANDLE signal_get_process_query_mutex()
+{
+	return signal->query_mutex;
+}
+
+/* Process waiting mechanism:
+ * We create a pipe and duplicate the write end in the child.
+ * Then we read the pipe through signal IOCP.
+ * When the child terminates, the write end of the pipe will be closed,
+ * which will cause the read to error and we have a chance to know that the child died.
+ * This works even the child terminates abnormally, and supports an arbitrary number of child processes.
+ */
 void signal_add_process(struct child_process *proc)
 {
 	HANDLE read, write;
-	create_pipe(&read, &write);
+	create_pipe(&read, &write, false);
 	proc->hPipe = read;
 	/* Duplicate and leak write end handle in the child process */
 	HANDLE target;
@@ -376,7 +405,7 @@ static void signal_init_private()
 {
 	/* Initialize private structures and handles */
 	sigemptyset(&signal->pending);
-	if (!create_pipe(&signal->sigread, &signal->sigwrite))
+	if (!create_pipe(&signal->sigread, &signal->sigwrite, true))
 	{
 		log_error("Signal pipe creation failed, error code: %d\n", GetLastError());
 		return;
@@ -385,6 +414,7 @@ static void signal_init_private()
 	signal->can_accept_signal = true;
 	signal->process_wait_semaphore = CreateSemaphoreW(NULL, 0, LONG_MAX, NULL);
 	signal->iocp = CreateIoCompletionPort(signal->sigread, NULL, 0, 1);
+	signal->query_mutex = CreateMutexW(NULL, FALSE, L"");
 
 	/* Get the handle to main thread */
 	if (!DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &signal->main_thread,
@@ -396,7 +426,7 @@ static void signal_init_private()
 
 	/* Create signal thread */
 	InitializeCriticalSection(&signal->mutex);
-	signal->thread = CreateThread(NULL, PAGE_SIZE, signal_thread, NULL, 0, NULL);
+	signal->thread = CreateThread(NULL, 0, signal_thread, NULL, 0, NULL);
 	if (!signal->thread)
 		log_error("Signal thread creation failed, error code: %d.\n", GetLastError());
 }
@@ -427,8 +457,9 @@ void signal_shutdown()
 	struct signal_packet packet;
 	packet.type = SIGNAL_PACKET_SHUTDOWN;
 	send_packet(signal->sigwrite, &packet);
-
 	WaitForSingleObject(signal->thread, INFINITE);
+
+	CloseHandle(signal->query_mutex);
 	DeleteCriticalSection(&signal->mutex);
 	CloseHandle(signal->sigread);
 	CloseHandle(signal->sigwrite);
@@ -462,6 +493,47 @@ DWORD signal_wait(int count, HANDLE *handles, DWORD milliseconds)
 		return WAIT_INTERRUPTED;
 	else
 		return result;
+}
+
+int signal_query(DWORD win_pid, HANDLE sigwrite, HANDLE query_mutex, int query_type, char *buf)
+{
+	HANDLE process = OpenProcess(PROCESS_DUP_HANDLE, FALSE, win_pid);
+	if (process == NULL)
+		return -ENOENT;
+	HANDLE pipe, mutex;
+	DuplicateHandle(process, sigwrite, GetCurrentProcess(), &pipe, 0, FALSE, DUPLICATE_SAME_ACCESS);
+	DuplicateHandle(process, query_mutex, GetCurrentProcess(), &mutex, 0, FALSE, DUPLICATE_SAME_ACCESS);
+
+	/* The query mutex ensures only one process is communicating with the target
+	 * to avoid race conditions on the signal pipe
+	 */
+	if (WaitForSingleObject(mutex, INFINITE) == WAIT_ABANDONED_0)
+	{
+		/* TODO: Previous query instance crashed while querying
+		 * Needs to find one way to properly clear the unread pipe buffer in this case
+		 */
+		__debugbreak();
+	}
+	struct signal_packet packet;
+	packet.type = SIGNAL_PACKET_QUERY;
+	packet.query_type = query_type;
+	DWORD written;
+	WriteFile(pipe, &packet, sizeof(packet), &written, NULL);
+	int len;
+	DWORD read;
+	ReadFile(pipe, &len, sizeof(int), &read, NULL);
+	if (len > 0)
+		ReadFile(pipe, buf, len, &read, NULL);
+	ReleaseMutex(mutex);
+
+	CloseHandle(mutex);
+	CloseHandle(pipe);
+	CloseHandle(process);
+
+	if (len == 0)
+		return -ENOENT;
+	else
+		return len;
 }
 
 DEFINE_SYSCALL(alarm, unsigned int, seconds)

@@ -388,6 +388,8 @@ static struct file *virtualfs_text_alloc(struct virtualfs_text_desc *desc, int t
 {
 	char buf[65536];
 	int len = desc->gettext(tag, buf);
+	if (len < 0)
+		return NULL;
 	struct virtualfs_text *file = (struct virtualfs_text *)kmalloc(sizeof(struct virtualfs_text) + len + 1);
 	file->base_file.op_vtable = &virtualfs_text_ops;
 	file->base_file.flags = O_RDONLY;
@@ -552,7 +554,6 @@ do_component:;
 			if (strncmp(dir->entries[i].name, path, end - path))
 				continue;
 			base_desc = dir->entries[i].desc;
-			tag = dir->entries[i].tag;
 		}
 		else //if (dir->entries[i].type == VIRTUALFS_ENTRY_TYPE_DYNAMIC)
 		{
@@ -583,6 +584,8 @@ do_component:;
 		{
 			struct virtualfs_custom_desc *desc = (struct virtualfs_custom_desc *)base_desc;
 			*p = desc->alloc();
+			if (*p == NULL)
+				return -ENOENT;
 			return 0;
 		}
 
@@ -590,6 +593,8 @@ do_component:;
 		{
 			struct virtualfs_char_desc *desc = (struct virtualfs_char_desc *)base_desc;
 			*p = virtualfs_char_alloc(desc, tag);
+			if (*p == NULL)
+				return -ENOENT;
 			return 0;
 		}
 
@@ -597,6 +602,8 @@ do_component:;
 		{
 			struct virtualfs_text_desc *desc = (struct virtualfs_text_desc *)base_desc;
 			*p = virtualfs_text_alloc(desc, tag);
+			if (*p == NULL)
+				return -ENOENT;
 			return 0;
 		}
 
@@ -609,6 +616,8 @@ do_component:;
 			if (!desc->set && (accmode == O_WRONLY || accmode == O_RDWR))
 				return -EACCES;
 			*p = virtualfs_param_alloc(desc, tag, flags);
+			if (*p == NULL)
+				return -ENOENT;
 			return 0;
 		}
 

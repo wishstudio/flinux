@@ -32,8 +32,7 @@
 
 static int proc_stat_gettext(int tag, char *buf)
 {
-	extern int process_get_stat(char *buf);
-	return process_get_stat(buf);
+	return process_query_pid(tag, PROCESS_QUERY_STAT, buf);
 }
 
 static struct virtualfs_text_desc proc_stat_desc = VIRTUALFS_TEXT(proc_stat_gettext);
@@ -224,7 +223,7 @@ static const struct virtualfs_directory_desc procfs =
 	.type = VIRTUALFS_TYPE_DIRECTORY,
 	.entries = {
 		VIRTUALFS_ENTRY_DYNAMIC(procfs_pid_begin_iter, procfs_pid_end_iter, procfs_pid_iter, procfs_pid_open)
-		VIRTUALFS_ENTRY_WITH_TAG("self", proc_pid_desc, 0)
+		VIRTUALFS_ENTRY("self", proc_pid_desc)
 		VIRTUALFS_ENTRY("sys", sys_desc)
 		VIRTUALFS_ENTRY("cpuinfo", cpuinfo_desc)
 		VIRTUALFS_ENTRY("loadavg", loadavg_desc)

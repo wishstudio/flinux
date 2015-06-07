@@ -47,7 +47,6 @@ struct virtualfs_entry
 		{
 			const char *name;
 			struct virtualfs_desc *desc;
-			int tag;
 		};
 		/* For dynamic entry */
 		struct
@@ -61,10 +60,7 @@ struct virtualfs_entry
 };
 #define VIRTUALFS_ENTRY(_name, _desc) \
 	{ .type = VIRTUALFS_ENTRY_TYPE_STATIC, .name = _name, \
-		.desc = (struct virtualfs_desc *)&_desc, .tag = 0 },
-#define VIRTUALFS_ENTRY_WITH_TAG(_name, _desc, _tag) \
-	{ .type = VIRTUALFS_ENTRY_TYPE_STATIC, .name = _name, \
-		.desc = (struct virtualfs_desc *)&_desc, .tag = _tag },
+		.desc = (struct virtualfs_desc *)&_desc },
 #define VIRTUALFS_ENTRY_DYNAMIC(_begin_iter, _end_iter, _iter, _open) \
 	{ .type = VIRTUALFS_ENTRY_TYPE_DYNAMIC, .begin_iter = _begin_iter, \
 		.end_iter = _end_iter, .iter = _iter, .open = _open },

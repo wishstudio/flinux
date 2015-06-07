@@ -46,8 +46,14 @@ pid_t process_add_child(DWORD win_pid, HANDLE handle);
 
 __declspec(noreturn) void process_exit(int exit_code, int exit_signal);
 bool process_pid_exist(pid_t pid);
-int process_get_stat(char *buf);
 pid_t process_get_pid();
 pid_t process_get_ppid();
 pid_t process_get_pgid(pid_t pid);
 pid_t process_get_sid();
+
+enum
+{
+	PROCESS_QUERY_STAT,		/* /proc/[pid]/stat */
+};
+int process_query(int query_type, char *buf);
+int process_query_pid(pid_t pid, int query_type, char *buf);

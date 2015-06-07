@@ -60,6 +60,8 @@ struct process
 	pid_t sid;
 	/* Handle to sigwrite pipe in the process */
 	HANDLE sigwrite;
+	/* Handle to information query mutex in the process */
+	HANDLE query_mutex;
 };
 
 struct process_shared_data
@@ -152,6 +154,7 @@ void process_init()
 		process_shared->processes[1].pgid = 1;
 		process_shared->processes[1].sid = 1;
 		process_shared->processes[1].sigwrite = NULL;
+		process_shared->processes[1].query_mutex = NULL;
 		/* Done, allocate a new pid for current process */
 		pid = process_alloc();
 	}
@@ -161,6 +164,7 @@ void process_init()
 	process_shared->processes[pid].pgid = pid;
 	process_shared->processes[pid].sid = pid;
 	process_shared->processes[pid].sigwrite = signal_get_process_sigwrite();
+	process_shared->processes[pid].query_mutex = signal_get_process_query_mutex();
 	process_unlock_shared();
 	process->pid = pid;
 	log_info("PID: %d\n", pid);
@@ -260,7 +264,7 @@ static pid_t process_wait(pid_t pid, int *status, int options, struct rusage *ru
 	{
 		if (process->child_count == 0)
 		{
-			log_warning("No childs.\n");
+			log_warning("No children.\n");
 			return -ECHILD;
 		}
 		if (!(options & WNOHANG))
@@ -441,25 +445,25 @@ DEFINE_SYSCALL(getsid)
 	return sid;
 }
 
-void procfs_pid_begin_iter(int dir_tag)
+void procfs_pid_begin_iter(int tag)
 {
 	process_lock_shared();
 }
 
-void procfs_pid_end_iter(int dir_tag)
+void procfs_pid_end_iter(int tag)
 {
 	process_unlock_shared();
 }
 
-int procfs_pid_iter(int dir_tag, int iter_tag, int *type, char *name, int namelen)
+int procfs_pid_iter(int tag, int iter_index, int *type, char *name, int namelen)
 {
-	while (iter_tag < MAX_PROCESS_COUNT && process_shared->processes[iter_tag].status == PROCESS_NOTEXIST)
-		iter_tag++;
-	if (iter_tag == MAX_PROCESS_COUNT)
+	while (iter_index < MAX_PROCESS_COUNT && process_shared->processes[iter_index].status == PROCESS_NOTEXIST)
+		iter_index++;
+	if (iter_index == MAX_PROCESS_COUNT)
 		return VIRTUALFS_ITER_END;
 	*type = DT_DIR;
-	ksprintf(name, "%d", iter_tag);
-	return iter_tag + 1;
+	ksprintf(name, "%d", iter_index);
+	return iter_index + 1;
 }
 
 int process_get_stat(char *buf)
@@ -549,6 +553,35 @@ int process_get_stat(char *buf)
 	int exit_code = 0;
 	buf += ksprintf(buf, "%d\n", exit_code);
 	return buf - original;
+}
+
+int process_query(int query_type, char *buf)
+{
+	switch (query_type)
+	{
+	case PROCESS_QUERY_STAT:
+		return process_get_stat(buf);
+
+	default:
+		return 0;
+	}
+}
+
+int process_query_pid(int pid, int query_type, char *buf)
+{
+	if (pid == 1)
+		return -ENOENT;
+	if (pid == 0 || pid == process->pid)
+		return process_query(query_type, buf);
+	else
+	{
+		if (!process_pid_exist(pid))
+			return -ENOENT;
+		return signal_query(process_shared->processes[pid].win_pid,
+			process_shared->processes[pid].sigwrite,
+			process_shared->processes[pid].query_mutex,
+			query_type, buf);
+	}
 }
 
 DEFINE_SYSCALL(setsid)

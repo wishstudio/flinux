@@ -28,6 +28,7 @@
 
 HANDLE signal_get_process_wait_semaphore();
 HANDLE signal_get_process_sigwrite();
+HANDLE signal_get_process_query_mutex();
 void signal_add_process(struct child_process *proc);
 
 void signal_setup_handler(struct syscall_context *context);
@@ -39,3 +40,5 @@ int signal_kill(pid_t pid, siginfo_t *siginfo);
 DWORD signal_wait(int count, HANDLE *handles, DWORD milliseconds);
 
 #define WAIT_INTERRUPTED	0x80000000
+
+int signal_query(DWORD win_pid, HANDLE sigwrite, HANDLE query_mutex, int query_type, char *buf);
