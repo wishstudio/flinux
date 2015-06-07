@@ -22,7 +22,9 @@
 #include <fs/procfs.h>
 #include <fs/virtual.h>
 #include <syscall/process.h>
+#include <datetime.h>
 #include <log.h>
+#include <ntdll.h>
 #include <str.h>
 
 #define WIN32_LEAN_AND_MEAN
@@ -190,6 +192,24 @@ static int meminfo_gettext(int tag, char *buf)
 
 static struct virtualfs_text_desc meminfo_desc = VIRTUALFS_TEXT(meminfo_gettext);
 
+static int uptime_gettext(int tag, char *buf)
+{
+	/* The file contains two numbers:
+	 * The first is the total number of seconds the system has been up.
+	 * The second is the total number of seconds each core has spent idle.
+	 * On multi-core systems, the second number may be greater than the first.
+	 */
+	uint64_t total = GetTickCount64() / 100ULL;
+	SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION perf_info;
+	NtQuerySystemInformation(SystemProcessorPerformanceInformation, &perf_info, sizeof(perf_info), NULL);
+	uint64_t idle = perf_info.IdleTime.QuadPart / (TICKS_PER_SECOND / 100);
+	return ksprintf(buf, "%llu.%02u %llu.%02u\n",
+		total / 100ULL, (uint32_t)(total % 100ULL),
+		idle / 100ULL, (uint32_t)(idle % 100ULL));
+}
+
+static struct virtualfs_text_desc uptime_desc = VIRTUALFS_TEXT(uptime_gettext);
+
 static const struct virtualfs_directory_desc procfs =
 {
 	.type = VIRTUALFS_TYPE_DIRECTORY,
@@ -199,6 +219,7 @@ static const struct virtualfs_directory_desc procfs =
 		VIRTUALFS_ENTRY("sys", sys_desc)
 		VIRTUALFS_ENTRY("cpuinfo", cpuinfo_desc)
 		VIRTUALFS_ENTRY("meminfo", meminfo_desc)
+		VIRTUALFS_ENTRY("uptime", uptime_desc)
 		VIRTUALFS_ENTRY_END()
 	}
 };
