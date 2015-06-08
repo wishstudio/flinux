@@ -224,6 +224,9 @@
       <Filter>fs</Filter>
     </ClInclude>
     <ClInclude Include="src\vsscanf.h" />
+    <ClInclude Include="src\common\param.h">
+      <Filter>common</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />

@@ -31,6 +31,7 @@
     <ClInclude Include="src\common\ioctls.h" />
     <ClInclude Include="src\common\ldt.h" />
     <ClInclude Include="src\common\net.h" />
+    <ClInclude Include="src\common\param.h" />
     <ClInclude Include="src\common\poll.h" />
     <ClInclude Include="src\common\prctl.h" />
     <ClInclude Include="src\common\ptrace.h" />

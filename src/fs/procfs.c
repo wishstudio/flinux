@@ -18,6 +18,7 @@
  */
 
 #include <common/errno.h>
+#include <common/param.h>
 #include <dbt/cpuid.h>
 #include <fs/procfs.h>
 #include <fs/virtual.h>
@@ -89,6 +90,44 @@ struct virtualfs_directory_desc sys_desc =
 		VIRTUALFS_ENTRY_END()
 	}
 };
+
+static int stat_gettext(int tag, char *buf)
+{
+	char *original_buf = buf;
+	/* TODO: Support more than one processors */
+	SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION perf_info;
+	NtQuerySystemInformation(SystemProcessorPerformanceInformation, &perf_info, sizeof(perf_info), NULL);
+	uint64_t user = perf_info.UserTime.QuadPart / (TICKS_PER_SECOND / USER_HZ);
+	uint64_t nice = 0;
+	uint64_t system = perf_info.KernelTime.QuadPart / (TICKS_PER_SECOND / USER_HZ);
+	uint64_t idle = perf_info.IdleTime.QuadPart / (TICKS_PER_SECOND / USER_HZ);
+	system -= idle; /* KernelTime includes IdleTime */
+	uint64_t iowait = 0;
+	uint64_t irq = 0;
+	uint64_t softirq = 0;
+	uint64_t steal = 0, guest = 0, guest_nice = 0;
+
+	buf += ksprintf(buf, "cpu   %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu\n",
+		user, nice, system, idle, iowait, irq, softirq, steal, guest, guest_nice);
+	buf += ksprintf(buf, "intr  %llu\n", 0);
+	buf += ksprintf(buf, "swap  %llu %llu\n", 0);
+	uint64_t ctxt = 0;
+	buf += ksprintf(buf, "ctxt  %llu\n", ctxt);
+	/* Boot time */
+	SYSTEM_TIMEOFDAY_INFORMATION tod_info;
+	NtQuerySystemInformation(SystemTimeOfDayInformation, &tod_info, sizeof(tod_info), NULL);
+	uint64_t btime = filetime_to_unix_sec((FILETIME *)&tod_info.BootTime);
+	buf += ksprintf(buf, "btime %llu\n", btime);
+	uint64_t processes = 0;
+	buf += ksprintf(buf, "processes %llu\n", processes);
+	int procs_running = 1;
+	buf += ksprintf(buf, "procs_running %d\n", procs_running);
+	int procs_blocked = 0;
+	buf += ksprintf(buf, "procs_blocked %d\n", procs_blocked);
+	return buf - original_buf;
+}
+
+static struct virtualfs_text_desc stat_desc = VIRTUALFS_TEXT(stat_gettext);
 
 static int cpuinfo_gettext(int tag, char *buf)
 {
@@ -224,6 +263,7 @@ static const struct virtualfs_directory_desc procfs =
 	.entries = {
 		VIRTUALFS_ENTRY_DYNAMIC(procfs_pid_begin_iter, procfs_pid_end_iter, procfs_pid_iter, procfs_pid_open)
 		VIRTUALFS_ENTRY("self", proc_pid_desc)
+		VIRTUALFS_ENTRY("stat", stat_desc)
 		VIRTUALFS_ENTRY("sys", sys_desc)
 		VIRTUALFS_ENTRY("cpuinfo", cpuinfo_desc)
 		VIRTUALFS_ENTRY("loadavg", loadavg_desc)
