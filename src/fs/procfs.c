@@ -95,12 +95,12 @@ static int stat_gettext(int tag, char *buf)
 {
 	char *original_buf = buf;
 	/* TODO: Support more than one processors */
-	SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION perf_info;
-	NtQuerySystemInformation(SystemProcessorPerformanceInformation, &perf_info, sizeof(perf_info), NULL);
-	uint64_t user = perf_info.UserTime.QuadPart / (TICKS_PER_SECOND / USER_HZ);
+	LARGE_INTEGER idle_time, kernel_time, user_time;
+	GetSystemTimes((FILETIME *)&idle_time, (FILETIME *)&kernel_time, (FILETIME *)&user_time);
+	uint64_t user = user_time.QuadPart / (TICKS_PER_SECOND / USER_HZ);
 	uint64_t nice = 0;
-	uint64_t system = perf_info.KernelTime.QuadPart / (TICKS_PER_SECOND / USER_HZ);
-	uint64_t idle = perf_info.IdleTime.QuadPart / (TICKS_PER_SECOND / USER_HZ);
+	uint64_t system = kernel_time.QuadPart / (TICKS_PER_SECOND / USER_HZ);
+	uint64_t idle = idle_time.QuadPart / (TICKS_PER_SECOND / USER_HZ);
 	system -= idle; /* KernelTime includes IdleTime */
 	uint64_t iowait = 0;
 	uint64_t irq = 0;
@@ -247,9 +247,9 @@ static int uptime_gettext(int tag, char *buf)
 	 * On multi-core systems, the second number may be greater than the first.
 	 */
 	uint64_t total = GetTickCount64() / 100ULL;
-	SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION perf_info;
-	NtQuerySystemInformation(SystemProcessorPerformanceInformation, &perf_info, sizeof(perf_info), NULL);
-	uint64_t idle = perf_info.IdleTime.QuadPart / (TICKS_PER_SECOND / 100);
+	LARGE_INTEGER idle_time, kernel_time, user_time;
+	GetSystemTimes((FILETIME *)&idle_time, (FILETIME *)&kernel_time, (FILETIME *)&user_time);
+	uint64_t idle = idle_time.QuadPart / (TICKS_PER_SECOND / 100);
 	return ksprintf(buf, "%llu.%02u %llu.%02u\n",
 		total / 100ULL, (uint32_t)(total % 100ULL),
 		idle / 100ULL, (uint32_t)(idle % 100ULL));
