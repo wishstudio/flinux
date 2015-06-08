@@ -126,6 +126,7 @@ static void signal_default_handler(siginfo_t *info)
 	}
 }
 
+/* Caller ensures signal mutex is acquired */
 static void signal_deliver(siginfo_t *info)
 {
 	if (signal->actions[info->si_signo].sa_handler == SIG_IGN)
@@ -497,6 +498,28 @@ DWORD signal_wait(int count, HANDLE *handles, DWORD milliseconds)
 		return WAIT_INTERRUPTED;
 	else
 		return result;
+}
+
+void signal_before_pwait(const sigset_t *sigmask, sigset_t *oldmask)
+{
+	/* This function is called from ppoll() */
+	/* We reset the signal event object first, any signals received before this
+	* is regarded as received before the original system call.
+	*/
+	EnterCriticalSection(&signal->mutex);
+	*oldmask = signal->mask;
+	signal->mask = *sigmask;
+	send_pending_signal();
+	ResetEvent(signal->sigevent);
+	LeaveCriticalSection(&signal->mutex);
+}
+
+void signal_after_pwait(const sigset_t *oldmask)
+{
+	EnterCriticalSection(&signal->mutex);
+	signal->mask = *oldmask;
+	send_pending_signal();
+	LeaveCriticalSection(&signal->mutex);
 }
 
 int signal_query(DWORD win_pid, HANDLE sigwrite, HANDLE query_mutex, int query_type, char *buf)

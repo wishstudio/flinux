@@ -38,6 +38,8 @@ void signal_afterfork();
 void signal_shutdown();
 int signal_kill(pid_t pid, siginfo_t *siginfo);
 DWORD signal_wait(int count, HANDLE *handles, DWORD milliseconds);
+void signal_before_pwait(const sigset_t *sigmask, sigset_t *oldmask);
+void signal_after_pwait(const sigset_t *oldmask);
 
 #define WAIT_INTERRUPTED	0x80000000
 

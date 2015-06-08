@@ -1782,12 +1782,8 @@ DEFINE_SYSCALL(lchown, const char *, pathname, uid_t, owner, gid_t, group)
 	return sys_fchownat(AT_FDCWD, pathname, owner, group, AT_SYMLINK_NOFOLLOW);
 }
 
-DEFINE_SYSCALL(poll, struct linux_pollfd *, fds, int, nfds, int, timeout)
+static int vfs_ppoll(struct linux_pollfd *fds, int nfds, int timeout, const sigset_t *sigmask)
 {
-	log_info("poll(0x%p, %d, %d)\n", fds, nfds, timeout);
-	if (!mm_check_write(fds, nfds * sizeof(struct linux_pollfd)))
-		return -EFAULT;
-
 	/* Count of handles to be waited on */
 	int cnt = 0;
 	/* Handles to be waited on */
@@ -1844,6 +1840,9 @@ DEFINE_SYSCALL(poll, struct linux_pollfd *, fds, int, nfds, int, timeout)
 	}
 	if (cnt && !done)
 	{
+		sigset_t oldmask;
+		if (sigmask)
+			signal_before_pwait(sigmask, &oldmask);
 		LARGE_INTEGER frequency, start;
 		QueryPerformanceFrequency(&frequency);
 		QueryPerformanceCounter(&start);
@@ -1852,11 +1851,20 @@ DEFINE_SYSCALL(poll, struct linux_pollfd *, fds, int, nfds, int, timeout)
 		{
 			DWORD result = signal_wait(cnt, handles, remain);
 			if (result == WAIT_TIMEOUT)
-				return 0;
+			{
+				num_result = 0;
+				break;
+			}
 			else if (result == WAIT_INTERRUPTED)
-				return -EINTR;
+			{
+				num_result = -EINTR;
+				break;
+			}
 			else if (result < WAIT_OBJECT_0 || result >= WAIT_OBJECT_0 + cnt)
-				return -ENOMEM; /* TODO: Find correct values */
+			{
+				num_result = -ENOMEM; /* TODO: Find correct errno */
+				break;
+			}
 			else
 			{
 				/* Wait successfully, fill in the revents field of that handle */
@@ -1877,9 +1885,9 @@ DEFINE_SYSCALL(poll, struct linux_pollfd *, fds, int, nfds, int, timeout)
 				if ((e & fds[id].events) == 0)
 				{
 					/*
-					 * Some file descriptors (console, socket) may be not readable even if it is signaled
-					 * Query the state again to make sure
-					 */
+					* Some file descriptors (console, socket) may be not readable even if it is signaled
+					* Query the state again to make sure
+					*/
 					LARGE_INTEGER current;
 					QueryPerformanceCounter(&current);
 					if (timeout != INFINITE)
@@ -1895,23 +1903,15 @@ DEFINE_SYSCALL(poll, struct linux_pollfd *, fds, int, nfds, int, timeout)
 				break;
 			}
 		}
+		if (sigmask)
+			signal_after_pwait(&oldmask);
 	}
 	return num_result;
 }
 
-DEFINE_SYSCALL(select, int, nfds, struct fdset *, readfds, struct fdset *, writefds, struct fdset *, exceptfds, struct timeval *, timeout)
+static int vfs_pselect6(int nfds, struct fdset *readfds, struct fdset *writefds, struct fdset *exceptfds,
+	int timeout, const sigset_t *sigmask)
 {
-	log_info("select(%d, 0x%p, 0x%p, 0x%p, 0x%p)\n", nfds, readfds, writefds, exceptfds, timeout);
-	if ((readfds && !mm_check_write(readfds, sizeof(struct fdset)))
-		|| (writefds && !mm_check_write(writefds, sizeof(struct fdset)))
-		|| (exceptfds && !mm_check_write(exceptfds, sizeof(struct fdset)))
-		|| (timeout && !mm_check_read(timeout, sizeof(struct timeval))))
-		return -EFAULT;
-	int time;
-	if (timeout)
-		time = timeout->tv_sec * 1000 + timeout->tv_usec / 1000;
-	else
-		time = -1;
 	int cnt = 0;
 	struct linux_pollfd *fds = (struct linux_pollfd *)alloca(sizeof(struct linux_pollfd) * nfds);
 	for (int i = 0; i < nfds; i++)
@@ -1930,7 +1930,7 @@ DEFINE_SYSCALL(select, int, nfds, struct fdset *, readfds, struct fdset *, write
 			cnt++;
 		}
 	}
-	int r = sys_poll(fds, cnt, time);
+	int r = vfs_ppoll(fds, cnt, timeout, sigmask);
 	if (r <= 0)
 		return r;
 	if (readfds)
@@ -1949,6 +1949,68 @@ DEFINE_SYSCALL(select, int, nfds, struct fdset *, readfds, struct fdset *, write
 			LINUX_FD_SET(fds[i].fd, exceptfds);
 	}
 	return r;
+}
+
+DEFINE_SYSCALL(poll, struct linux_pollfd *, fds, int, nfds, int, timeout)
+{
+	log_info("poll(0x%p, %d, %d)\n", fds, nfds, timeout);
+	if (!mm_check_write(fds, nfds * sizeof(struct linux_pollfd)))
+		return -EFAULT;
+	return vfs_ppoll(fds, nfds, timeout, NULL);
+}
+
+DEFINE_SYSCALL(ppoll, struct linux_pollfd *, fds, int, nfds, const struct timespec *, timeout_ts, const sigset_t *, sigmask, size_t, sigsetsize)
+{
+	log_info("ppoll(%p, %d, %p, %p)\n", fds, nfds, timeout_ts, sigmask);
+	if (sigsetsize != sizeof(sigset_t))
+		return -EINVAL;
+	if (timeout_ts && !mm_check_read(timeout_ts, sizeof(struct timespec)))
+		return -EFAULT;
+	if (sigmask && !mm_check_read(sigmask, sizeof(sigset_t)))
+		return -EFAULT;
+	int timeout = timeout_ts == NULL ? -1 : (timeout_ts->tv_sec * 1000 + timeout_ts->tv_nsec / 1000000);
+	return vfs_ppoll(fds, nfds, timeout, sigmask);
+}
+
+DEFINE_SYSCALL(select, int, nfds, struct fdset *, readfds, struct fdset *, writefds, struct fdset *, exceptfds, struct timeval *, timeout)
+{
+	log_info("select(%d, 0x%p, 0x%p, 0x%p, 0x%p)\n", nfds, readfds, writefds, exceptfds, timeout);
+	if ((readfds && !mm_check_write(readfds, sizeof(struct fdset)))
+		|| (writefds && !mm_check_write(writefds, sizeof(struct fdset)))
+		|| (exceptfds && !mm_check_write(exceptfds, sizeof(struct fdset)))
+		|| (timeout && !mm_check_read(timeout, sizeof(struct timeval))))
+		return -EFAULT;
+	int time;
+	if (timeout)
+		time = timeout->tv_sec * 1000 + timeout->tv_usec / 1000;
+	else
+		time = -1;
+	return vfs_pselect6(nfds, readfds, writefds, exceptfds, time, NULL);
+}
+
+DEFINE_SYSCALL(pselect6, int, nfds, struct fdset *, readfds, struct fdset *, writefds, struct fdset *, exceptfds,
+	const struct timespec *, timeout_ts, void *, sigmask_data)
+{
+	struct sigmask_data
+	{
+		const sigset_t *sigmask;
+		size_t sigsetlen;
+	} *sd;
+	if (!mm_check_read(sigmask_data, sizeof(sigmask_data)))
+		return -EFAULT;
+	sd = (struct sigmask_data *)sigmask_data;
+	if (sd->sigsetlen != sizeof(sigset_t))
+		return -EINVAL;
+	const sigset_t *sigmask = sd->sigmask;
+	log_info("pselect6(%d, %p, %p, %p, %p, %p)\n", nfds, readfds, writefds, exceptfds, timeout_ts, sigmask);
+	if ((readfds && !mm_check_write(readfds, sizeof(struct fdset)))
+		|| (writefds && !mm_check_write(writefds, sizeof(struct fdset)))
+		|| (exceptfds && !mm_check_write(exceptfds, sizeof(struct fdset)))
+		|| (timeout_ts && !mm_check_read(timeout_ts, sizeof(struct timespec)))
+		|| (sigmask && !mm_check_read(sigmask, sizeof(sigset_t))))
+		return -EFAULT;
+	int timeout = timeout_ts == NULL ? -1 : (timeout_ts->tv_sec * 1000 + timeout_ts->tv_nsec / 1000000);
+	return vfs_pselect6(nfds, readfds, writefds, exceptfds, timeout, sigmask);
 }
 
 DEFINE_SYSCALL(getxattr, const char *, path, const char *, name, void *, value, size_t, size)
