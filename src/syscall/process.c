@@ -19,6 +19,7 @@
 
 #include <common/errno.h>
 #include <common/futex.h>
+#include <common/param.h>
 #include <common/resource.h>
 #include <common/sysinfo.h>
 #include <common/wait.h>
@@ -489,8 +490,9 @@ int process_get_stat(char *buf)
 	buf += ksprintf(buf, "%lu ", cminflt);
 	buf += ksprintf(buf, "%lu ", majflt);
 	buf += ksprintf(buf, "%lu ", cmajflt);
-	uintptr_t utime = 0, stime = 0; /* TODO */
-	intptr_t cutime = 0, cstime = 0; /* TODO */
+
+	uintptr_t utime = 0, stime = 0;
+	intptr_t cutime = 0, cstime = 0;
 	buf += ksprintf(buf, "%lu ", utime);
 	buf += ksprintf(buf, "%lu ", stime);
 	buf += ksprintf(buf, "%ld ", cutime);
@@ -498,7 +500,7 @@ int process_get_stat(char *buf)
 	intptr_t priority = 20, nice = 0; /* TODO */
 	buf += ksprintf(buf, "%ld ", priority);
 	buf += ksprintf(buf, "%ld ", nice);
-	intptr_t num_threads = 0; /* TODO */
+	intptr_t num_threads = 1; /* TODO */
 	buf += ksprintf(buf, "%ld ", num_threads);
 	intptr_t itrealvalue = 0; /* Hard-coded in kernel */
 	buf += ksprintf(buf, "%ld ", 0);
@@ -576,12 +578,17 @@ int process_query_pid(int pid, int query_type, char *buf)
 		return process_query(query_type, buf);
 	else
 	{
+		process_lock_shared();
 		if (!process_pid_exist(pid))
+		{
+			process_unlock_shared();
 			return -ENOENT;
-		return signal_query(process_shared->processes[pid].win_pid,
-			process_shared->processes[pid].sigwrite,
-			process_shared->processes[pid].query_mutex,
-			query_type, buf);
+		}
+		DWORD win_pid = process_shared->processes[pid].win_pid;
+		HANDLE sigwrite = process_shared->processes[pid].sigwrite;
+		HANDLE query_mutex = process_shared->processes[pid].query_mutex;
+		process_unlock_shared();
+		return signal_query(win_pid, sigwrite, query_mutex, query_type, buf);
 	}
 }
 
