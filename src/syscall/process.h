@@ -29,25 +29,17 @@
 
 #define STACK_SIZE	1048576
 
-struct child_process
-{
-	struct slist list;
-	pid_t pid;
-	HANDLE hProcess, hPipe;
-	OVERLAPPED overlapped;
-	bool terminated;
-};
-
 void process_init();
 void process_after_fork(void *stack_base, pid_t pid);
 void process_shutdown();
 void *process_get_stack_base();
-pid_t process_add_child(DWORD win_pid, HANDLE handle);
+pid_t process_init_child(DWORD win_pid, DWORD win_tid, HANDLE process_handle);
 
 __declspec(noreturn) void process_exit(int exit_code, int exit_signal);
 bool process_pid_exist(pid_t pid);
 pid_t process_get_pid();
 pid_t process_get_ppid();
+pid_t process_get_tgid(pid_t pid);
 pid_t process_get_pgid(pid_t pid);
 pid_t process_get_sid();
 

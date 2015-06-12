@@ -73,6 +73,7 @@
     <ClInclude Include="src\fs\winfs.h" />
     <ClInclude Include="src\heap.h" />
     <ClInclude Include="src\lib\core.h" />
+    <ClInclude Include="src\lib\list.h" />
     <ClInclude Include="src\lib\rbtree.h" />
     <ClInclude Include="src\lib\slist.h" />
     <ClInclude Include="src\log.h" />
@@ -83,6 +84,7 @@
     <ClInclude Include="src\syscall\fork.h" />
     <ClInclude Include="src\syscall\mm.h" />
     <ClInclude Include="src\syscall\process.h" />
+    <ClInclude Include="src\syscall\process_info.h" />
     <ClInclude Include="src\syscall\sig.h" />
     <ClInclude Include="src\syscall\syscall.h" />
     <ClInclude Include="src\syscall\syscall_dispatch.h" />

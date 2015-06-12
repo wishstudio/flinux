@@ -227,6 +227,12 @@
     <ClInclude Include="src\common\param.h">
       <Filter>common</Filter>
     </ClInclude>
+    <ClInclude Include="src\lib\list.h">
+      <Filter>lib</Filter>
+    </ClInclude>
+    <ClInclude Include="src\syscall\process_info.h">
+      <Filter>syscall</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />

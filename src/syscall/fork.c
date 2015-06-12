@@ -176,7 +176,7 @@ static pid_t fork_process(struct syscall_context *context, unsigned long flags, 
 	if (!exec_fork(info.hProcess))
 		goto fail;
 
-	pid_t pid = process_add_child(info.dwProcessId, info.hProcess);
+	pid_t pid = process_init_child(info.dwProcessId, info.dwThreadId, info.hProcess);
 
 	/* Set up fork_info in child process */
 	void *stack_base = process_get_stack_base();

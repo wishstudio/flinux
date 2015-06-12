@@ -23,6 +23,7 @@
 #include <common/signal.h>
 #include <syscall/mm.h>
 #include <syscall/process.h>
+#include <syscall/process_info.h>
 #include <syscall/sig.h>
 #include <syscall/syscall.h>
 #include <log.h>
@@ -38,17 +39,13 @@ struct signal_data
 	HANDLE thread;
 	HANDLE iocp;
 	HANDLE sigread, sigwrite;
-	HANDLE sigevent;
+	HANDLE process_wait_semaphore;
 	HANDLE query_mutex;
 	CRITICAL_SECTION mutex;
-	HANDLE process_wait_semaphore;
 
-	HANDLE main_thread;
 	struct sigaction actions[_NSIG];
-	sigset_t mask, pending;
-	siginfo_t info[_NSIG]; /* siginfo which is currently pending */
-	siginfo_t current_siginfo; /* Current siginfo to be delivered */
-	bool can_accept_signal;
+	sigset_t pending;
+	siginfo_t pending_info[_NSIG]; /* siginfo which is currently pending */
 };
 
 #define SIGNAL_PACKET_SHUTDOWN		0 /* Shutdown signal thread */
@@ -126,47 +123,61 @@ static void signal_default_handler(siginfo_t *info)
 	}
 }
 
+/* Try to deliver a signal, return true if it is successfully delivered */
 /* Caller ensures signal mutex is acquired */
-static void signal_deliver(siginfo_t *info)
+static bool signal_thread_deliver_signal(siginfo_t *info)
 {
-	if (signal->actions[info->si_signo].sa_handler == SIG_IGN)
-		return;
-	else if (signal->actions[info->si_signo].sa_handler == SIG_DFL)
+	int sig = info->si_signo;
+	if (signal->actions[sig].sa_handler == SIG_IGN)
+		return true;
+	else if (signal->actions[sig].sa_handler == SIG_DFL)
 	{
 		signal_default_handler(info);
-		return;
+		return true;
 	}
-	signal->can_accept_signal = false;
+
+	/* Find a thread which can accept the signal */
+	struct thread *thread = NULL;
+	struct list_node *cur;
+	list_iterate(&process->thread_list, cur)
+	{
+		struct thread *t = list_entry(cur, struct thread, list);
+		if (!sigismember(&t->sigmask, sig) && t->can_accept_signal)
+		{
+			thread = t;
+			break;
+		}
+	}
+	if (!thread)
+		return false;
+
+	thread->can_accept_signal = false;
 	CONTEXT context;
 	context.ContextFlags = CONTEXT_INTEGER | CONTEXT_CONTROL;
-	SuspendThread(signal->main_thread);
-	GetThreadContext(signal->main_thread, &context);
-	dbt_deliver_signal(signal->main_thread, &context);
-	signal->current_siginfo = *info;
-	SetEvent(signal->sigevent);
-	SetThreadContext(signal->main_thread, &context);
-	ResumeThread(signal->main_thread);
+	SuspendThread(thread->handle);
+	GetThreadContext(thread->handle, &context);
+	dbt_deliver_signal(thread->handle, &context);
+	thread->current_siginfo = *info;
+	SetEvent(thread->sigevent);
+	SetThreadContext(thread->handle, &context);
+	ResumeThread(thread->handle);
+	return true;
 }
 
 static void signal_thread_handle_kill(struct siginfo *info)
 {
 	int signo = info->si_signo;
 	EnterCriticalSection(&signal->mutex);
-	if (!sigismember(&signal->pending, signo))
+	if (!signal_thread_deliver_signal(info))
 	{
-		if (sigismember(&signal->mask, signo) || !signal->can_accept_signal)
-		{
-			/* Cannot deliver the signal, mark it as pending and save the info */
-			sigaddset(&signal->pending, signo);
-			signal->info[signo] = *info;
-		}
-		else
-			signal_deliver(info);
+		/* Cannot deliver the signal, mark it as pending and save the info */
+		sigaddset(&signal->pending, signo);
+		signal->pending_info[signo] = *info;
 	}
 	LeaveCriticalSection(&signal->mutex);
 }
 
-static void signal_thread_handle_process_terminated(struct child_process *proc)
+static void signal_thread_handle_child_terminated(struct child_process *proc)
 {
 	struct siginfo info;
 	info.si_signo = SIGCHLD;
@@ -205,13 +216,14 @@ static DWORD WINAPI signal_thread(LPVOID parameter)
 			case SIGNAL_PACKET_DELIVER:
 			{
 				EnterCriticalSection(&signal->mutex);
+				AcquireSRWLockShared(&process->rw_lock);
 				for (int i = 0; i < _NSIG; i++)
-					if (sigismember(&signal->pending, i) && !sigismember(&signal->mask, i) && signal->can_accept_signal)
+					if (sigismember(&signal->pending, i))
 					{
-						sigdelset(&signal->pending, i);
-						signal_deliver(&signal->info[i]);
-						break;
+						if (signal_thread_deliver_signal(&signal->pending_info[i]))
+							sigdelset(&signal->pending, i);
 					}
+				ReleaseSRWLockShared(&process->rw_lock);
 				LeaveCriticalSection(&signal->mutex);
 				break;
 			}
@@ -221,7 +233,7 @@ static DWORD WINAPI signal_thread(LPVOID parameter)
 				CreateIoCompletionPort(proc->hPipe, signal->iocp, (ULONG_PTR)proc, 1);
 				memset(&proc->overlapped, 0, sizeof(OVERLAPPED));
 				if (!ReadFile(proc->hPipe, buf, 1, NULL, &proc->overlapped) && GetLastError() != ERROR_IO_PENDING)
-					signal_thread_handle_process_terminated(proc);
+					signal_thread_handle_child_terminated(proc);
 				break;
 			}
 			case SIGNAL_PACKET_QUERY:
@@ -249,7 +261,7 @@ static DWORD WINAPI signal_thread(LPVOID parameter)
 		{
 			/* One child died */
 			struct child_process *proc = (struct child_process *)key;
-			signal_thread_handle_process_terminated(proc);
+			signal_thread_handle_child_terminated(proc);
 		}
 	}
 }
@@ -286,7 +298,7 @@ static void signal_save_sigcontext(struct sigcontext *sc, struct syscall_context
 
 void signal_setup_handler(struct syscall_context *context)
 {
-	int sig = signal->current_siginfo.si_signo;
+	int sig = current_thread->current_siginfo.si_signo;
 	uintptr_t sp = context->esp;
 	/* TODO: Make fpstate layout the same as in Linux kernel */
 	/* Allocate fpstate space */
@@ -306,7 +318,7 @@ void signal_setup_handler(struct syscall_context *context)
 	if (frame->pretcode == 0)
 		frame->pretcode = (uint32_t)signal_restorer;
 	frame->sig = sig;
-	frame->info = signal->current_siginfo;
+	frame->info = current_thread->current_siginfo;
 	frame->pinfo = (uint32_t)&frame->info;
 	frame->puc = (uint32_t)&frame->uc;
 
@@ -314,12 +326,12 @@ void signal_setup_handler(struct syscall_context *context)
 	frame->uc.uc_link = 0;
 	/* TODO: frame->uc.uc_stack */
 	EnterCriticalSection(&signal->mutex);
-	frame->uc.uc_sigmask = signal->mask;
-	signal_save_sigcontext(&frame->uc.uc_mcontext, context, fpstate, (uint32_t)signal->mask);
-	sigaddset(&signal->mask, frame->sig);
-	signal->mask |= signal->actions[sig].sa_mask; /* FIXME: fix race */
-	signal->can_accept_signal = true;
-	ResetEvent(signal->sigevent);
+	frame->uc.uc_sigmask = current_thread->sigmask;
+	signal_save_sigcontext(&frame->uc.uc_mcontext, context, fpstate, (uint32_t)current_thread->sigmask);
+	sigaddset(&current_thread->sigmask, frame->sig);
+	current_thread->sigmask |= signal->actions[sig].sa_mask; /* FIXME: fix race */
+	current_thread->can_accept_signal = true;
+	ResetEvent(current_thread->sigevent);
 	LeaveCriticalSection(&signal->mutex);
 	/* TODO: frame->retcode */
 
@@ -360,7 +372,7 @@ HANDLE signal_get_process_query_mutex()
  * which will cause the read to error and we have a chance to know that the child died.
  * This works even the child terminates abnormally, and supports an arbitrary number of child processes.
  */
-void signal_add_process(struct child_process *proc)
+void signal_init_child(struct child_process *proc)
 {
 	HANDLE read, write;
 	create_pipe(&read, &write, false);
@@ -379,7 +391,7 @@ void signal_add_process(struct child_process *proc)
 /* Caller ensures the signal mutex is acquired */
 static void send_pending_signal()
 {
-	if (signal->pending & ~signal->mask)
+	if (signal->pending & ~current_thread->sigmask)
 	{
 		struct signal_packet packet;
 		packet.type = SIGNAL_PACKET_DELIVER;
@@ -399,7 +411,7 @@ DEFINE_SYSCALL(rt_sigreturn, uintptr_t, bx, uintptr_t, cx, uintptr_t, dx, uintpt
 	/* TODO: Check validity of fpstate */
 	fpu_fxrstor(frame->uc.uc_mcontext.fpstate);
 	EnterCriticalSection(&signal->mutex);
-	signal->mask = frame->uc.uc_sigmask;
+	current_thread->sigmask = frame->uc.uc_sigmask;
 	send_pending_signal();
 	LeaveCriticalSection(&signal->mutex);
 	
@@ -409,27 +421,17 @@ DEFINE_SYSCALL(rt_sigreturn, uintptr_t, bx, uintptr_t, cx, uintptr_t, dx, uintpt
 static void signal_init_private()
 {
 	/* Initialize private structures and handles */
-	sigemptyset(&signal->pending);
 	if (!create_pipe(&signal->sigread, &signal->sigwrite, true))
 	{
 		log_error("Signal pipe creation failed, error code: %d\n", GetLastError());
 		return;
 	}
-	signal->sigevent = CreateEvent(NULL, TRUE, FALSE, NULL);
-	signal->can_accept_signal = true;
 	signal->process_wait_semaphore = CreateSemaphoreW(NULL, 0, LONG_MAX, NULL);
 	signal->iocp = CreateIoCompletionPort(signal->sigread, NULL, 0, 1);
 	signal->query_mutex = CreateMutexW(NULL, FALSE, L"");
 
-	/* Get the handle to main thread */
-	if (!DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &signal->main_thread,
-		0, FALSE, DUPLICATE_SAME_ACCESS))
-	{
-		log_error("Get main thread handle failed, error code: %d\n", GetLastError());
-		return;
-	}
-
 	/* Create signal thread */
+	sigemptyset(&signal->pending);
 	InitializeCriticalSection(&signal->mutex);
 	signal->thread = CreateThread(NULL, 0, signal_thread, NULL, 0, NULL);
 	if (!signal->thread)
@@ -447,7 +449,6 @@ void signal_init()
 		signal->actions[i].sa_flags = 0;
 		signal->actions[i].sa_restorer = NULL;
 	}
-	sigemptyset(&signal->mask);
 	signal_init_private();
 }
 
@@ -468,6 +469,13 @@ void signal_shutdown()
 	DeleteCriticalSection(&signal->mutex);
 	CloseHandle(signal->sigread);
 	CloseHandle(signal->sigwrite);
+}
+
+void signal_init_thread(struct thread *thread)
+{
+	thread->sigevent = CreateEvent(NULL, TRUE, FALSE, NULL);
+	sigemptyset(&thread->sigmask); /* TODO: Keep signal mask on fork */
+	thread->can_accept_signal = true;
 }
 
 int signal_kill(pid_t pid, siginfo_t *info)
@@ -492,7 +500,7 @@ DWORD signal_wait(int count, HANDLE *handles, DWORD milliseconds)
 	HANDLE h[MAXIMUM_WAIT_OBJECTS];
 	for (int i = 0; i < count; i++)
 		h[i] = handles[i];
-	h[count] = signal->sigevent;
+	h[count] = current_thread->sigevent;
 	DWORD result = WaitForMultipleObjects(count + 1, h, FALSE, milliseconds);
 	if (result == count + WAIT_OBJECT_0)
 		return WAIT_INTERRUPTED;
@@ -507,17 +515,17 @@ void signal_before_pwait(const sigset_t *sigmask, sigset_t *oldmask)
 	* is regarded as received before the original system call.
 	*/
 	EnterCriticalSection(&signal->mutex);
-	*oldmask = signal->mask;
-	signal->mask = *sigmask;
+	*oldmask = current_thread->sigmask;
+	current_thread->sigmask = *sigmask;
 	send_pending_signal();
-	ResetEvent(signal->sigevent);
+	ResetEvent(current_thread->sigevent);
 	LeaveCriticalSection(&signal->mutex);
 }
 
 void signal_after_pwait(const sigset_t *oldmask)
 {
 	EnterCriticalSection(&signal->mutex);
-	signal->mask = *oldmask;
+	current_thread->sigmask = *oldmask;
 	send_pending_signal();
 	LeaveCriticalSection(&signal->mutex);
 }
@@ -628,21 +636,21 @@ DEFINE_SYSCALL(rt_sigprocmask, int, how, const sigset_t *, set, sigset_t *, olds
 		return -EFAULT;
 	EnterCriticalSection(&signal->mutex);
 	if (oldset)
-		*oldset = signal->mask;
+		*oldset = current_thread->sigmask;
 	if (set)
 	{
 		switch (how)
 		{
 		case SIG_BLOCK:
-			signal->mask |= *set;
+			current_thread->sigmask |= *set;
 			break;
 
 		case SIG_UNBLOCK:
-			signal->mask &= ~*set;
+			current_thread->sigmask &= ~*set;
 			break;
 
 		case SIG_SETMASK:
-			signal->mask = *set;
+			current_thread->sigmask = *set;
 			break;
 		}
 	}
@@ -657,13 +665,14 @@ DEFINE_SYSCALL(rt_sigsuspend, const sigset_t *, mask)
 	if (!mm_check_read(mask, sizeof(*mask)))
 		return -EFAULT;
 	sigset_t oldmask;
+	/* TODO: Is this race free? */
 	EnterCriticalSection(&signal->mutex);
-	oldmask = signal->mask;
-	signal->mask = *mask;
+	oldmask = current_thread->sigmask;
+	current_thread->sigmask = *mask;
 	LeaveCriticalSection(&signal->mutex);
 	signal_wait(0, NULL, INFINITE);
 	EnterCriticalSection(&signal->mutex);
-	signal->mask = oldmask;
+	current_thread->sigmask = oldmask;
 	LeaveCriticalSection(&signal->mutex);
 	return -EINTR;
 }

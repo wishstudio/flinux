@@ -26,6 +26,7 @@
 #include <fs/virtual.h>
 #include <syscall/mm.h>
 #include <syscall/process.h>
+#include <syscall/process_info.h>
 #include <syscall/sig.h>
 #include <syscall/vfs.h>
 #include <syscall/syscall.h>
@@ -38,75 +39,42 @@
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
-#define MAX_PROCESS_COUNT		4096
-
-#define PROCESS_NOTEXIST		0 /* The process does not exist */
-#define PROCESS_RUNNING			1 /* The process is running normally */
-#define PROCESS_ZOMBIE			2 /* The process is a zombie */
-struct process
-{
-	/* Status for current slot */
-	int status;
-	/* Exit code */
-	int exit_code;
-	/* Exit signal */
-	int exit_signal;
-	/* Windows process identifier */
-	pid_t win_pid;
-	/* Process group id */
-	pid_t pgid;
-	/* Parent process id */
-	pid_t ppid;
-	/* Session id */
-	pid_t sid;
-	/* Handle to sigwrite pipe in the process */
-	HANDLE sigwrite;
-	/* Handle to information query mutex in the process */
-	HANDLE query_mutex;
-};
-
 struct process_shared_data
 {
 	pid_t last_allocated_process;
-	struct process processes[MAX_PROCESS_COUNT]; /* The zero slot is never used */
+	struct process_info processes[MAX_PROCESS_COUNT]; /* The zero slot is never used */
 };
 
 static volatile struct process_shared_data *process_shared;
+static struct process_data _process;
 
-#define MAX_CHILD_COUNT 1024
-struct process_data
-{
-	void *stack_base;
-	pid_t pid;
-	int child_count;
-	struct slist child_list, child_freelist;
-	struct child_process child[MAX_CHILD_COUNT];
-	/* Mutex for process_shared */
-	/* You have to lock this mutex on the following scenarios:
-	 * 1. When writing to shared area
-	 * 2. When reading process slots other than the current process
-	 *
-	 * TODO: It's better to have a lightweight interprocess RW lock.
-	 * Windows only provides an intraprocess one.
-	 */
-	HANDLE shared_mutex;
-} _process;
+struct process_data *const process = &_process;
 
-static struct process_data *const process = &_process;
+__declspec(thread) struct thread *current_thread;
 
 static void process_init_private()
 {
+	/* Initialize thread RW lock */
+	InitializeSRWLock(&process->rw_lock);
+	/* Initialize thread list */
 	process->child_count = 0;
 	slist_init(&process->child_list);
 	slist_init(&process->child_freelist);
 	for (int i = 0; i < MAX_CHILD_COUNT; i++)
 		slist_add(&process->child_freelist, &process->child[i].list);
+	/* Initialize thread list */
+	process->thread_count = 0;
+	list_init(&process->thread_list);
+	list_init(&process->thread_freelist);
+	for (int i = 0; i < MAX_PROCESS_COUNT; i++)
+		list_add(&process->thread_freelist, &process->threads[i].list);
+	/* Initialize shared process table related data structures */
 	process_shared = (volatile struct process_shared_data *)mm_global_shared_alloc(sizeof(struct process_shared_data));
 	SECURITY_ATTRIBUTES attr;
 	attr.nLength = sizeof(SECURITY_ATTRIBUTES);
 	attr.bInheritHandle = TRUE;
 	attr.lpSecurityDescriptor = NULL;
-	process->shared_mutex = CreateMutexW(&attr, FALSE, L"flinux_process_shared_writer");
+	process->shared_mutex = CreateMutexW(&attr, FALSE, L"flinux_process_shared_mutex");
 }
 
 static void process_lock_shared()
@@ -119,8 +87,32 @@ static void process_unlock_shared()
 	ReleaseMutex(process->shared_mutex);
 }
 
-/* Allocate a new process in the global process table, return slot id */
-static pid_t process_alloc()
+/* Allocate a new thread structure in process_data */
+static struct thread *thread_alloc()
+{
+	struct list_node *node = list_head(&process->thread_freelist);
+	if (node)
+	{
+		list_remove(&process->thread_freelist, node);
+		list_add(&process->thread_list, node);
+		process->thread_count++;
+		return list_entry(node, struct thread, list);
+	}
+	log_error("Too many threads for current process.\n");
+	__debugbreak();
+	return NULL;
+}
+
+/* Free a thread structure and add it to freelist in process_data */
+static void thread_free(struct thread *thread)
+{
+	list_remove(&process->thread_list, &thread->list);
+	list_add(&process->thread_freelist, &thread->list);
+	process->thread_count--;
+}
+
+/* Allocate a new process/thread, return pid. Caller ensures shared_mutex is acquired. */
+static pid_t process_shared_alloc()
 {
 	/* Note that pid starts from 1, but initial value of last_allocated_process is zero */
 	for (int i = 1; i < MAX_PROCESS_COUNT; i++)
@@ -134,7 +126,7 @@ static pid_t process_alloc()
 			return cur;
 		}
 	}
-	log_error("Process table full.\n");
+	log_error("Process table exhausted.\n");
 	__debugbreak();
 	return 0;
 }
@@ -145,29 +137,39 @@ void process_init()
 	process->stack_base = VirtualAlloc(NULL, STACK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
 	/* Allocate global process table slot */
 	process_lock_shared();
-	pid_t pid = process_alloc();
+	pid_t pid = process_shared_alloc();
 	if (pid == 1)
 	{
 		/* INIT process does not exist, create it now */
 		process_shared->processes[1].status = PROCESS_RUNNING;
 		process_shared->processes[1].win_pid = 0;
-		process_shared->processes[1].ppid = 0;
+		process_shared->processes[1].win_tid = 0;
+		process_shared->processes[1].tgid = 1;
 		process_shared->processes[1].pgid = 1;
+		process_shared->processes[1].ppid = 0;
 		process_shared->processes[1].sid = 1;
 		process_shared->processes[1].sigwrite = NULL;
 		process_shared->processes[1].query_mutex = NULL;
 		/* Done, allocate a new pid for current process */
-		pid = process_alloc();
+		pid = process_shared_alloc();
 	}
 	process_shared->processes[pid].status = PROCESS_RUNNING;
 	process_shared->processes[pid].win_pid = GetCurrentProcessId();
-	process_shared->processes[pid].ppid = 1;
+	process_shared->processes[pid].win_tid = GetCurrentThreadId();
+	process_shared->processes[pid].tgid = pid;
 	process_shared->processes[pid].pgid = pid;
+	process_shared->processes[pid].ppid = 1;
 	process_shared->processes[pid].sid = pid;
 	process_shared->processes[pid].sigwrite = signal_get_process_sigwrite();
 	process_shared->processes[pid].query_mutex = signal_get_process_query_mutex();
 	process_unlock_shared();
 	process->pid = pid;
+	/* Allocate structure for main thread */
+	struct thread *thread = thread_alloc();
+	DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &thread->handle,
+		0, FALSE, DUPLICATE_SAME_ACCESS);
+	signal_init_thread(thread);
+	current_thread = thread;
 	log_info("PID: %d\n", pid);
 }
 
@@ -175,11 +177,17 @@ void process_afterfork(void *stack_base, pid_t pid)
 {
 	process_init_private();
 	process->stack_base = stack_base;
-	/* The parent have global process table slot set for us
+	/* The parent should have global process table slot set for us
 	 * We just use the pid they give us
 	 */
 	process->pid = pid;
 	process_shared->processes[pid].sigwrite = signal_get_process_sigwrite();
+	/* Allocate structure for main thread */
+	struct thread *thread = thread_alloc();
+	DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &thread->handle,
+		0, FALSE, DUPLICATE_SAME_ACCESS);
+	signal_init_thread(thread);
+	current_thread = thread;
 	log_info("PID: %d\n", pid);
 }
 
@@ -188,7 +196,7 @@ void *process_get_stack_base()
 	return process->stack_base;
 }
 
-pid_t process_add_child(DWORD win_pid, HANDLE handle)
+pid_t process_init_child(DWORD win_pid, DWORD win_tid, HANDLE process_handle)
 {
 	if (slist_empty(&process->child_freelist))
 	{
@@ -197,23 +205,26 @@ pid_t process_add_child(DWORD win_pid, HANDLE handle)
 	}
 	/* Allocate a new process table entry */
 	process_lock_shared();
-	pid_t pid = process_alloc();
+	pid_t pid = process_shared_alloc();
 	process_shared->processes[pid].status = PROCESS_RUNNING;
 	process_shared->processes[pid].win_pid = win_pid;
+	process_shared->processes[pid].win_tid = win_tid;
+	process_shared->processes[pid].tgid = pid;
 	process_shared->processes[pid].pgid = process_shared->processes[process->pid].pgid;
 	process_shared->processes[pid].ppid = process->pid;
 	process_shared->processes[pid].sid = process_shared->processes[process->pid].sid;
 	process_shared->processes[pid].sigwrite = NULL;
+	process_shared->processes[pid].query_mutex = NULL;
 	process_unlock_shared();
 
 	struct child_process *proc = slist_entry(slist_next(&process->child_freelist), struct child_process, list);
 	slist_remove(&process->child_freelist, &proc->list);
 	slist_add(&process->child_list, &proc->list);
 	proc->pid = pid;
-	proc->hProcess = handle;
+	proc->hProcess = process_handle;
 	proc->terminated = false;
 	process->child_count++;
-	signal_add_process(proc);
+	signal_init_child(proc);
 
 	return pid;
 }
@@ -398,6 +409,22 @@ DEFINE_SYSCALL(setpgid, pid_t, pid, pid_t, pgid)
 {
 	log_info("setpgid(%d, %d)\n", pid, pgid);
 	return 0;
+}
+
+pid_t process_get_tgid(pid_t pid)
+{
+	if (pid == 0)
+		pid = process->pid;
+	pid_t tgid;
+	if (pid != process->pid)
+		process_lock_shared();
+	if (process_shared->processes[pid].status == PROCESS_NOTEXIST)
+		tgid = -ESRCH;
+	else
+		tgid = process_shared->processes[pid].tgid;
+	if (pid != process->pid)
+		process_unlock_shared();
+	return tgid;
 }
 
 pid_t process_get_pgid(pid_t pid)
