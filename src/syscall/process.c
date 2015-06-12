@@ -198,6 +198,7 @@ void *process_get_stack_base()
 
 pid_t process_init_child(DWORD win_pid, DWORD win_tid, HANDLE process_handle)
 {
+	AcquireSRWLockExclusive(&process->rw_lock);
 	if (slist_empty(&process->child_freelist))
 	{
 		log_error("process: Maximum number of process exceeded.\n");
@@ -226,9 +227,11 @@ pid_t process_init_child(DWORD win_pid, DWORD win_tid, HANDLE process_handle)
 	process->child_count++;
 	signal_init_child(proc);
 
+	ReleaseSRWLockExclusive(&process->rw_lock);
 	return pid;
 }
 
+/* Caller ensures process rw lock is acquired (shared) */
 static pid_t process_wait(pid_t pid, int *status, int options, struct rusage *rusage)
 {
 	if (options & WUNTRACED)
@@ -352,7 +355,10 @@ static pid_t process_wait(pid_t pid, int *status, int options, struct rusage *ru
 DEFINE_SYSCALL(waitpid, pid_t, pid, int *, status, int, options)
 {
 	log_info("sys_waitpid(%d, %p, %d)\n", pid, status, options);
-	return process_wait(pid, status, options, NULL);
+	AcquireSRWLockShared(&process->rw_lock);
+	intptr_t r = process_wait(pid, status, options, NULL);
+	ReleaseSRWLockShared(&process->rw_lock);
+	return r;
 }
 
 DEFINE_SYSCALL(wait4, pid_t, pid, int *, status, int, options, struct rusage *, rusage)
@@ -360,7 +366,10 @@ DEFINE_SYSCALL(wait4, pid_t, pid, int *, status, int, options, struct rusage *, 
 	log_info("sys_wait4(%d, %p, %d, %p)\n", pid, status, options, rusage);
 	if (rusage)
 		log_error("rusage != NULL\n");
-	return process_wait(pid, status, options, rusage);
+	AcquireSRWLockShared(&process->rw_lock);
+	intptr_t r = process_wait(pid, status, options, rusage);
+	ReleaseSRWLockShared(&process->rw_lock);
+	return r;
 }
 
 __declspec(noreturn) void process_exit(int exit_code, int exit_signal)
