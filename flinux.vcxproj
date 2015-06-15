@@ -42,6 +42,7 @@
     <ClInclude Include="src\common\sigframe.h" />
     <ClInclude Include="src\common\signal.h" />
     <ClInclude Include="src\common\socket.h" />
+    <ClInclude Include="src\common\soundcard.h" />
     <ClInclude Include="src\common\stat.h" />
     <ClInclude Include="src\common\statfs.h" />
     <ClInclude Include="src\common\sysinfo.h" />
@@ -61,6 +62,7 @@
     <ClInclude Include="src\dbt\x86_inst.h" />
     <ClInclude Include="src\fs\console.h" />
     <ClInclude Include="src\fs\devfs.h" />
+    <ClInclude Include="src\fs\dsp.h" />
     <ClInclude Include="src\fs\eventfd.h" />
     <ClInclude Include="src\fs\file.h" />
     <ClInclude Include="src\fs\null.h" />
@@ -102,6 +104,7 @@
     <ClCompile Include="src\dbt\x86.c" />
     <ClCompile Include="src\fs\console.c" />
     <ClCompile Include="src\fs\devfs.c" />
+    <ClCompile Include="src\fs\dsp.c" />
     <ClCompile Include="src\fs\eventfd.c" />
     <ClCompile Include="src\fs\procfs.c" />
     <ClCompile Include="src\fs\sysfs.c" />
@@ -214,7 +217,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <RandomizedBaseAddress>false</RandomizedBaseAddress>
       <MinimumRequiredVersion />
-      <AdditionalOptions>/delayload:advapi32.dll /delayload:ws2_32.dll %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/delayload:advapi32.dll /delayload:ws2_32.dll /delayload:winmm.dll %(AdditionalOptions)</AdditionalOptions>
       <AdditionalDependencies>ntdll.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
@@ -250,7 +253,7 @@
       </ImageHasSafeExceptionHandlers>
       <RandomizedBaseAddress>false</RandomizedBaseAddress>
       <MinimumRequiredVersion />
-      <AdditionalOptions>/delayload:advapi32.dll /delayload:ws2_32.dll %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/delayload:advapi32.dll /delayload:ws2_32.dll /delayload:winmm.dll %(AdditionalOptions)</AdditionalOptions>
       <AdditionalDependencies>ntdll.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>

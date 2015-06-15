@@ -233,6 +233,12 @@
     <ClInclude Include="src\syscall\process_info.h">
       <Filter>syscall</Filter>
     </ClInclude>
+    <ClInclude Include="src\fs\dsp.h">
+      <Filter>fs</Filter>
+    </ClInclude>
+    <ClInclude Include="src\common\soundcard.h">
+      <Filter>common</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
@@ -315,6 +321,9 @@
       <Filter>fs</Filter>
     </ClCompile>
     <ClCompile Include="src\vsscanf.c" />
+    <ClCompile Include="src\fs\dsp.c">
+      <Filter>fs</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <MASM Include="src\syscall\stubs64.asm">

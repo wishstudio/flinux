@@ -17,28 +17,8 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <fs/console.h>
-#include <fs/devfs.h>
-#include <fs/dsp.h>
-#include <fs/null.h>
-#include <fs/random.h>
+#pragma once
+
 #include <fs/virtual.h>
 
-static const struct virtualfs_directory_desc devfs =
-{
-	.type = VIRTUALFS_TYPE_DIRECTORY,
-	.entries = {
-		VIRTUALFS_ENTRY("dsp", dsp_desc)
-		VIRTUALFS_ENTRY("null", null_desc)
-		VIRTUALFS_ENTRY("random", random_desc)
-		VIRTUALFS_ENTRY("urandom", urandom_desc)
-		VIRTUALFS_ENTRY("console", console_desc)
-		VIRTUALFS_ENTRY("tty", console_desc)
-		VIRTUALFS_ENTRY_END()
-	}
-};
-
-struct file_system *devfs_alloc()
-{
-	return virtualfs_alloc("/dev", &devfs);
-}
+struct virtualfs_custom_desc dsp_desc;
