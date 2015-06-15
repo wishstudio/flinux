@@ -431,10 +431,23 @@ static __forceinline void gen_jecxz_rel(uint8_t **out, int8_t rel)
 struct dbt_block
 {
 	struct slist list;
-	struct rb_node cache_tree; /* RB tree for code cache */
+	struct rb_node tree; /* RB tree organized by source address */
+	struct rb_node cache_tree; /* RB tree organized by translated code cache address */
 	size_t pc;
 	uint8_t *start;
 };
+
+static int tree_cmp(const struct rb_node *left, const struct rb_node *right)
+{
+	struct dbt_block *l = rb_entry(left, struct dbt_block, tree);
+	struct dbt_block *r = rb_entry(right, struct dbt_block, tree);
+	if (l->pc < r->pc)
+		return -1;
+	else if (l->pc > r->pc)
+		return 1;
+	else
+		return 0;
+}
 
 static int cache_tree_cmp(const struct rb_node *left, const struct rb_node *right)
 {
@@ -465,6 +478,7 @@ struct dbt_data
 {
 	struct slist block_hash[DBT_BLOCK_HASH_BUCKETS];
 	struct dbt_block *blocks;
+	struct rb_tree tree;
 	struct rb_tree cache_tree;
 	int blocks_count;
 	uint8_t *internal_trampoline_end;
@@ -691,6 +705,7 @@ static void dbt_gen_sieve_dispatch();
 static void dbt_gen_tables()
 {
 	/* Initialize block cache */
+	rb_init(&dbt->tree);
 	rb_init(&dbt->cache_tree);
 	dbt->blocks_count = 0;
 	dbt->out = dbt_cache;
@@ -747,6 +762,23 @@ static void dbt_flush()
 void dbt_reset()
 {
 	dbt_flush();
+}
+
+void dbt_code_changed(size_t pc, size_t len)
+{
+	struct dbt_block probe;
+	probe.pc = pc;
+	struct rb_node *node = rb_lower_bound(&dbt->tree, &probe.tree, tree_cmp);
+	if (node == NULL) /* Nothing to do */
+		return;
+	struct dbt_block *block = rb_entry(node, struct dbt_block, tree);
+	if (block->pc <= pc + len)
+	{
+		/* Bad, cached code changed. Flush all code cache for safety. */
+		/* TODO: Take care of signal/thread safety */
+		log_info("DBT block at [%p, %p) changed. Code cache flushed.\n", pc, pc + len);
+		dbt_flush();
+	}
 }
 
 static int hash_block_pc(size_t pc)
@@ -1230,6 +1262,7 @@ static struct dbt_block *dbt_translate(size_t pc, struct syscall_context *contex
 		}
 		block->pc = pc;
 		block->start = (uint8_t *)ALIGN_TO(dbt->out, DBT_OUT_ALIGN);
+		rb_add(&dbt->tree, &block->tree, tree_cmp);
 		rb_add(&dbt->cache_tree, &block->cache_tree, cache_tree_cmp);
 	}
 

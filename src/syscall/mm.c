@@ -18,6 +18,7 @@
  */
 
 #include <common/errno.h>
+#include <dbt/x86.h>
 #include <lib/rbtree.h>
 #include <lib/slist.h>
 #include <syscall/mm.h>
@@ -1068,6 +1069,11 @@ int mm_munmap(void *addr, size_t length)
 			if (range_start == e->start_page && range_end == e->end_page)
 			{
 				/* That's good, the current entry is fully overlapped */
+				if (e->prot & PROT_EXEC)
+				{
+					/* Notify dbt subsystem the executable pages has been lost */
+					dbt_code_changed((size_t)GET_PAGE_ADDRESS(e->start_page), (e->end_page - e->start_page + 1) * PAGE_SIZE);
+				}
 				struct rb_node *next = rb_next(cur);
 				free_map_entry_blocks(e);
 				rb_remove(&mm->entry_tree, cur);
