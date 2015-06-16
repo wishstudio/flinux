@@ -121,6 +121,7 @@
 
 struct tls_data
 {
+	SRWLOCK rw_lock; /* Read write lock */
 	DWORD entries[MAX_TLS_ENTRIES]; /* Win32 TLS slot id */
 	XWORD current_values[MAX_TLS_ENTRIES]; /* Set by fork() to passing tls data to the new process */
 	int entry_count;
@@ -133,6 +134,7 @@ static struct tls_data *tls;
 void tls_init()
 {
 	tls = mm_static_alloc(sizeof(struct tls_data));
+	InitializeSRWLock(&tls->rw_lock);
 	for (int i = 0; i < TLS_KERNEL_ENTRY_COUNT; i++)
 	{
 		tls->kernel_entries[i] = TlsAlloc();
@@ -225,20 +227,26 @@ int tls_user_entry_to_offset(int entry)
 DEFINE_SYSCALL(set_thread_area, struct user_desc *, u_info)
 {
 	log_info("set_thread_area(%p): entry=%d, base=%p, limit=%p\n", u_info, u_info->entry_number, u_info->base_addr, u_info->limit);
+	int ret = 0;
+	AcquireSRWLockExclusive(&tls->rw_lock);
 	if (u_info->entry_number == -1)
 	{
 		if (tls->entry_count == MAX_TLS_ENTRIES)
-			return -ESRCH;
-		int slot = TlsAlloc();
-		tls->entries[tls->entry_count] = slot;
-		u_info->entry_number = tls->entry_count;
-		log_info("allocated entry %d (slot %d), fs offset 0x%x\n", tls->entry_count, slot, tls_slot_to_offset(u_info->entry_number));
-		tls->entry_count++;
-		TlsSetValue(slot, (LPVOID)u_info->base_addr);
+			ret = -ESRCH;
+		else
+		{
+			int slot = TlsAlloc();
+			tls->entries[tls->entry_count] = slot;
+			u_info->entry_number = tls->entry_count;
+			log_info("allocated entry %d (slot %d), fs offset 0x%x\n", tls->entry_count, slot, tls_slot_to_offset(u_info->entry_number));
+			tls->entry_count++;
+			TlsSetValue(slot, (LPVOID)u_info->base_addr);
+		}
 	}
 	else
 		TlsSetValue(tls_slot_to_offset(tls->entries[u_info->entry_number]), (LPVOID)u_info->base_addr);
-	return 0;
+	ReleaseSRWLockExclusive(&tls->rw_lock);
+	return ret;
 }
 
 DEFINE_SYSCALL(arch_prctl, int, code, uintptr_t, addr)
