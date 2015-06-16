@@ -1131,7 +1131,7 @@ static const struct instruction_desc two_byte_inst[256] =
 	/* 0xB0: CMPXCHG r/m8, r8 */ INST(MODRM(), READ(MODRM_R | MODRM_RM | REG_AX), WRITE(MODRM_RM | REG_AX))
 	/* 0xB1: CMPXCHG r/m?, r? */ INST(MODRM(), READ(MODRM_R | MODRM_RM | REG_AX), WRITE(MODRM_RM | REG_AX))
 	/* 0xB2: LSS r?, m16:? */ UNSUPPORTED()
-	/* 0xB3: BTR r/m?, r? */ INST(MODRM(), IMM(1), READ(MODRM_RM))
+	/* 0xB3: BTR r/m?, r? */ INST(MODRM(), READ(MODRM_RM))
 	/* 0xB4: LFS r?, m16:? */ UNSUPPORTED()
 	/* 0xB5: LGS r?, m16:? */ UNSUPPORTED()
 	/* 0xB6: MOVZX r?, r/m8 */ INST(MODRM(), READ(MODRM_RM), WRITE(MODRM_R))
