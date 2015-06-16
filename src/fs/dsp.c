@@ -113,6 +113,7 @@ static int dsp_close(struct file *f)
 	/* Send remaining buffer */
 	if (dsp->buffer[dsp->current_buffer].buffer_pos < dsp->buffer_size)
 	{
+		dsp->buffer[dsp->current_buffer].hdr.dwBufferLength = dsp->buffer[dsp->current_buffer].buffer_pos;
 		dsp_send_buffer(dsp->waveout, &dsp->buffer[dsp->current_buffer]);
 		/* Wait for playback */
 		WaitForSingleObject(dsp->buffer[dsp->current_buffer].event, INFINITE);
