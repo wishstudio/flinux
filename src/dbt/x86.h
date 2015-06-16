@@ -44,6 +44,7 @@ struct syscall_context
 	DWORD eflags;
 };
 
+void dbt_init_thread();
 void dbt_init();
 void dbt_reset();
 void dbt_shutdown();
