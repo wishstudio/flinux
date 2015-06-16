@@ -26,6 +26,7 @@
 #include <heap.h>
 #include <log.h>
 
+#include <stdbool.h>
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <mmreg.h>
@@ -33,23 +34,69 @@
 
 #pragma comment(lib, "winmm.lib")
 
-#define DSP_BUFFER_SIZE		65536
+/* Each buffer should be capable of storing about 0.125 second of samples */
+#define DSP_BUFFER_COUNT	16
+
+struct dsp_buffer
+{
+	WAVEHDR hdr;
+	HANDLE event;
+	int buffer_pos;
+};
 
 struct dsp_file
 {
 	struct virtualfs_custom custom_file;
 	HWAVEOUT waveout;
 	WAVEFORMATEX format;
-	WAVEHDR hdr;
-	char *buffer;
-	HANDLE event;
+	struct dsp_buffer buffer[DSP_BUFFER_COUNT];
+	int buffer_size;
+	int current_buffer;
 };
+
+static bool dsp_test_format(WAVEFORMATEX *format)
+{
+	HWAVEOUT waveout;
+	return waveOutOpen(&waveout, 0, format, 0, 0, WAVE_FORMAT_QUERY | CALLBACK_NULL) == MMSYSERR_NOERROR;
+}
+
+static void CALLBACK dsp_callback(HWAVEOUT hwo, UINT uMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2)
+{
+	if (uMsg == WOM_DONE)
+	{
+		struct dsp_file *dsp = (struct dsp_file *)dwInstance;
+		WAVEHDR *hdr = (WAVEHDR *)dwParam1;
+		for (int i = 0; i < DSP_BUFFER_COUNT; i++)
+			if (&dsp->buffer[i].hdr == hdr)
+			{
+				SetEvent(dsp->buffer[i].event);
+				break;
+			}
+	}
+}
+
+static bool dsp_send_buffer(HWAVEOUT waveout, struct dsp_buffer *buffer)
+{
+	int r = waveOutWrite(waveout, &buffer->hdr, sizeof(WAVEHDR));
+	if (r != MMSYSERR_NOERROR)
+	{
+		log_error("waveOutWrite() failed, error code: %d\n", r);
+		return false;
+	}
+	else
+		return true;
+}
 
 static void dsp_reset(struct dsp_file *dsp)
 {
 	if (dsp->waveout)
 	{
-		waveOutUnprepareHeader(dsp->waveout, &dsp->hdr, sizeof(dsp->hdr));
+		for (int i = 0; i < DSP_BUFFER_COUNT; i++)
+		{
+			waveOutUnprepareHeader(dsp->waveout, &dsp->buffer[i].hdr, sizeof(WAVEHDR));
+			VirtualFree(dsp->buffer[i].hdr.lpData, 0, MEM_RELEASE);
+			SetEvent(dsp->buffer[i].event);
+		}
 		waveOutClose(dsp->waveout);
 		dsp->waveout = NULL;
 	}
@@ -63,9 +110,14 @@ static void dsp_reset(struct dsp_file *dsp)
 static int dsp_close(struct file *f)
 {
 	struct dsp_file *dsp = (struct dsp_file *)f;
+	/* Send remaining buffer */
+	if (dsp->buffer[dsp->current_buffer].buffer_pos < dsp->buffer_size)
+	{
+		dsp_send_buffer(dsp->waveout, &dsp->buffer[dsp->current_buffer]);
+		/* Wait for playback */
+		WaitForSingleObject(dsp->buffer[dsp->current_buffer].event, INFINITE);
+	}
 	dsp_reset(dsp);
-	VirtualFree(dsp->buffer, DSP_BUFFER_SIZE, MEM_RELEASE);
-	CloseHandle(dsp->event);
 	kfree(dsp, sizeof(struct dsp_file));
 	return 0;
 }
@@ -84,47 +136,69 @@ static int dsp_write(struct file *f, const void *buf, size_t count)
 	{
 		dsp->format.nBlockAlign = dsp->format.nChannels * dsp->format.wBitsPerSample / 8;
 		dsp->format.nAvgBytesPerSec = dsp->format.nSamplesPerSec * dsp->format.nBlockAlign;
-		int r = waveOutOpen(&dsp->waveout, 0, &dsp->format, (DWORD_PTR)dsp->event, 0, CALLBACK_EVENT);
+		int r = waveOutOpen(&dsp->waveout, 0, &dsp->format, (DWORD_PTR)dsp_callback, (DWORD_PTR)dsp, CALLBACK_FUNCTION);
 		if (r != MMSYSERR_NOERROR)
 		{
 			dsp->waveout = NULL;
 			log_error("waveOutOpen() failed, error code: %d\n", r);
 			return 0;
 		}
-		dsp->hdr.lpData = dsp->buffer;
-		dsp->hdr.dwBufferLength = DSP_BUFFER_SIZE;
-		dsp->hdr.dwBytesRecorded = 0;
-		dsp->hdr.dwUser = 0;
-		dsp->hdr.dwFlags = 0;
-		dsp->hdr.dwLoops = 0;
-		dsp->hdr.lpNext = NULL;
-		dsp->hdr.reserved = 0;
-		r = waveOutPrepareHeader(dsp->waveout, &dsp->hdr, sizeof(dsp->hdr));
-		if (r != MMSYSERR_NOERROR)
+		/* Buffer should be capable of storing 0.125 seconds of sample */
+		dsp->buffer_size = dsp->format.nAvgBytesPerSec / 8;
+
+		log_info("DSP buffer size: %d\n", dsp->buffer_size);
+		dsp->current_buffer = 0;
+		for (int i = 0; i < DSP_BUFFER_COUNT; i++)
 		{
-			waveOutClose(dsp->waveout);
-			log_error("waveOutPrepareHeader() failed, error code: %d\n", r);
-			return 0;
+			dsp->buffer[i].hdr.lpData = VirtualAlloc(NULL, dsp->buffer_size, MEM_RESERVE | MEM_COMMIT | MEM_TOP_DOWN, PAGE_READWRITE);
+			dsp->buffer[i].hdr.dwBufferLength = dsp->buffer_size;
+			dsp->buffer[i].hdr.dwBytesRecorded = 0;
+			dsp->buffer[i].hdr.dwUser = 0;
+			dsp->buffer[i].hdr.dwFlags = 0;
+			dsp->buffer[i].hdr.dwLoops = 0;
+			dsp->buffer[i].hdr.lpNext = NULL;
+			dsp->buffer[i].hdr.reserved = 0;
+			dsp->buffer[i].buffer_pos = dsp->buffer_size;
+			int r = waveOutPrepareHeader(dsp->waveout, &dsp->buffer[i].hdr, sizeof(WAVEHDR));
+			if (r != MMSYSERR_NOERROR)
+			{
+				for (int j = 0; j < i; j++)
+					waveOutUnprepareHeader(dsp->waveout, &dsp->buffer[j].hdr, sizeof(WAVEHDR));
+				waveOutClose(dsp->waveout);
+				dsp->waveout = NULL;
+				log_error("waveOutPrepareHeader() failed, error code: %d\n", r);
+				return 0;
+			}
 		}
 	}
-	if (count > DSP_BUFFER_SIZE)
-		count = DSP_BUFFER_SIZE;
-	memcpy(dsp->buffer, buf, count);
-	/* TODO: Implement asychronous operation */
-	int r = waveOutWrite(dsp->waveout, &dsp->hdr, sizeof(dsp->hdr));
-	WaitForSingleObject(dsp->event, INFINITE);
-	if (r == MMSYSERR_NOERROR)
-		return count;
-	else
+	size_t written = 0;
+	while (count > 0)
 	{
-		log_error("waveOutWrite() failed, error code: %d\n", r);
-		return 0;
+		if (dsp->buffer[dsp->current_buffer].buffer_pos == dsp->buffer_size)
+		{
+			WaitForSingleObject(dsp->buffer[dsp->current_buffer].event, INFINITE);
+			dsp->buffer[dsp->current_buffer].buffer_pos = 0;
+		}
+		size_t current = min(count, (size_t)(dsp->buffer_size - dsp->buffer[dsp->current_buffer].buffer_pos));
+
+		memcpy(dsp->buffer[dsp->current_buffer].hdr.lpData + dsp->buffer[dsp->current_buffer].buffer_pos,
+			(char *)buf + written, current);
+		dsp->buffer[dsp->current_buffer].buffer_pos += current;
+		if (dsp->buffer[dsp->current_buffer].buffer_pos == dsp->buffer_size)
+		{
+			bool ok = dsp_send_buffer(dsp->waveout, &dsp->buffer[dsp->current_buffer]);
+			dsp->current_buffer = (dsp->current_buffer + 1) % DSP_BUFFER_COUNT;
+			if (!ok)
+				return written;
+		}
+		written += current;
+		count -= current;
 	}
+	return written;
 }
 
 static int dsp_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 {
-	/* TODO: Check parameter validity (using WAVE_FORMAT_QUERY) */
 	struct dsp_file *dsp = (struct dsp_file *)f;
 	switch (cmd)
 	{
@@ -140,7 +214,14 @@ static int dsp_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 			return -EFAULT;
 		int speed = *(int *)arg;
 		log_info("SNDCTL_DSP_SPEED: %d\n", speed);
+		DWORD old_speed = dsp->format.nSamplesPerSec;
 		dsp->format.nSamplesPerSec = speed;
+		if (!dsp_test_format(&dsp->format))
+		{
+			log_warning("Speed not supported.\n");
+			dsp->format.nSamplesPerSec = old_speed;
+			return -EINVAL;
+		}
 		break;
 	}
 	case SNDCTL_DSP_STEREO:
@@ -177,6 +258,14 @@ static int dsp_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 		}
 		break;
 	}
+	case SNDCTL_DSP_GETFMTS:
+	{
+		if (!mm_check_write((int *)arg, sizeof(int)))
+			return -EFAULT;
+		log_info("SNDCTL_DSP_GETFMTS\n");
+		*(int *)arg = AFMT_U8 | AFMT_S16_LE;
+		break;
+	}
 	}
 	return 0;
 }
@@ -201,12 +290,12 @@ static struct file *dsp_alloc()
 	f->custom_file.base_file.flags = O_LARGEFILE | O_RDWR;
 	virtualfs_init_custom(f, &dsp_desc);
 	f->waveout = NULL;
-	f->buffer = VirtualAlloc(NULL, DSP_BUFFER_SIZE, MEM_RESERVE | MEM_COMMIT | MEM_TOP_DOWN, PAGE_READWRITE);
 	SECURITY_ATTRIBUTES attr;
 	attr.nLength = sizeof(SECURITY_ATTRIBUTES);
 	attr.bInheritHandle = FALSE;
 	attr.lpSecurityDescriptor = NULL;
-	f->event = CreateEventW(&attr, FALSE, FALSE, NULL);
+	for (int i = 0; i < DSP_BUFFER_COUNT; i++)
+		f->buffer[i].event = CreateEventW(&attr, FALSE, TRUE, NULL);
 	dsp_reset(f);
 	return (struct file *)f;
 }
