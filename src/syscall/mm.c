@@ -134,6 +134,9 @@ static int map_entry_cmp(const struct rb_node *l, const struct rb_node *r)
 
 struct mm_data
 {
+	/* RW lock for multi-threading protection */
+	SRWLOCK rw_lock;
+
 	/* Program break address, brk() will use this */
 	void *brk;
 
@@ -294,6 +297,8 @@ static void map_global_shared_section()
 
 void mm_init()
 {
+	/* Initialize RW lock */
+	InitializeSRWLock(&mm->rw_lock);
 	/* Initialize mapping info freelist */
 	rb_init(&mm->entry_tree);
 	slist_init(&mm->entry_free_list);
@@ -520,12 +525,14 @@ void mm_dump_windows_memory_mappings(HANDLE process)
 
 void mm_dump_memory_mappings()
 {
+	AcquireSRWLockShared(&mm->rw_lock);
 	log_info("Current memory mappings...\n");
 	for (struct rb_node *cur = rb_first(&mm->entry_tree); cur; cur = rb_next(cur))
 	{
 		struct map_entry *e = rb_entry(cur, struct map_entry, tree);
 		log_info("0x%p - 0x%p: PROT: %d\n", GET_PAGE_ADDRESS(e->start_page), GET_PAGE_ADDRESS(e->end_page), e->prot);
 	}
+	ReleaseSRWLockShared(&mm->rw_lock);
 }
 
 static void map_entry_range(struct map_entry *e, size_t start_page, size_t end_page)
@@ -820,10 +827,14 @@ int mm_handle_page_fault(void *addr)
 		log_warning("Address %p outside of valid usermode address space.\n", addr);
 		return 0;
 	}
+	AcquireSRWLockExclusive(&mm->rw_lock);
+	int r;
 	if (get_section_handle(GET_BLOCK(addr)))
-		return handle_cow_page_fault(addr);
+		r = handle_cow_page_fault(addr);
 	else
-		return handle_on_demand_page_fault(addr);
+		r = handle_on_demand_page_fault(addr);
+	ReleaseSRWLockExclusive(&mm->rw_lock);
+	return r;
 }
 
 int mm_fork(HANDLE process)
@@ -903,7 +914,7 @@ void mm_afterfork()
 	map_global_shared_section();
 }
 
-void *mm_mmap(void *addr, size_t length, int prot, int flags, int internal_flags, struct file *f, off_t offset_pages)
+static void *mmap_internal(void *addr, size_t length, int prot, int flags, int internal_flags, struct file *f, off_t offset_pages)
 {
 	if (length == 0)
 		return (void*)-EINVAL;
@@ -976,7 +987,10 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, int internal_flags
 			}
 		}
 		else
-			mm_munmap(addr, length);
+		{
+			static int munmap_internal(void *addr, size_t length);
+			munmap_internal(addr, length);
+		}
 	}
 
 	/* Set up all kinds of flags */
@@ -1037,7 +1051,7 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, int internal_flags
 	return addr;
 }
 
-int mm_munmap(void *addr, size_t length)
+static int munmap_internal(void *addr, size_t length)
 {
 	/* TODO: We should mark NOACCESS for munmap()-ed but not VirtualFree()-ed pages */
 	if (!IS_ALIGNED(addr, PAGE_SIZE))
@@ -1104,6 +1118,22 @@ int mm_munmap(void *addr, size_t length)
 	return 0;
 }
 
+void *mm_mmap(void *addr, size_t length, int prot, int flags, int internal_flags, struct file *f, off_t offset_pages)
+{
+	AcquireSRWLockExclusive(&mm->rw_lock);
+	void *r = mmap_internal(addr, length, prot, flags, internal_flags, f, offset_pages);
+	ReleaseSRWLockExclusive(&mm->rw_lock);
+	return r;
+}
+
+int mm_munmap(void *addr, size_t length)
+{
+	AcquireSRWLockExclusive(&mm->rw_lock);
+	int r = munmap_internal(addr, length);
+	ReleaseSRWLockExclusive(&mm->rw_lock);
+	return r;
+}
+
 DEFINE_SYSCALL(mmap, void *, addr, size_t, length, int, prot, int, flags, int, fd, off_t, offset)
 {
 	/* TODO: We should mark NOACCESS for VirtualAlloc()-ed but currently unused pages */
@@ -1145,14 +1175,20 @@ DEFINE_SYSCALL(munmap, void *, addr, size_t, length)
 DEFINE_SYSCALL(mprotect, void *, addr, size_t, length, int, prot)
 {
 	log_info("mprotect(%p, %p, %x)\n", addr, length, prot);
+	int r = 0;
+	AcquireSRWLockExclusive(&mm->rw_lock);
 	if (!IS_ALIGNED(addr, PAGE_SIZE))
-		return -EINVAL;
+	{
+		r = -EINVAL;
+		goto out;
+	}
 	length = ALIGN_TO_PAGE(length);
 	if ((size_t)addr < ADDRESS_SPACE_LOW || (size_t)addr >= ADDRESS_SPACE_HIGH
 		|| (size_t)addr + length < ADDRESS_SPACE_LOW || (size_t)addr + length >= ADDRESS_SPACE_HIGH
 		|| (size_t)addr + length < (size_t)addr)
 	{
-		return -EINVAL;
+		r = -EINVAL;
+		goto out;
 	}
 	/* Validate all pages are mapped */
 	size_t start_page = GET_PAGE(addr);
@@ -1172,7 +1208,10 @@ DEFINE_SYSCALL(mprotect, void *, addr, size_t, length, int, prot)
 		}
 	}
 	if (last_page < end_page)
-		return -ENOMEM;
+	{
+		r = -ENOMEM;
+		goto out;
+	}
 
 	/* Change protection flags */
 	for (struct rb_node *cur = start_node(start_page); cur; cur = rb_next(cur))
@@ -1208,9 +1247,15 @@ DEFINE_SYSCALL(mprotect, void *, addr, size_t, length, int, prot)
 		}
 	}
 	if (!mm_change_protection(GetCurrentProcess(), start_page, end_page, prot & ~PROT_WRITE))
+	{
 		/* We remove the write protection in case the pages are already shared */
-		return -ENOMEM; /* TODO */
-	return 0;
+		r = -ENOMEM; /* TODO */
+		goto out;
+	}
+
+out:
+	ReleaseSRWLockExclusive(&mm->rw_lock);
+	return r;
 }
 
 DEFINE_SYSCALL(msync, void *, addr, size_t, len, int, flags)
@@ -1223,8 +1268,13 @@ DEFINE_SYSCALL(msync, void *, addr, size_t, len, int, flags)
 DEFINE_SYSCALL(mlock, const void *, addr, size_t, len)
 {
 	log_info("mlock(0x%p, 0x%p)\n", addr, len);
+	int r = 0;
+	AcquireSRWLockExclusive(&mm->rw_lock);
 	if (!IS_ALIGNED(addr, PAGE_SIZE))
-		return -EINVAL;
+	{
+		r = -EINVAL;
+		goto out;
+	}
 
 	/* All on demand page must be properly loaded or the locking operation will fail */
 	size_t start_page = GET_PAGE(addr);
@@ -1250,7 +1300,10 @@ DEFINE_SYSCALL(mlock, const void *, addr, size_t, len)
 				else
 				{
 					if (!allocate_block(i))
-						return -ENOMEM;
+					{
+						r = -ENOMEM;
+						goto out;
+					}
 					size_t first_page = max(range_start, GET_FIRST_PAGE_OF_BLOCK(i));
 					size_t last_page = min(range_end, GET_LAST_PAGE_OF_BLOCK(i));
 					map_entry_range(e, first_page, last_page);
@@ -1269,9 +1322,12 @@ DEFINE_SYSCALL(mlock, const void *, addr, size_t, len)
 	if (!VirtualLock((LPVOID)addr, len))
 	{
 		log_warning("VirtualLock() failed, error code: %d\n", GetLastError());
-		return -ENOMEM;
+		r = -ENOMEM;
+		goto out;
 	}
-	return 0;
+
+out:
+	return r;
 }
 
 DEFINE_SYSCALL(munlock, const void *, addr, size_t, len)
@@ -1307,11 +1363,12 @@ DEFINE_SYSCALL(brk, void *, addr)
 {
 	log_info("brk(%p)\n", addr);
 	log_info("Last brk: %p\n", mm->brk);
+	AcquireSRWLockExclusive(&mm->rw_lock);
 	size_t brk = ALIGN_TO_PAGE(mm->brk);
 	addr = (void*)ALIGN_TO_PAGE(addr);
 	if (addr > 0 && addr < mm->brk)
 	{
-		if (mm_munmap(addr, (size_t)brk - (size_t)addr) < 0)
+		if (munmap_internal(addr, (size_t)brk - (size_t)addr) < 0)
 		{
 			log_error("Shrink brk failed.\n");
 			goto out;
@@ -1320,7 +1377,7 @@ DEFINE_SYSCALL(brk, void *, addr)
 	}
 	else if (addr > mm->brk)
 	{
-		int r = (int)mm_mmap((void *)brk, (size_t)addr - (size_t)brk, PROT_READ | PROT_WRITE | PROT_EXEC,
+		int r = (int)mmap_internal((void *)brk, (size_t)addr - (size_t)brk, PROT_READ | PROT_WRITE | PROT_EXEC,
 			MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, INTERNAL_MAP_NOOVERWRITE, NULL, 0);
 		if (r < 0)
 		{
@@ -1330,6 +1387,7 @@ DEFINE_SYSCALL(brk, void *, addr)
 		mm->brk = addr;
 	}
 out:
+	ReleaseSRWLockExclusive(&mm->rw_lock);
 	log_info("New brk: %p\n", mm->brk);
 	return (intptr_t)mm->brk;
 }
