@@ -933,9 +933,7 @@ static int winfs_open(struct file_system *fs, const char *pathname, int flags, i
 	{
 		int pathlen = strlen(pathname);
 		struct winfs_file *file = (struct winfs_file *)kmalloc(sizeof(struct winfs_file) + pathlen);
-		file->base_file.op_vtable = &winfs_ops;
-		file->base_file.ref = 1;
-		file->base_file.flags = flags;
+		file_init(&file->base_file, &winfs_ops, flags);
 		file->handle = handle;
 		file->restart_scan = 1;
 		file->pathlen = pathlen;

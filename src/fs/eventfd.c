@@ -57,9 +57,7 @@ int eventfd_alloc(struct file **eventfdfile, uint64_t count, int flags)
 	}
 
 	struct eventfd_file *efd = kmalloc(sizeof(struct eventfd_file));
-	efd->efd_base_file.op_vtable = &eventfd_ops;
-	efd->efd_base_file.ref = 1;
-	efd->efd_base_file.flags = O_RDWR;
+	file_init(&efd->efd_base_file, &eventfd_ops, O_RDWR);
 
 	SECURITY_ATTRIBUTES attrs;
 	attrs.nLength = sizeof(SECURITY_ATTRIBUTES);

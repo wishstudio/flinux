@@ -286,9 +286,7 @@ struct virtualfs_custom_desc dsp_desc = VIRTUALFS_CUSTOM(mkdev(14, 3), dsp_alloc
 static struct file *dsp_alloc()
 {
 	struct dsp_file *f = (struct dsp_file *)kmalloc(sizeof(struct dsp_file));
-	f->custom_file.base_file.op_vtable = &dsp_ops;
-	f->custom_file.base_file.ref = 1;
-	f->custom_file.base_file.flags = O_LARGEFILE | O_RDWR;
+	file_init(&f->custom_file.base_file, &dsp_ops, O_LARGEFILE | O_RDWR);
 	virtualfs_init_custom(f, &dsp_desc);
 	f->waveout = NULL;
 	SECURITY_ATTRIBUTES attr;

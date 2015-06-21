@@ -59,9 +59,18 @@ struct file_ops
 struct file
 {
 	const struct file_ops *op_vtable;
-	uint32_t ref;
 	int flags;
+	uint32_t ref;
+	SRWLOCK rw_lock;
 };
+
+static void file_init(struct file *f, const struct file_ops *op_vtable, int flags)
+{
+	f->op_vtable = op_vtable;
+	f->flags = flags;
+	f->ref = 1;
+	InitializeSRWLock(&f->rw_lock);
+}
 
 struct file_system
 {

@@ -197,9 +197,7 @@ static struct file *virtualfs_directory_alloc(const struct virtualfs_directory_d
 {
 	int pathlen = strlen(path);
 	struct virtualfs_directory *file = (struct virtualfs_directory *)kmalloc(sizeof(struct virtualfs_directory) + pathlen);
-	file->base_file.op_vtable = &virtualfs_directory_ops;
-	file->base_file.flags = O_RDWR;
-	file->base_file.ref = 1;
+	file_init(&file->base_file, &virtualfs_directory_ops, O_RDWR);
 	file->mountpoint = mountpoint;
 	file->desc = desc;
 	file->tag = tag;
@@ -300,9 +298,7 @@ static const struct file_ops virtualfs_char_ops =
 static struct file *virtualfs_char_alloc(struct virtualfs_char_desc *desc, int tag)
 {
 	struct virtualfs_char *file = (struct virtualfs_char *)kmalloc(sizeof(struct virtualfs_char));
-	file->base_file.op_vtable = &virtualfs_char_ops;
-	file->base_file.flags = O_RDWR;
-	file->base_file.ref = 1;
+	file_init(&file->base_file, &virtualfs_char_ops, O_RDWR);
 	file->desc = desc;
 	file->tag = tag;
 	return (struct file *)file;
@@ -391,9 +387,7 @@ static struct file *virtualfs_text_alloc(struct virtualfs_text_desc *desc, int t
 	if (len < 0)
 		return NULL;
 	struct virtualfs_text *file = (struct virtualfs_text *)kmalloc(sizeof(struct virtualfs_text) + len + 1);
-	file->base_file.op_vtable = &virtualfs_text_ops;
-	file->base_file.flags = O_RDONLY;
-	file->base_file.ref = 1;
+	file_init(&file->base_file, &virtualfs_text_ops, O_RDONLY);
 	file->textlen = len;
 	memcpy(file->text, buf, len);
 	file->text[len] = 0;
@@ -510,9 +504,7 @@ static const struct file_ops virtualfs_param_ops =
 static struct file *virtualfs_param_alloc(struct virtualfs_param_desc *desc, int tag, int flags)
 {
 	struct virtualfs_param *file = (struct virtualfs_param *)kmalloc(sizeof(struct virtualfs_param));
-	file->base_file.op_vtable = &virtualfs_param_ops;
-	file->base_file.flags = flags;
-	file->base_file.ref = 1;
+	file_init(&file->base_file, &virtualfs_param_ops, flags);
 	file->desc = desc;
 	file->tag = tag;
 	file->read = false;

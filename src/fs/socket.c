@@ -578,15 +578,13 @@ DEFINE_SYSCALL(socket, int, domain, int, type, int, protocol)
 	}
 
 	struct socket_file *f = (struct socket_file *) kmalloc(sizeof(struct socket_file));
-	f->base_file.op_vtable = &socket_ops;
-	f->base_file.ref = 1;
+	file_init(&f->base_file, &socket_ops, O_RDWR);
 	f->socket = sock;
 	f->event_handle = event_handle;
 	f->af = domain;
 	f->type = (type & LINUX_SOCK_TYPE_MASK);
 	f->events = 0;
 	f->connect_error = 0;
-	f->base_file.flags = O_RDWR;
 	if ((type & O_NONBLOCK))
 		f->base_file.flags |= O_NONBLOCK;
 	
@@ -609,27 +607,28 @@ DEFINE_SYSCALL(connect, int, sockfd, const struct sockaddr *, addr, size_t, addr
 	struct sockaddr_storage addr_storage;
 	int addr_storage_len;
 	if ((addr_storage_len = translate_socket_addr_to_winsock((const struct sockaddr_storage *)addr, &addr_storage, addrlen)) == SOCKET_ERROR)
-		return -EINVAL;
-	if (connect(f->socket, (struct sockaddr *)&addr_storage, addr_storage_len) == SOCKET_ERROR)
+		r = -EINVAL;
+	else if (connect(f->socket, (struct sockaddr *)&addr_storage, addr_storage_len) == SOCKET_ERROR)
 	{
 		int err = WSAGetLastError();
 		if (err != WSAEWOULDBLOCK)
 		{
 			log_warning("connect() failed, error code: %d\n", err);
-			return translate_socket_error(err);
+			r = translate_socket_error(err);
 		}
-		if ((f->base_file.flags & O_NONBLOCK) > 0)
+		else if ((f->base_file.flags & O_NONBLOCK) > 0)
 		{
 			log_info("connect() returned EINPROGRESS.\n");
-			return -EINPROGRESS;
+			r = -EINPROGRESS;
 		}
 		else
 		{
 			socket_wait_event(f, FD_CONNECT, 0);
-			return translate_socket_error(WSAGetLastError());
+			r = translate_socket_error(WSAGetLastError());
 		}
 	}
-	return 0;
+	vfs_release((struct file *)f);
+	return r;
 }
 
 DEFINE_SYSCALL(getsockname, int, sockfd, struct sockaddr *, addr, int *, addrlen)
@@ -673,19 +672,23 @@ DEFINE_SYSCALL(getsockname, int, sockfd, struct sockaddr *, addr, int *, addrlen
 			}
 
 			default:
-				return -EOPNOTSUPP;
+				r = -EOPNOTSUPP;
+				goto out;
 			}
 		}
 		else
 		{
 			log_warning("getsockname() failed, error code: %d\n", WSAGetLastError());
-			return translate_socket_error(WSAGetLastError());
+			r = translate_socket_error(WSAGetLastError());
+			goto out;
 		}
 	}
 	int copylen = min(*addrlen, addr_storage_len);
 	memcpy(addr, &addr_storage, copylen);
 	*addrlen = addr_storage_len;
-	return 0;
+out:
+	vfs_release((struct file *)f);
+	return r;
 }
 
 DEFINE_SYSCALL(getpeername, int, sockfd, struct sockaddr *, addr, int *, addrlen)
@@ -704,13 +707,16 @@ DEFINE_SYSCALL(getpeername, int, sockfd, struct sockaddr *, addr, int *, addrlen
 	if (getpeername(f->socket, (struct sockaddr *)&addr_storage, &addr_storage_len) == SOCKET_ERROR)
 	{
 		log_warning("getsockname() failed, error code: %d\n", WSAGetLastError());
-		return translate_socket_error(WSAGetLastError());
+		r = translate_socket_error(WSAGetLastError());
+		goto out;
 	}
 	addr_storage_len = translate_socket_addr_to_linux(&addr_storage, addr_storage_len);
 	int copylen = min(*addrlen, addr_storage_len);
 	memcpy(addr, &addr_storage, copylen);
 	*addrlen = addr_storage_len;
-	return 0;
+out:
+	vfs_release((struct file *)f);
+	return r;
 }
 
 DEFINE_SYSCALL(send, int, sockfd, const void *, buf, size_t, len, int, flags)
@@ -722,7 +728,9 @@ DEFINE_SYSCALL(send, int, sockfd, const void *, buf, size_t, len, int, flags)
 	int r = get_sockfd(sockfd, &f);
 	if (r)
 		return r;
-	return socket_sendto(f, buf, len, flags, NULL, 0);
+	r = socket_sendto(f, buf, len, flags, NULL, 0);
+	vfs_release((struct file *)f);
+	return r;
 }
 
 DEFINE_SYSCALL(recv, int, sockfd, void *, buf, size_t, len, int, flags)
@@ -734,7 +742,9 @@ DEFINE_SYSCALL(recv, int, sockfd, void *, buf, size_t, len, int, flags)
 	int r = get_sockfd(sockfd, &f);
 	if (r)
 		return r;
-	return socket_recvfrom(f, buf, len, flags, NULL, 0);
+	r = socket_recvfrom(f, buf, len, flags, NULL, 0);
+	vfs_release((struct file *)f);
+	return r;
 }
 
 DEFINE_SYSCALL(sendto, int, sockfd, const void *, buf, size_t, len, int, flags, const struct sockaddr *, dest_addr, int, addrlen)
@@ -748,7 +758,9 @@ DEFINE_SYSCALL(sendto, int, sockfd, const void *, buf, size_t, len, int, flags, 
 	int r = get_sockfd(sockfd, &f);
 	if (r)
 		return r;
-	return socket_sendto(f, buf, len, flags, dest_addr, addrlen);
+	r = socket_sendto(f, buf, len, flags, dest_addr, addrlen);
+	vfs_release((struct file *)f);
+	return r;
 }
 
 DEFINE_SYSCALL(recvfrom, int, sockfd, void *, buf, size_t, len, int, flags, struct sockaddr *, src_addr, int *, addrlen)
@@ -767,7 +779,9 @@ DEFINE_SYSCALL(recvfrom, int, sockfd, void *, buf, size_t, len, int, flags, stru
 	int r = get_sockfd(sockfd, &f);
 	if (r)
 		return r;
-	return socket_recvfrom(f, buf, len, flags, src_addr, addrlen);
+	r = socket_recvfrom(f, buf, len, flags, src_addr, addrlen);
+	vfs_release((struct file *)f);
+	return r;
 }
 
 DEFINE_SYSCALL(shutdown, int, sockfd, int, how)
@@ -775,7 +789,7 @@ DEFINE_SYSCALL(shutdown, int, sockfd, int, how)
 	log_info("shutdown(%d, %d)\n", sockfd, how);
 	struct socket_file *f;
 	int r = get_sockfd(sockfd, &f);
-	if (r < 0)
+	if (r)
 		return r;
 	int win32_how;
 	if (how == SHUT_RD)
@@ -785,13 +799,18 @@ DEFINE_SYSCALL(shutdown, int, sockfd, int, how)
 	else if (how == SHUT_RDWR)
 		win32_how = SD_BOTH;
 	else
-		return -EINVAL;
+	{
+		r = -EINVAL;
+		goto out;
+	}
 	if (shutdown(f->socket, win32_how) == SOCKET_ERROR)
 	{
 		log_warning("shutdown() failed, error code: %d\n", WSAGetLastError());
-		return translate_socket_error(WSAGetLastError());
+		r = translate_socket_error(WSAGetLastError());
 	}
-	return 0;
+out:
+	vfs_release((struct file *)f);
+	return r;
 }
 
 static int socket_get_set_sockopt(int call, struct socket_file *f, int level, int optname, const void *set_optval, int set_optlen, void *get_optval, int *get_optlen)
@@ -894,7 +913,9 @@ DEFINE_SYSCALL(setsockopt, int, sockfd, int, level, int, optname, const void *, 
 	int r = get_sockfd(sockfd, &f);
 	if (r)
 		return r;
-	return socket_get_set_sockopt(SYS_SETSOCKOPT, f, level, optname, optval, optlen, NULL, NULL);
+	r = socket_get_set_sockopt(SYS_SETSOCKOPT, f, level, optname, optval, optlen, NULL, NULL);
+	vfs_release((struct file *)f);
+	return r;
 }
 
 DEFINE_SYSCALL(getsockopt, int, sockfd, int, level, int, optname, void *, optval, int *, optlen)
@@ -908,7 +929,9 @@ DEFINE_SYSCALL(getsockopt, int, sockfd, int, level, int, optname, void *, optval
 	int r = get_sockfd(sockfd, &f);
 	if (r)
 		return r;
-	return socket_get_set_sockopt(SYS_GETSOCKOPT, f, level, optname, NULL, 0, optval, optlen);
+	r = socket_get_set_sockopt(SYS_GETSOCKOPT, f, level, optname, NULL, 0, optval, optlen);
+	vfs_release((struct file *)f);
+	return r;
 }
 
 DEFINE_SYSCALL(sendmsg, int, sockfd, const struct msghdr *, msg, int, flags)
@@ -920,7 +943,9 @@ DEFINE_SYSCALL(sendmsg, int, sockfd, const struct msghdr *, msg, int, flags)
 	int r = get_sockfd(sockfd, &f);
 	if (r)
 		return r;
-	return socket_sendmsg(f, msg, flags);
+	r = socket_sendmsg(f, msg, flags);
+	vfs_release((struct file *)f);
+	return r;
 }
 
 DEFINE_SYSCALL(recvmsg, int, sockfd, struct msghdr *, msg, int, flags)
@@ -932,7 +957,9 @@ DEFINE_SYSCALL(recvmsg, int, sockfd, struct msghdr *, msg, int, flags)
 	int r = get_sockfd(sockfd, &f);
 	if (r < 0)
 		return r;
-	return socket_recvmsg(f, msg, flags);
+	r = socket_recvmsg(f, msg, flags);
+	vfs_release((struct file *)f);
+	return r;
 }
 
 DEFINE_SYSCALL(sendmmsg, int, sockfd, struct mmsghdr *, msgvec, unsigned int, vlen, unsigned int, flags)
@@ -955,19 +982,34 @@ DEFINE_SYSCALL(sendmmsg, int, sockfd, struct mmsghdr *, msgvec, unsigned int, vl
 	{
 		int len = socket_sendmsg(f, &msgvec[i].msg_hdr, flags);
 		if (i == 0 && len < 0)
-			return len;
+		{
+			r = len;
+			goto out;
+		}
 		if (i == 0 && len == 0)
-			return -EWOULDBLOCK;
+		{
+			r = -EWOULDBLOCK;
+			goto out;
+		}
 		if (len <= 0)
-			return i;
+		{
+			r = i;
+			goto out;
+		}
 		msgvec[i].msg_len = len;
 		int total = 0;
 		for (int j = 0; j < msgvec[i].msg_hdr.msg_iovlen; j++)
 			total += msgvec[i].msg_hdr.msg_iov[j].iov_len;
 		if (len < total)
-			return i + 1;
+		{
+			r = i + 1;
+			goto out;
+		}
 	}
-	return vlen;
+	r = vlen;
+out:
+	vfs_release((struct file *)f);
+	return r;
 }
 
 /* Argument list sizes for sys_socketcall */

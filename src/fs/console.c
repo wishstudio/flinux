@@ -1715,9 +1715,7 @@ struct virtualfs_custom_desc console_desc = VIRTUALFS_CUSTOM(mkdev(5, 1), consol
 struct file *console_alloc()
 {
 	struct console_file *f = (struct console_file *)kmalloc(sizeof(struct console_file));
-	f->custom_file.base_file.op_vtable = &console_ops;
-	f->custom_file.base_file.ref = 1;
-	f->custom_file.base_file.flags = O_LARGEFILE | O_RDWR;
+	file_init(&f->custom_file.base_file, &console_ops, O_LARGEFILE | O_RDWR);
 	virtualfs_init_custom(f, &console_desc);
 	return (struct file *)f;
 }
