@@ -697,8 +697,9 @@ DEFINE_SYSCALL(llseek, int, fd, unsigned long, offset_high, unsigned long, offse
 	log_info("llseek(%d, %lld, %p, %d)\n", fd, offset, result, whence);
 	if (!mm_check_write(result, sizeof(loff_t)))
 		return -EFAULT;
+	AcquireSRWLockShared(&vfs->rw_lock);
 	struct file *f = vfs_get_internal(fd);
-	int r;
+	int r = 0;
 	if (f && f->op_vtable->llseek)
 		r = f->op_vtable->llseek(f, offset, result, whence);
 	else
@@ -1378,7 +1379,7 @@ static int stat64_from_newstat(struct stat64 *stat, const struct newstat *newsta
 
 static int vfs_statat(int dirfd, const char *pathname, struct newstat *stat, int flags)
 {
-	int r;
+	int r = 0;
 	AcquireSRWLockExclusive(&vfs->rw_lock);
 	if (flags & AT_NO_AUTOMOUNT)
 	{
