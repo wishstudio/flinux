@@ -1403,7 +1403,7 @@ static int vfs_statat(int dirfd, const char *pathname, struct newstat *stat, int
 		int openflags = O_PATH;
 		if (flags & AT_SYMLINK_NOFOLLOW)
 			openflags |= O_NOFOLLOW;
-		int r = vfs_openat(dirfd, pathname, openflags, 0, &f);
+		r = vfs_openat(dirfd, pathname, openflags, 0, &f);
 		if (r < 0)
 			goto out;
 	}
@@ -1457,7 +1457,6 @@ DEFINE_SYSCALL(fstatat64, int, dirfd, const char *, pathname, struct stat64 *, b
 	if (r)
 		return r;
 	return stat64_from_newstat(buf, &stat);
-
 }
 
 DEFINE_SYSCALL(fstat64, int, fd, struct stat64 *, buf)
