@@ -53,8 +53,9 @@ private:
 	struct Client
 	{
 		uint32_t pid;
+		uint32_t tid;
 		HTREEITEM item;
 		CEdit logViewer;
 	};
-	std::vector<std::unique_ptr<Client>> m_clients;
+	std::vector<std::vector<std::unique_ptr<Client>>> m_clients;
 };

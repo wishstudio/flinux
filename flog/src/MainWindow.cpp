@@ -58,37 +58,67 @@ void MainWindow::OnDestroy()
 LRESULT MainWindow::OnNewClient(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL &bHandled)
 {
 	uint32_t pid = (uint32_t)wParam;
+	uint32_t tid = (uint32_t)lParam;
+	/* Find the place to insert item */
 	WCHAR text[256];
-	wsprintfW(text, L"PID: %d\n", pid);
-	HTREEITEM item = m_processTree.InsertItem(TVIF_TEXT, text, 0, 0, TVIS_BOLD, TVIS_BOLD, 0, NULL, NULL);
-	m_processTree.SetItemData(item, (DWORD_PTR)pid);
+	wsprintfW(text, L"PID: %d, TID: %d\n", pid, tid);
+	int parentId = -1;
+	HTREEITEM item = NULL;
+	for (int i = (int)m_clients.size() - 1; i >= 0; i--)
+	{
+		Client *parent = m_clients[i].front().get();
+		if (parent->pid == pid)
+		{
+			Client *after = m_clients[i].back().get();
+			item = m_processTree.InsertItem(TVIF_TEXT, text, 0, 0, TVIS_BOLD, TVIS_BOLD, 0, parent->item, after->item);
+			parentId = i;
+			break;
+		}
+	}
+	if (!item)
+	{
+		item = m_processTree.InsertItem(TVIF_TEXT, text, 0, 0, TVIS_BOLD, TVIS_BOLD, 0, NULL, NULL);
+		m_clients.emplace_back();
+		parentId = (int)m_clients.size() - 1;
+	}
 	std::unique_ptr<Client> client = std::make_unique<Client>();
 	client->pid = pid;
+	client->tid = tid;
 	client->item = item;
+	m_processTree.SetItemData(client->item, (DWORD_PTR)client.get());
 	InitLogViewer(client->logViewer);
 	if (m_splitter.GetSplitterPane(SPLIT_PANE_RIGHT) == m_defaultLogViewer)
 		SetCurrentLogViewer(client->logViewer);
-	m_clients.push_back(std::move(client));
+	m_clients[parentId].push_back(std::move(client));
 	return 0;
 }
 
 LRESULT MainWindow::OnLogReceive(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL &bHandled)
 {
+	bHandled = TRUE;
 	LogMessage *msg = (LogMessage *)wParam;
 	WCHAR wbuffer[LOG_BUFFER_SIZE + 1];
 	int r = MultiByteToWideChar(CP_UTF8, 0, msg->buffer, msg->length, wbuffer, LOG_BUFFER_SIZE + 1);
 	if (r)
 	{
 		wbuffer[r] = 0;
-		for (auto const &client : m_clients)
-			if (client->pid == msg->pid)
+		for (int i = (int)m_clients.size() - 1; i >= 0; i--)
+		{
+			if (m_clients[i].front()->pid == msg->pid)
 			{
-				client->logViewer.AppendText(wbuffer, TRUE, FALSE);
-				if (m_splitter.GetSplitterPane(SPLIT_PANE_RIGHT) != client->logViewer)
-					m_processTree.SetItemState(client->item, TVIS_BOLD, TVIS_BOLD);
+				for (auto const &client : m_clients[i])
+				{
+					if (client->tid == msg->tid)
+					{
+						client->logViewer.AppendText(wbuffer, TRUE, FALSE);
+						if (m_splitter.GetSplitterPane(SPLIT_PANE_RIGHT) != client->logViewer)
+							m_processTree.SetItemState(client->item, TVIS_BOLD, TVIS_BOLD);
+						return 0;
+					}
+				}
 			}
+		}
 	}
-	bHandled = TRUE;
 	return 0;
 }
 
@@ -98,13 +128,9 @@ LRESULT MainWindow::OnTreeItemChange(LPNMHDR pnmh)
 	HTREEITEM hItem = notification->hItem;
 	if (notification->uStateNew & TVIS_SELECTED)
 	{
-		uint32_t pid = (uint32_t)m_processTree.GetItemData(hItem);
-		for (auto const &client : m_clients)
-			if (client->pid == pid)
-			{
-				SetCurrentLogViewer(client->logViewer);
-				m_processTree.SetItemState(hItem, 0, TVIS_BOLD);
-			}
+		Client *client = (Client *)m_processTree.GetItemData(hItem);
+		SetCurrentLogViewer(client->logViewer);
+		m_processTree.SetItemState(hItem, 0, TVIS_BOLD);
 	}
 	return 0;
 }

@@ -146,7 +146,7 @@ void LogServer::RunWorker()
 					client->pid = request->pid;
 					client->tid = request->tid;
 					client->op = OP_READ;
-					SendMessageW(m_hMainWnd, WM_NEWCLIENT, (WPARAM)client->pid, 0);
+					SendMessageW(m_hMainWnd, WM_NEWCLIENT, (WPARAM)client->pid, (LPARAM)client->tid);
 					ReadFile(client->hPipe, client->buffer, LOG_BUFFER_SIZE, NULL, &client->overlapped);
 				}
 			}
@@ -161,6 +161,7 @@ void LogServer::RunWorker()
 			{
 				LogMessage msg;
 				msg.pid = client->pid;
+				msg.tid = client->tid;
 				msg.buffer = client->buffer;
 				msg.length = bytes;
 				SendMessageW(m_hMainWnd, WM_LOGRECEIVE, (WPARAM)&msg, 0);

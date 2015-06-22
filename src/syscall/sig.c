@@ -190,7 +190,8 @@ static void signal_thread_handle_child_terminated(struct child_process *proc)
 
 static DWORD WINAPI signal_thread(LPVOID parameter)
 {
-	/* CAUTION: Never use logging in signal thread */
+	log_init_thread();
+	log_info("Signal thread started.\n");
 	OVERLAPPED packet_overlapped;
 	memset(&packet_overlapped, 0, sizeof(OVERLAPPED));
 	char buf[1];

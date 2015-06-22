@@ -19,6 +19,7 @@
 
 #pragma once
 
+void log_init_thread();
 void log_init();
 void log_shutdown();
 void log_raw_internal(const char *format, ...);

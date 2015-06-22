@@ -26,8 +26,8 @@
 #include <stdarg.h>
 
 int logger_attached;
-static HANDLE hLoggerPipe;
-static char buffer[1024];
+static __declspec(thread) HANDLE hLoggerPipe;
+static __declspec(thread) char buffer[1024];
 
 #define PROTOCOL_VERSION	1
 #define PROTOCOL_MAGIC		'flog'
@@ -39,8 +39,10 @@ struct request
 	uint32_t tid;
 };
 
-void log_init()
+void log_init_thread()
 {
+	if (!logger_attached)
+		return;
 	LPCWSTR pipeName = L"\\\\.\\pipe\\flog_server";
 	for (;;)
 	{
@@ -67,14 +69,19 @@ void log_init()
 			CloseHandle(hLoggerPipe);
 			logger_attached = 0;
 		}
-		else
-			logger_attached = 1;
 		break;
 	}
 }
 
+void log_init()
+{
+	logger_attached = 1;
+	log_init_thread();
+}
+
 void log_shutdown()
 {
+	/* TODO */
 	if (logger_attached)
 		CloseHandle(hLoggerPipe);
 }
