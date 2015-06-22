@@ -55,11 +55,14 @@ static int pipe_close(struct file *f)
 
 static size_t pipe_read(struct file *f, void *buf, size_t count)
 {
+	AcquireSRWLockShared(&f->rw_lock);
 	struct pipe_file *pipe = (struct pipe_file *)f;
+	ssize_t r;
 	if (!pipe->is_read)
 	{
 		log_warning("read() on pipe write end.\n");
-		return -EBADF;
+		r = -EBADF;
+		goto out;
 	}
 	size_t num_read;
 	if (!ReadFile(pipe->handle, buf, count, &num_read, NULL))
@@ -67,20 +70,27 @@ static size_t pipe_read(struct file *f, void *buf, size_t count)
 		if (GetLastError() == ERROR_BROKEN_PIPE)
 		{
 			log_info("Pipe closed. Read returns 0.\n");
-			return 0;
+			r = 0;
+			goto out;
 		}
-		return -EIO;
+		r = -EIO;
+		goto out;
 	}
-	return num_read;
+	r = num_read;
+out:
+	ReleaseSRWLockShared(&f->rw_lock);
+	return r;
 }
 
 static size_t pipe_write(struct file *f, const void *buf, size_t count)
 {
+	AcquireSRWLockShared(&f->rw_lock);
 	struct pipe_file *pipe = (struct pipe_file *)f;
+	ssize_t r;
 	if (pipe->is_read)
 	{
 		log_warning("write() on pipe read end.\n");
-		return -EBADF;
+		r = -EBADF;
 	}
 	size_t num_written;
 	if (!WriteFile(pipe->handle, buf, count, &num_written, NULL))
@@ -89,10 +99,15 @@ static size_t pipe_write(struct file *f, const void *buf, size_t count)
 		{
 			log_info("Write failed: broken pipe.\n");
 			/* TODO: Send SIGPIPE signal */
-			return -EPIPE;
+			r = -EPIPE;
+			goto out;
 		}
-		return -EIO;
+		r = -EIO;
+		goto out;
 	}
+	r = num_written;
+out:
+	ReleaseSRWLockShared(&f->rw_lock);
 	return num_written;
 }
 

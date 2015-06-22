@@ -132,6 +132,8 @@ static int dsp_read(struct file *f, void *buf, size_t count)
 
 static int dsp_write(struct file *f, const void *buf, size_t count)
 {
+	ssize_t r = 0;
+	AcquireSRWLockExclusive(&f->rw_lock);
 	struct dsp_file *dsp = (struct dsp_file *)f;
 	if (dsp->waveout == NULL)
 	{
@@ -142,7 +144,8 @@ static int dsp_write(struct file *f, const void *buf, size_t count)
 		{
 			dsp->waveout = NULL;
 			log_error("waveOutOpen() failed, error code: %d\n", r);
-			return 0;
+			r = 0;
+			goto out;
 		}
 		/* Buffer should be capable of storing 0.125 seconds of sample */
 		dsp->buffer_size = dsp->format.nAvgBytesPerSec / 8;
@@ -168,7 +171,8 @@ static int dsp_write(struct file *f, const void *buf, size_t count)
 				waveOutClose(dsp->waveout);
 				dsp->waveout = NULL;
 				log_error("waveOutPrepareHeader() failed, error code: %d\n", r);
-				return 0;
+				r = 0;
+				goto out;
 			}
 		}
 	}
@@ -190,16 +194,24 @@ static int dsp_write(struct file *f, const void *buf, size_t count)
 			bool ok = dsp_send_buffer(dsp->waveout, &dsp->buffer[dsp->current_buffer]);
 			dsp->current_buffer = (dsp->current_buffer + 1) % DSP_BUFFER_COUNT;
 			if (!ok)
-				return written;
+			{
+				r = written;
+				goto out;
+			}
 		}
 		written += current;
 		count -= current;
 	}
-	return written;
+	r = written;
+out:
+	ReleaseSRWLockExclusive(&f->rw_lock);
+	return r;
 }
 
 static int dsp_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 {
+	AcquireSRWLockExclusive(&f->rw_lock);
+	int r = 0;
 	struct dsp_file *dsp = (struct dsp_file *)f;
 	switch (cmd)
 	{
@@ -212,7 +224,10 @@ static int dsp_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 	case SNDCTL_DSP_SPEED:
 	{
 		if (!mm_check_read((int *)arg, sizeof(int)))
-			return -EFAULT;
+		{
+			r = -EFAULT;
+			break;
+		}
 		int speed = *(int *)arg;
 		log_info("SNDCTL_DSP_SPEED: %d\n", speed);
 		DWORD old_speed = dsp->format.nSamplesPerSec;
@@ -221,14 +236,17 @@ static int dsp_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 		{
 			log_warning("Speed not supported.\n");
 			dsp->format.nSamplesPerSec = old_speed;
-			return -EINVAL;
+			r = -EINVAL;
 		}
 		break;
 	}
 	case SNDCTL_DSP_STEREO:
 	{
 		if (!mm_check_read((int *)arg, sizeof(int)))
-			return -EFAULT;
+		{
+			r = -EFAULT;
+			break;
+		}
 		int c = *(int *)arg;
 		log_info("SNDCTL_DSP_STEREO: %d\n", c);
 		if (c == 0)
@@ -238,14 +256,17 @@ static int dsp_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 		else
 		{
 			log_warning("Invalid argument (can only be 0 or 1).\n");
-			return -EINVAL;
+			r = -EINVAL;
 		}
 		break;
 	}
 	case SNDCTL_DSP_SETFMT:
 	{
 		if (!mm_check_read((int *)arg, sizeof(int)))
-			return -EFAULT;
+		{
+			r = -EFAULT;
+			break;
+		}
 		int fmt = *(int *)arg;
 		log_info("SNDCTL_DSP_SETFMT: 0x%x\n", fmt);
 		if (fmt == AFMT_S16_LE)
@@ -255,20 +276,24 @@ static int dsp_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 		else
 		{
 			log_warning("Invalid argument (can only be AFMT_S16_LE or AFMT_U8).\n");
-			return -EINVAL;
+			r = -EINVAL;
 		}
 		break;
 	}
 	case SNDCTL_DSP_GETFMTS:
 	{
 		if (!mm_check_write((int *)arg, sizeof(int)))
-			return -EFAULT;
+		{
+			r = -EFAULT;
+			break;
+		}
 		log_info("SNDCTL_DSP_GETFMTS\n");
 		*(int *)arg = AFMT_U8 | AFMT_S16_LE;
 		break;
 	}
 	}
-	return 0;
+	ReleaseSRWLockExclusive(&f->rw_lock);
+	return r;
 }
 
 static const struct file_ops dsp_ops = {

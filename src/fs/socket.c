@@ -604,6 +604,7 @@ DEFINE_SYSCALL(connect, int, sockfd, const struct sockaddr *, addr, size_t, addr
 	int r = get_sockfd(sockfd, &f);
 	if (r)
 		return r;
+	AcquireSRWLockExclusive(&f->base_file.rw_lock);
 	struct sockaddr_storage addr_storage;
 	int addr_storage_len;
 	if ((addr_storage_len = translate_socket_addr_to_winsock((const struct sockaddr_storage *)addr, &addr_storage, addrlen)) == SOCKET_ERROR)
@@ -627,6 +628,7 @@ DEFINE_SYSCALL(connect, int, sockfd, const struct sockaddr *, addr, size_t, addr
 			r = translate_socket_error(WSAGetLastError());
 		}
 	}
+	ReleaseSRWLockExclusive(&f->base_file.rw_lock);
 	vfs_release((struct file *)f);
 	return r;
 }
@@ -642,6 +644,7 @@ DEFINE_SYSCALL(getsockname, int, sockfd, struct sockaddr *, addr, int *, addrlen
 	int r = get_sockfd(sockfd, &f);
 	if (r)
 		return r;
+	AcquireSRWLockExclusive(&f->base_file.rw_lock);
 	struct sockaddr_storage addr_storage;
 	int addr_storage_len = sizeof(struct sockaddr_storage);
 	if (getsockname(f->socket, (struct sockaddr *)&addr_storage, &addr_storage_len) != SOCKET_ERROR)
@@ -687,6 +690,7 @@ DEFINE_SYSCALL(getsockname, int, sockfd, struct sockaddr *, addr, int *, addrlen
 	memcpy(addr, &addr_storage, copylen);
 	*addrlen = addr_storage_len;
 out:
+	ReleaseSRWLockExclusive(&f->base_file.rw_lock);
 	vfs_release((struct file *)f);
 	return r;
 }
@@ -702,6 +706,7 @@ DEFINE_SYSCALL(getpeername, int, sockfd, struct sockaddr *, addr, int *, addrlen
 	int r = get_sockfd(sockfd, &f);
 	if (r)
 		return r;
+	AcquireSRWLockExclusive(&f->base_file.rw_lock);
 	struct sockaddr_storage addr_storage;
 	int addr_storage_len = sizeof(struct sockaddr_storage);
 	if (getpeername(f->socket, (struct sockaddr *)&addr_storage, &addr_storage_len) == SOCKET_ERROR)
@@ -715,6 +720,7 @@ DEFINE_SYSCALL(getpeername, int, sockfd, struct sockaddr *, addr, int *, addrlen
 	memcpy(addr, &addr_storage, copylen);
 	*addrlen = addr_storage_len;
 out:
+	ReleaseSRWLockExclusive(&f->base_file.rw_lock);
 	vfs_release((struct file *)f);
 	return r;
 }
@@ -728,7 +734,9 @@ DEFINE_SYSCALL(send, int, sockfd, const void *, buf, size_t, len, int, flags)
 	int r = get_sockfd(sockfd, &f);
 	if (r)
 		return r;
+	AcquireSRWLockExclusive(&f->base_file.rw_lock);
 	r = socket_sendto(f, buf, len, flags, NULL, 0);
+	ReleaseSRWLockExclusive(&f->base_file.rw_lock);
 	vfs_release((struct file *)f);
 	return r;
 }
@@ -742,7 +750,9 @@ DEFINE_SYSCALL(recv, int, sockfd, void *, buf, size_t, len, int, flags)
 	int r = get_sockfd(sockfd, &f);
 	if (r)
 		return r;
+	AcquireSRWLockExclusive(&f->base_file.rw_lock);
 	r = socket_recvfrom(f, buf, len, flags, NULL, 0);
+	ReleaseSRWLockExclusive(&f->base_file.rw_lock);
 	vfs_release((struct file *)f);
 	return r;
 }
@@ -758,7 +768,9 @@ DEFINE_SYSCALL(sendto, int, sockfd, const void *, buf, size_t, len, int, flags, 
 	int r = get_sockfd(sockfd, &f);
 	if (r)
 		return r;
+	AcquireSRWLockExclusive(&f->base_file.rw_lock);
 	r = socket_sendto(f, buf, len, flags, dest_addr, addrlen);
+	ReleaseSRWLockExclusive(&f->base_file.rw_lock);
 	vfs_release((struct file *)f);
 	return r;
 }
@@ -779,7 +791,9 @@ DEFINE_SYSCALL(recvfrom, int, sockfd, void *, buf, size_t, len, int, flags, stru
 	int r = get_sockfd(sockfd, &f);
 	if (r)
 		return r;
+	AcquireSRWLockExclusive(&f->base_file.rw_lock);
 	r = socket_recvfrom(f, buf, len, flags, src_addr, addrlen);
+	ReleaseSRWLockExclusive(&f->base_file.rw_lock);
 	vfs_release((struct file *)f);
 	return r;
 }
@@ -791,6 +805,7 @@ DEFINE_SYSCALL(shutdown, int, sockfd, int, how)
 	int r = get_sockfd(sockfd, &f);
 	if (r)
 		return r;
+	AcquireSRWLockExclusive(&f->base_file.rw_lock);
 	int win32_how;
 	if (how == SHUT_RD)
 		win32_how = SD_RECEIVE;
@@ -809,6 +824,7 @@ DEFINE_SYSCALL(shutdown, int, sockfd, int, how)
 		r = translate_socket_error(WSAGetLastError());
 	}
 out:
+	ReleaseSRWLockExclusive(&f->base_file.rw_lock);
 	vfs_release((struct file *)f);
 	return r;
 }
@@ -913,7 +929,9 @@ DEFINE_SYSCALL(setsockopt, int, sockfd, int, level, int, optname, const void *, 
 	int r = get_sockfd(sockfd, &f);
 	if (r)
 		return r;
+	AcquireSRWLockExclusive(&f->base_file.rw_lock);
 	r = socket_get_set_sockopt(SYS_SETSOCKOPT, f, level, optname, optval, optlen, NULL, NULL);
+	ReleaseSRWLockExclusive(&f->base_file.rw_lock);
 	vfs_release((struct file *)f);
 	return r;
 }
@@ -929,7 +947,9 @@ DEFINE_SYSCALL(getsockopt, int, sockfd, int, level, int, optname, void *, optval
 	int r = get_sockfd(sockfd, &f);
 	if (r)
 		return r;
+	AcquireSRWLockExclusive(&f->base_file.rw_lock);
 	r = socket_get_set_sockopt(SYS_GETSOCKOPT, f, level, optname, NULL, 0, optval, optlen);
+	ReleaseSRWLockExclusive(&f->base_file.rw_lock);
 	vfs_release((struct file *)f);
 	return r;
 }
@@ -943,7 +963,9 @@ DEFINE_SYSCALL(sendmsg, int, sockfd, const struct msghdr *, msg, int, flags)
 	int r = get_sockfd(sockfd, &f);
 	if (r)
 		return r;
+	AcquireSRWLockExclusive(&f->base_file.rw_lock);
 	r = socket_sendmsg(f, msg, flags);
+	ReleaseSRWLockExclusive(&f->base_file.rw_lock);
 	vfs_release((struct file *)f);
 	return r;
 }
@@ -957,7 +979,9 @@ DEFINE_SYSCALL(recvmsg, int, sockfd, struct msghdr *, msg, int, flags)
 	int r = get_sockfd(sockfd, &f);
 	if (r < 0)
 		return r;
+	AcquireSRWLockExclusive(&f->base_file.rw_lock);
 	r = socket_recvmsg(f, msg, flags);
+	ReleaseSRWLockExclusive(&f->base_file.rw_lock);
 	vfs_release((struct file *)f);
 	return r;
 }
@@ -977,6 +1001,7 @@ DEFINE_SYSCALL(sendmmsg, int, sockfd, struct mmsghdr *, msgvec, unsigned int, vl
 	int r = get_sockfd(sockfd, &f);
 	if (r)
 		return r;
+	AcquireSRWLockExclusive(&f->base_file.rw_lock);
 	/* Windows have no native sendmmsg(), we emulate it by sending msgvec one by one */
 	for (int i = 0; i < vlen; i++)
 	{
@@ -1008,6 +1033,7 @@ DEFINE_SYSCALL(sendmmsg, int, sockfd, struct mmsghdr *, msgvec, unsigned int, vl
 	}
 	r = vlen;
 out:
+	ReleaseSRWLockExclusive(&f->base_file.rw_lock);
 	vfs_release((struct file *)f);
 	return r;
 }

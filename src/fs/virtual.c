@@ -68,15 +68,19 @@ static int virtualfs_directory_getpath(struct file *f, char *buf)
 
 static int virtualfs_directory_llseek(struct file *f, loff_t offset, loff_t *newoffset, int whence)
 {
+	AcquireSRWLockExclusive(&f->rw_lock);
 	struct virtualfs_directory *file = (struct virtualfs_directory *)f;
+	int r;
 	if (whence == SEEK_SET && offset == 0)
 	{
 		file->position = 0;
 		*newoffset = 0;
-		return 0;
+		r = 0;
 	}
 	else
-		return -EINVAL;
+		r = -EINVAL;
+	ReleaseSRWLockExclusive(&f->rw_lock);
+	return r;
 }
 
 static int virtualfs_directory_stat(struct file *f, struct newstat *buf)
@@ -103,7 +107,9 @@ static int virtualfs_directory_stat(struct file *f, struct newstat *buf)
 
 static int virtualfs_directory_getdents(struct file *f, void *dirent, size_t count, getdents_callback *fill_callback)
 {
+	AcquireSRWLockExclusive(&f->rw_lock);
 	struct virtualfs_directory *file = (struct virtualfs_directory *)f;
+	intptr_t r;
 	size_t size = 0;
 	char *buf = (char *)dirent;
 	char dynamic_name[32];
@@ -125,7 +131,10 @@ static int virtualfs_directory_getdents(struct file *f, void *dirent, size_t cou
 		{
 			int i = file->position - 2;
 			if (file->desc->entries[i].type == VIRTUALFS_ENTRY_TYPE_END)
-				return size;
+			{
+				r = size;
+				goto out;
+			}
 			else if (file->desc->entries[i].type == VIRTUALFS_ENTRY_TYPE_STATIC)
 			{
 				name = file->desc->entries[i].name;
@@ -139,7 +148,8 @@ static int virtualfs_directory_getdents(struct file *f, void *dirent, size_t cou
 				default:
 					log_error("Invalid virtual fs file type. Corrupted internal data structure.\n");
 					__debugbreak();
-					return -EIO;
+					r = -EIO;
+					goto out;
 				}
 			}
 			else //if (file->desc->entries[i].type == VIRTUALFS_ENTRY_TYPE_DYNAMIC)
@@ -148,19 +158,20 @@ static int virtualfs_directory_getdents(struct file *f, void *dirent, size_t cou
 				for (;;)
 				{
 					int next_tag = file->desc->entries[i].iter(file->tag, file->iter_tag, &type, dynamic_name, sizeof(dynamic_name));
-					intptr_t r = (*fill_callback)(buf, file->position, dynamic_name, strlen(dynamic_name), type, count, GETDENTS_UTF8);
+					r = (*fill_callback)(buf, file->position, dynamic_name, strlen(dynamic_name), type, count, GETDENTS_UTF8);
 					if (next_tag == VIRTUALFS_ITER_END)
 						break;
 					file->iter_tag = next_tag;
-					if (r == GETDENTS_ERR_BUFFER_OVERFLOW)
-					{
-						file->desc->entries[i].end_iter(file->tag);
-						return size;
-					}
 					if (r < 0)
 					{
 						file->desc->entries[i].end_iter(file->tag);
-						return r;
+						goto out;
+					}
+					else if (r == GETDENTS_ERR_BUFFER_OVERFLOW)
+					{
+						file->desc->entries[i].end_iter(file->tag);
+						r = size;
+						goto out;
 					}
 					count -= r;
 					size += r;
@@ -172,15 +183,21 @@ static int virtualfs_directory_getdents(struct file *f, void *dirent, size_t cou
 			}
 		}
 		/* FIXME: Proper inode support (sync with stat()) */
-		intptr_t r = (*fill_callback)(buf, file->position, name, strlen(name), type, count, GETDENTS_UTF8);
-		if (r == GETDENTS_ERR_BUFFER_OVERFLOW)
-			return size;
+		r = (*fill_callback)(buf, file->position, name, strlen(name), type, count, GETDENTS_UTF8);
 		if (r < 0)
-			return r;
+			goto out;
+		else if (r == GETDENTS_ERR_BUFFER_OVERFLOW)
+		{
+			r = size;
+			goto out;
+		}
 		count -= r;
 		size += r;
 		buf += r;
 	}
+out:
+	ReleaseSRWLockExclusive(&f->rw_lock);
+	return r;
 }
 
 static const struct file_ops virtualfs_directory_ops =
@@ -216,6 +233,7 @@ void virtualfs_init_custom(void *f, struct virtualfs_desc *desc)
 
 int virtualfs_custom_stat(struct file *f, struct newstat *buf)
 {
+	AcquireSRWLockShared(&f->rw_lock);
 	struct virtualfs_custom *file = (struct virtualfs_custom *)f;
 	struct virtualfs_custom_desc *desc = (struct virtualfs_custom_desc *)file->desc;
 	INIT_STRUCT_NEWSTAT_PADDING(buf);
@@ -235,6 +253,7 @@ int virtualfs_custom_stat(struct file *f, struct newstat *buf)
 	buf->st_mtime_nsec = 0;
 	buf->st_ctime = 0;
 	buf->st_ctime_nsec = 0;
+	ReleaseSRWLockShared(&f->rw_lock);
 	return 0;
 }
 
@@ -253,14 +272,20 @@ static int virtualfs_char_close(struct file *f)
 
 static size_t virtualfs_char_read(struct file *f, void *buf, size_t count)
 {
+	AcquireSRWLockShared(&f->rw_lock);
 	struct virtualfs_char *file = (struct virtualfs_char *)f;
-	return file->desc->read(file->tag, buf, count);
+	size_t r = file->desc->read(file->tag, buf, count);
+	ReleaseSRWLockShared(&f->rw_lock);
+	return r;
 }
 
 static size_t virtualfs_char_write(struct file *f, const void *buf, size_t count)
 {
+	AcquireSRWLockShared(&f->rw_lock);
 	struct virtualfs_char *file = (struct virtualfs_char *)f;
-	return file->desc->write(file->tag, buf, count);
+	size_t r = file->desc->write(file->tag, buf, count);
+	ReleaseSRWLockShared(&f->rw_lock);
+	return r;
 }
 
 static int virtualfs_char_stat(struct file *f, struct newstat *buf)
@@ -322,32 +347,39 @@ static int virtualfs_text_close(struct file *f)
 
 static size_t virtualfs_text_read(struct file *f, void *buf, size_t count)
 {
+	AcquireSRWLockExclusive(&f->rw_lock);
 	struct virtualfs_text *file = (struct virtualfs_text *)f;
 	int read_count = (int)min(count, (size_t)(file->textlen - file->position));
 	memcpy(buf, file->text + file->position, read_count);
 	file->position += read_count;
+	ReleaseSRWLockExclusive(&f->rw_lock);
 	return read_count;
 }
 
 static int virtualfs_text_llseek(struct file *f, loff_t offset, loff_t *newoffset, int whence)
 {
+	AcquireSRWLockExclusive(&f->rw_lock);
 	struct virtualfs_text *file = (struct virtualfs_text *)f;
 	loff_t target;
+	int r;
 	switch (whence)
 	{
 	case SEEK_SET: target = offset; break;
 	case SEEK_CUR: target = file->position + offset; break;
 	case SEEK_END: target = file->textlen - offset; break;
-	default: return -EINVAL;
+	default: r = -EINVAL; goto out;
 	}
 	if (target >= 0 && target < file->textlen)
 	{
 		file->position = (int)target;
 		*newoffset = target;
-		return 0;
+		r = 0;
 	}
 	else
-		return -EINVAL;
+		r = -EINVAL;
+out:
+	ReleaseSRWLockExclusive(&f->rw_lock);
+	return r;
 }
 
 static int virtualfs_text_stat(struct file *f, struct newstat *buf)
@@ -412,21 +444,28 @@ static int virtualfs_param_close(struct file *f)
 
 static size_t virtualfs_param_read(struct file *f, void *buf, size_t count)
 {
+	AcquireSRWLockShared(&f->rw_lock);
 	struct virtualfs_param *file = (struct virtualfs_param *)f;
+	ssize_t r;
 	if (file->read)
-		return 0;
+	{
+		r = 0;
+		goto out;
+	}
 	file->read = true;
 	switch (file->desc->valtype)
 	{
 	case VIRTUALFS_PARAM_TYPE_RAW:
-		return file->desc->get(file->tag, buf, count);
+		r = file->desc->get(file->tag, buf, count);
+		break;
 	case VIRTUALFS_PARAM_TYPE_INT:
 	{
 		char nbuf[128];
 		int value = file->desc->get_int(file->tag);
 		count = min(count, (size_t)ksprintf(nbuf, "%d\n", value));
 		memcpy(buf, nbuf, count);
-		return count;
+		r = count;
+		break;
 	}
 	case VIRTUALFS_PARAM_TYPE_UINT:
 	{
@@ -434,19 +473,29 @@ static size_t virtualfs_param_read(struct file *f, void *buf, size_t count)
 		unsigned int value = file->desc->get_uint(file->tag);
 		count = min(count, (size_t)ksprintf(nbuf, "%u\n", value));
 		memcpy(buf, nbuf, count);
-		return count;
+		r = count;
+		break;
 	}
 	default:
 		__debugbreak();
-		return count;
+		r = count;
+		break;
 	}
+out:
+	ReleaseSRWLockShared(&f->rw_lock);
+	return r;
 }
 
 static size_t virtualfs_param_write(struct file *f, const void *buf, size_t count)
 {
+	AcquireSRWLockShared(&f->rw_lock);
 	struct virtualfs_param *file = (struct virtualfs_param *)f;
+	ssize_t r;
 	if (file->written)
-		return 0;
+	{
+		r = 0;
+		goto out;
+	}
 	file->written = true;
 	switch (file->desc->valtype)
 	{
@@ -468,7 +517,10 @@ static size_t virtualfs_param_write(struct file *f, const void *buf, size_t coun
 	default:
 		__debugbreak();
 	}
-	return count;
+	r = count;
+out:
+	ReleaseSRWLockShared(&f->rw_lock);
+	return r;
 }
 
 static int virtualfs_param_stat(struct file *f, struct newstat *buf)
