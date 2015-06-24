@@ -45,6 +45,7 @@ struct pool
 #define POOL_COUNT	11
 struct heap_data
 {
+	SRWLOCK rw_lock;
 	struct pool pools[POOL_COUNT];
 };
 
@@ -54,6 +55,7 @@ void heap_init()
 {
 	log_info("heap subsystem initializating...\n");
 	heap = mm_static_alloc(sizeof(struct heap_data));
+	InitializeSRWLock(&heap->rw_lock);
 	heap->pools[0].objsize = 16;		heap->pools[0].first = NULL;
 	heap->pools[1].objsize = 32;		heap->pools[1].first = NULL;
 	heap->pools[2].objsize = 64;		heap->pools[2].first = NULL;
@@ -75,6 +77,7 @@ void heap_shutdown()
 void heap_afterfork()
 {
 	heap = mm_static_alloc(sizeof(struct heap_data));
+	InitializeSRWLock(&heap->rw_lock);
 }
 
 #define ALIGN(x, align) (((x) + ((align) - 1)) & -(align))
@@ -99,6 +102,7 @@ static struct bucket *alloc_bucket(int objsize)
 
 void *kmalloc(int size)
 {
+	AcquireSRWLockExclusive(&heap->rw_lock);
 	/* Find pool */
 	int p = -1;
 	for (int i = 0; i < POOL_COUNT; i++)
@@ -110,6 +114,7 @@ void *kmalloc(int size)
 	if (p == -1)
 	{
 		log_error("kmalloc(%d): size too large.\n", size);
+		ReleaseSRWLockExclusive(&heap->rw_lock);
 		return NULL;
 	}
 	
@@ -123,6 +128,7 @@ void *kmalloc(int size)
 		if (!current)
 		{
 			log_error("kmalloc(%d): out of memory\n", size);
+			ReleaseSRWLockExclusive(&heap->rw_lock);
 			return NULL;
 		}
 
@@ -132,6 +138,7 @@ void *kmalloc(int size)
 			void *c = current->first_free;
 			current->first_free = *(void**)c;
 			current->ref_cnt++;
+			ReleaseSRWLockExclusive(&heap->rw_lock);
 			return c;
 		}
 
@@ -146,6 +153,7 @@ void *kmalloc(int size)
 
 void kfree(void *mem, int size)
 {
+	AcquireSRWLockExclusive(&heap->rw_lock);
 	/* Find memory bucket */
 	void *bucket_addr = (void *)((size_t) mem & (-PAGE_SIZE));
 
@@ -160,6 +168,7 @@ void kfree(void *mem, int size)
 	if (p == -1)
 	{
 		log_error("kfree(): Invalid size: %x\n", mem);
+		ReleaseSRWLockExclusive(&heap->rw_lock);
 		return;
 	}
 
@@ -188,7 +197,9 @@ void kfree(void *mem, int size)
 				previous->next_bucket = current->next_bucket;
 			mm_munmap(current, BLOCK_SIZE);
 		}
+		ReleaseSRWLockExclusive(&heap->rw_lock);
 		return;
 	}
 	log_error("kfree(): Invalid memory pointer or size: (%x, %d)\n", mem, size);
+	ReleaseSRWLockExclusive(&heap->rw_lock);
 }
