@@ -26,6 +26,7 @@
 #include <syscall/vfs.h>
 #include <log.h>
 
+#include <stdbool.h>
 #include <stdint.h>
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
@@ -245,6 +246,11 @@ static void split_map_entry(struct map_entry *e, size_t last_page_of_first_entry
 
 static void free_map_entry_blocks(struct map_entry *e)
 {
+	if (e->flags & INTERNAL_MAP_COPYONFORK)
+	{
+		VirtualFree(GET_PAGE_ADDRESS(e->start_page), 0, MEM_RELEASE);
+		return;
+	}
 	if (e->f)
 		vfs_release(e->f);
 	struct rb_node *prev = rb_prev(&e->tree);
@@ -422,7 +428,7 @@ void mm_update_brk(void *brk)
 }
 
 /* Find 'count' consecutive free pages, return 0 if not found */
-static size_t find_free_pages(size_t count)
+static size_t find_free_pages(size_t count, bool block_align)
 {
 	size_t last = GET_PAGE(ADDRESS_ALLOCATION_LOW);
 	for (struct rb_node *cur = rb_first(&mm->entry_tree); cur; cur = rb_next(cur))
@@ -431,7 +437,11 @@ static size_t find_free_pages(size_t count)
 		if (e->start_page >= last && e->start_page - last >= count)
 			return last;
 		else if (e->end_page >= last)
+		{
 			last = e->end_page + 1;
+			if (block_align)
+				last = (last + PAGES_PER_BLOCK - 1) & -PAGES_PER_BLOCK;
+		}
 		if (last >= GET_PAGE(ADDRESS_ALLOCATION_HIGH))
 			return 0;
 	}
@@ -441,17 +451,21 @@ static size_t find_free_pages(size_t count)
 		return 0;
 }
 
-/* Find 'count' consecutive free pages at the highest possible address, return 0 if not found */
-static size_t find_free_pages_topdown(size_t count)
+/* Find 'count' consecutive free pages at the highest possible address with, return 0 if not found */
+static size_t find_free_pages_topdown(size_t count, bool block_align)
 {
-	size_t last = GET_PAGE(ADDRESS_ALLOCATION_HIGH) - 1;
+	size_t last = GET_PAGE(ADDRESS_ALLOCATION_HIGH);
 	for (struct rb_node *cur = rb_last(&mm->entry_tree); cur; cur = rb_prev(cur))
 	{
 		struct map_entry *e = rb_entry(cur, struct map_entry, tree);
-		if (e->end_page <= last && e->end_page + count <= last)
+		if (e->end_page < last && e->end_page + count < last)
 			return last - count;
-		else if (e->start_page <= last)
-			last = e->start_page - 1;
+		else if (e->start_page < last)
+		{
+			last = e->start_page;
+			if (block_align)
+				last &= -PAGES_PER_BLOCK;
+		}
 		if (last <= GET_PAGE(ADDRESS_ALLOCATION_LOW))
 			return 0;
 	}
@@ -463,7 +477,7 @@ static size_t find_free_pages_topdown(size_t count)
 
 size_t mm_find_free_pages(size_t count_bytes)
 {
-	return find_free_pages(GET_PAGE(ALIGN_TO_PAGE(count_bytes)));
+	return find_free_pages(GET_PAGE(ALIGN_TO_PAGE(count_bytes)), false);
 }
 
 static DWORD prot_linux2win(int prot)
@@ -874,6 +888,26 @@ int mm_fork(HANDLE process)
 		size_t end_block = GET_BLOCK_OF_PAGE(e->end_page);
 		if (start_block == last_block)
 			start_block++;
+		if (e->flags & INTERNAL_MAP_COPYONFORK)
+		{
+			/* Copy on fork memory region */
+			if (!VirtualAllocEx(process, GET_BLOCK_ADDRESS(start_block), (end_block - start_block + 1) * BLOCK_SIZE, MEM_RESERVE | MEM_COMMIT, prot_linux2win(e->prot)))
+			{
+				log_error("VirtualAllocEx() failed, error code: %d\n", GetLastError());
+				mm_dump_windows_memory_mappings(process);
+				return 0;
+			}
+			/* Copy memory content to child process */
+			SIZE_T written;
+			if (!WriteProcessMemory(process, GET_BLOCK_ADDRESS(start_block), GET_BLOCK_ADDRESS(start_block),
+				(end_block - start_block + 1) * BLOCK_SIZE, &written))
+			{
+				log_error("WriteProcessMemory() failed, error code: %d\n", GetLastError());
+				mm_dump_windows_memory_mappings(process);
+				return 0;
+			}
+			continue;
+		}
 		for (size_t i = start_block; i <= end_block; i++)
 		{
 			HANDLE handle = get_section_handle(i);
@@ -940,13 +974,25 @@ static void *mmap_internal(void *addr, size_t length, int prot, int flags, int i
 		log_error("MAP_FILE with bad file descriptor.\n");
 		return (void*)-EBADF;
 	}
+	if ((internal_flags & INTERNAL_MAP_COPYONFORK) &&
+		(!IS_ALIGNED(addr, BLOCK_SIZE) || !IS_ALIGNED(length, BLOCK_SIZE)))
+	{
+		log_error("INTERNAL_MAP_COPYONFORK memory regions must be aligned on entire blocks.\n");
+		return (void*)-EINVAL;
+	}
 	if (!(flags & MAP_FIXED))
 	{
+		bool block_align = false;
+		if (internal_flags & INTERNAL_MAP_COPYONFORK)
+		{
+			/* Copy on fork memory regions are allocated via VirtualAlloc() thus must occupy entire blocks */
+			block_align = true;
+		}
 		size_t alloc_page;
 		if (internal_flags & INTERNAL_MAP_TOPDOWN)
-			alloc_page = find_free_pages_topdown(GET_PAGE(ALIGN_TO_PAGE(length)));
+			alloc_page = find_free_pages_topdown(GET_PAGE(ALIGN_TO_PAGE(length)), block_align);
 		else
-			alloc_page = find_free_pages(GET_PAGE(ALIGN_TO_PAGE(length)));
+			alloc_page = find_free_pages(GET_PAGE(ALIGN_TO_PAGE(length)), block_align);
 		if (!alloc_page)
 		{
 			log_error("Cannot find free pages.\n");
@@ -1005,8 +1051,22 @@ static void *mmap_internal(void *addr, size_t length, int prot, int flags, int i
 	entry->flags = 0;
 	if (internal_flags & INTERNAL_MAP_NORESET)
 		entry->flags |= INTERNAL_MAP_NORESET;
+	if (internal_flags & INTERNAL_MAP_COPYONFORK)
+		entry->flags |= INTERNAL_MAP_COPYONFORK;
 
 	rb_add(&mm->entry_tree, &entry->tree, map_entry_cmp);
+
+	if (internal_flags & INTERNAL_MAP_COPYONFORK)
+	{
+		/* Allocate the memory now */
+		if (!VirtualAlloc(GET_PAGE_ADDRESS(start_page), (end_page - start_page + 1) * PAGE_SIZE, MEM_RESERVE | MEM_COMMIT, prot_linux2win(prot)))
+		{
+			log_error("VirtualAlloc(%p, %p) failed, error code: %d\n", GET_PAGE_ADDRESS(start_page),
+				(end_page - start_page + 1) * PAGE_SIZE, GetLastError());
+			mm_dump_windows_memory_mappings(GetCurrentProcess());
+			return (void*)-ENOMEM;
+		}
+	}
 
 	/* If the first or last block is already allocated, we have to set up proper content in it
 	   For other blocks we map them on demand */

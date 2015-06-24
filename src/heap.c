@@ -80,8 +80,8 @@ void heap_afterfork()
 #define ALIGN(x, align) (((x) + ((align) - 1)) & -(align))
 static struct bucket *alloc_bucket(int objsize)
 {
-	struct bucket *b = mm_mmap(0, BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE,
-		INTERNAL_MAP_TOPDOWN | INTERNAL_MAP_NORESET, NULL, 0);
+	struct bucket *b = mm_mmap(NULL, BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE,
+		INTERNAL_MAP_TOPDOWN | INTERNAL_MAP_NORESET | INTERNAL_MAP_COPYONFORK, NULL, 0);
 	b->ref_cnt = 0;
 	b->next_bucket = NULL;
 
