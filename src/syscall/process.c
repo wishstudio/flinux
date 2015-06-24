@@ -193,7 +193,9 @@ void process_afterfork(void *stack_base, pid_t pid)
 
 void process_thread_entry(pid_t tid)
 {
+	AcquireSRWLockExclusive(&process->rw_lock);
 	struct thread *thread = thread_alloc();
+	ReleaseSRWLockExclusive(&process->rw_lock);
 	DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &thread->handle,
 		0, FALSE, DUPLICATE_SAME_ACCESS);
 	signal_init_thread(thread);

@@ -61,11 +61,12 @@ struct list
 #define list_add(list, node) \
 	do \
 	{ \
-		if (list_tail(list)) \
+		if ((list)->tail) \
 		{ \
 			(node)->prev = list_tail(list); \
 			(node)->next = NULL; \
 			(list)->tail->next = (node); \
+			(list)->tail = (node); \
 		} \
 		else \
 		{ \
