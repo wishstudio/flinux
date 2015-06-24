@@ -315,7 +315,7 @@ void mm_init()
 	mm_section_handle = VirtualAlloc(NULL, BLOCK_COUNT * sizeof(HANDLE), MEM_RESERVE | MEM_TOP_DOWN, PAGE_READWRITE);
 	/* Initialize static alloc */
 	mm->static_alloc_begin = mm_mmap(NULL, MM_STATIC_ALLOC_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS,
-		INTERNAL_MAP_TOPDOWN | INTERNAL_MAP_NORESET, NULL, 0);
+		INTERNAL_MAP_TOPDOWN | INTERNAL_MAP_NORESET | INTERNAL_MAP_COPYONFORK, NULL, 0);
 	mm->static_alloc_end = (uint8_t*)mm->static_alloc_begin + MM_STATIC_ALLOC_SIZE;
 	/* Initialize global shared alloc */
 	LPCWSTR section_name = L"flinux_global_shared";
