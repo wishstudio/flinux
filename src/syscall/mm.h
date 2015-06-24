@@ -78,6 +78,9 @@ struct file;
 void *mm_mmap(void *addr, size_t len, int prot, int flags, int internal_flags, struct file *f, off_t offset_pages);
 int mm_munmap(void *addr, size_t len);
 
+/* Populate a memory region containing given address */
+void mm_populate(void *addr);
+
 /* Static allocation
  * Many subsystems need to use static storage which are automatically forked
  * Since mm only accepts allocation granularity at PAGE_SIZE, there could be much space lost

@@ -1325,18 +1325,8 @@ DEFINE_SYSCALL(msync, void *, addr, size_t, len, int, flags)
 	return -ENOSYS;
 }
 
-DEFINE_SYSCALL(mlock, const void *, addr, size_t, len)
+static int mm_populate_internal(const void *addr, size_t len)
 {
-	log_info("mlock(0x%p, 0x%p)\n", addr, len);
-	int r = 0;
-	AcquireSRWLockExclusive(&mm->rw_lock);
-	if (!IS_ALIGNED(addr, PAGE_SIZE))
-	{
-		r = -EINVAL;
-		goto out;
-	}
-
-	/* All on demand page must be properly loaded or the locking operation will fail */
 	size_t start_page = GET_PAGE(addr);
 	size_t end_page = GET_PAGE((size_t)addr + len);
 	for (struct rb_node *cur = start_node(start_page); cur; cur = rb_next(cur))
@@ -1360,10 +1350,7 @@ DEFINE_SYSCALL(mlock, const void *, addr, size_t, len)
 				else
 				{
 					if (!allocate_block(i))
-					{
-						r = -ENOMEM;
-						goto out;
-					}
+						return -ENOMEM;
 					size_t first_page = max(range_start, GET_FIRST_PAGE_OF_BLOCK(i));
 					size_t last_page = min(range_end, GET_LAST_PAGE_OF_BLOCK(i));
 					map_entry_range(e, first_page, last_page);
@@ -1376,6 +1363,35 @@ DEFINE_SYSCALL(mlock, const void *, addr, size_t, len)
 		}
 	}
 	/* TODO: Mark unused pages as NOACCESS */
+	return 0;
+}
+
+void mm_populate(void *addr)
+{
+	AcquireSRWLockExclusive(&mm->rw_lock);
+	size_t page = GET_PAGE(addr);
+	struct rb_node *cur = start_node(page);
+	struct map_entry *e = rb_entry(cur, struct map_entry, tree);
+	if (e->start_page <= page && page <= e->end_page)
+		mm_populate_internal(GET_PAGE_ADDRESS(e->start_page), (e->end_page - e->start_page + 1) * PAGE_SIZE);
+	ReleaseSRWLockExclusive(&mm->rw_lock);
+}
+
+DEFINE_SYSCALL(mlock, const void *, addr, size_t, len)
+{
+	log_info("mlock(0x%p, 0x%p)\n", addr, len);
+	int r = 0;
+	AcquireSRWLockExclusive(&mm->rw_lock);
+	if (!IS_ALIGNED(addr, PAGE_SIZE))
+	{
+		r = -EINVAL;
+		goto out;
+	}
+
+	/* All on demand page must be properly loaded or the locking operation will fail */
+	r = mm_populate_internal(addr, len);
+	if (!r)
+		goto out;
 
 	/* The actual locking */
 	/* TODO: Automatically enlarge working set size for arbitrary sized mlock() call */
@@ -1385,6 +1401,7 @@ DEFINE_SYSCALL(mlock, const void *, addr, size_t, len)
 		r = -ENOMEM;
 		goto out;
 	}
+	ReleaseSRWLockExclusive(&mm->rw_lock);
 
 out:
 	return r;

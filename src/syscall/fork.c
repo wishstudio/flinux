@@ -227,6 +227,7 @@ static DWORD WINAPI fork_thread_callback(void *data)
 
 static pid_t fork_thread(struct syscall_context *context, void *child_stack, unsigned long flags, void *ptid, void *ctid)
 {
+	mm_populate(child_stack);
 	struct fork_info *info = VirtualAlloc(NULL, sizeof(struct fork_info), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 	DWORD win_tid;
 	HANDLE handle = CreateThread(NULL, 0, fork_thread_callback, info, CREATE_SUSPENDED, &win_tid);
