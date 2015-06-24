@@ -43,6 +43,8 @@ struct thread
 	pid_t pid;
 	/* Handle to the thread */
 	HANDLE handle;
+	/* Stack base of the thread */
+	void *stack_base;
 	/*********** Signal related information ***********/
 	/* Signal mask */
 	sigset_t sigmask;
@@ -66,8 +68,6 @@ struct process_data
 {
 	/* RW lock guard */
 	SRWLOCK rw_lock;
-	/* Stack base of current process */
-	void *stack_base;
 	/* pid of this process */
 	pid_t pid;
 	/* Information of threads of this process */

@@ -134,7 +134,6 @@ static pid_t process_shared_alloc()
 void process_init()
 {
 	process_init_private();
-	process->stack_base = VirtualAlloc(NULL, STACK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
 	/* Allocate global process table slot */
 	process_lock_shared();
 	pid_t pid = process_shared_alloc();
@@ -170,13 +169,13 @@ void process_init()
 		0, FALSE, DUPLICATE_SAME_ACCESS);
 	signal_init_thread(thread);
 	current_thread = thread;
+	current_thread->stack_base = VirtualAlloc(NULL, STACK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
 	log_info("PID: %d\n", pid);
 }
 
 void process_afterfork(void *stack_base, pid_t pid)
 {
 	process_init_private();
-	process->stack_base = stack_base;
 	/* The parent should have global process table slot set for us
 	 * We just use the pid they give us
 	 */
@@ -188,12 +187,13 @@ void process_afterfork(void *stack_base, pid_t pid)
 		0, FALSE, DUPLICATE_SAME_ACCESS);
 	signal_init_thread(thread);
 	current_thread = thread;
+	current_thread->stack_base = stack_base;
 	log_info("PID: %d\n", pid);
 }
 
 void *process_get_stack_base()
 {
-	return process->stack_base;
+	return current_thread->stack_base;
 }
 
 pid_t process_init_child(DWORD win_pid, DWORD win_tid, HANDLE process_handle)
