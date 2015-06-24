@@ -95,7 +95,7 @@ static struct thread *thread_alloc()
 	{
 		list_remove(&process->thread_freelist, node);
 		list_add(&process->thread_list, node);
-		process->thread_count++;
+		InterlockedIncrement(&process->thread_count);
 		return list_entry(node, struct thread, list);
 	}
 	log_error("Too many threads for current process.\n");
@@ -108,7 +108,7 @@ static void thread_free(struct thread *thread)
 {
 	list_remove(&process->thread_list, &thread->list);
 	list_add(&process->thread_freelist, &thread->list);
-	process->thread_count--;
+	InterlockedDecrement(&process->thread_count);
 }
 
 /* Allocate a new process/thread, return pid. Caller ensures shared_mutex is acquired. */
@@ -736,7 +736,15 @@ DEFINE_SYSCALL(exit, int, status)
 {
 	log_info("exit(%d)\n", status);
 	log_shutdown();
-	process_exit(status, 0);
+	process_lock_shared();
+	process_shared->processes[current_thread->pid].status = PROCESS_NOTEXIST;
+	process_shared->processes[current_thread->pid].exit_code = status;
+	process_shared->processes[current_thread->pid].exit_signal = 0;
+	process_unlock_shared();
+	if (InterlockedDecrement(&process->thread_count) == 0)
+		process_exit(status, 0);
+	else
+		ExitThread(status);
 }
 
 DEFINE_SYSCALL(exit_group, int, status)
