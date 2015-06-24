@@ -974,7 +974,7 @@ DEFINE_SYSCALL(futex, int *, uaddr, int, op, int, val, const struct timespec *, 
 	{
 		if (timeout && !mm_check_read(timeout, sizeof(struct timespec)))
 			return -EFAULT;
-		DWORD time = timeout ? INFINITE : timeout->tv_sec * 1000 + timeout->tv_nsec / 1000000;
+		DWORD time = timeout ? timeout->tv_sec * 1000 + timeout->tv_nsec / 1000000 : INFINITE;
 		if (WaitOnAddress((volatile void *)uaddr, &val, sizeof(int), time))
 			return 0;
 		else
