@@ -19,6 +19,8 @@
 
 #pragma once
 
+#include <common/ldt.h>
+
 #include <stdint.h>
 
 enum
@@ -44,3 +46,5 @@ void tls_afterfork();
 
 int tls_kernel_entry_to_offset(int entry);
 int tls_user_entry_to_offset(int entry);
+
+int tls_set_thread_area(struct user_desc *u_info);

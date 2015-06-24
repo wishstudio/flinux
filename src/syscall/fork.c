@@ -44,9 +44,12 @@
 struct fork_info
 {
 	struct syscall_context context;
+	int flags;
 	void *stack_base;
 	void *ctid;
 	pid_t pid;
+	int gs;
+	struct user_desc tls_data;
 } _fork;
 
 static struct fork_info *fork = &_fork;
@@ -138,7 +141,7 @@ void fork_init()
  o CLONE_THREAD
  o CLONE_NEWNS
  o CLONE_SYSVSEM
- o CLONE_SETTLS
+ * CLONE_SETTLS
  o CLONE_PARENT_SETTID
  o CLONE_CHILD_CLEARTID
  o CLONE_DETACHED
@@ -203,6 +206,45 @@ fail:
 	return -1;
 }
 
+static DWORD WINAPI fork_thread_callback(void *data)
+{
+	/* This function runs in child thread */
+	struct fork_info *info = (struct fork_info *)data;
+	log_init_thread();
+	dbt_init_thread();
+	process_thread_entry(info->pid);
+	if (info->ctid)
+		*(pid_t *)info->ctid = info->pid;
+	if (info->flags & CLONE_SETTLS)
+		tls_set_thread_area(&info->tls_data);
+	dbt_update_tls(info->gs);
+	struct syscall_context context = info->context;
+	context.eax = 0;
+	VirtualFree(info, 0, MEM_RELEASE);
+	dbt_restore_fork_context(&context);
+	return 0;
+}
+
+static pid_t fork_thread(struct syscall_context *context, void *child_stack, unsigned long flags, void *ptid, void *ctid)
+{
+	struct fork_info *info = VirtualAlloc(NULL, sizeof(struct fork_info), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+	DWORD win_tid;
+	HANDLE handle = CreateThread(NULL, 0, fork_thread_callback, info, CREATE_SUSPENDED, &win_tid);
+	pid_t pid = process_init_thread(win_tid);
+	info->context = *context;
+	info->context.esp = (DWORD)child_stack;
+	info->pid = pid;
+	info->flags = flags;
+	if (flags & CLONE_CHILD_SETTID)
+		info->ctid = ctid;
+	info->gs = dbt_get_gs();
+	if (flags & CLONE_SETTLS)
+		info->tls_data = *(struct user_desc *)context->esi;
+	ResumeThread(handle);
+	CloseHandle(handle);
+	return pid;
+}
+
 int sys_fork_imp(struct syscall_context *context)
 {
 	log_info("fork()\n");
@@ -223,10 +265,7 @@ int sys_clone_imp(struct syscall_context *context, unsigned long flags, void *ch
 {
 	log_info("sys_clone(flags=%x, child_stack=%p, ptid=%p, ctid=%p)\n", flags, child_stack, ptid, ctid);
 	if (flags & CLONE_THREAD)
-	{
-		log_error("Threads not supported.\n");
-		return -1;
-	}
+		return fork_thread(context, child_stack, flags, ptid, ctid);
 	else
 		return fork_process(context, flags, ptid, ctid);
 }

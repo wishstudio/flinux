@@ -18,7 +18,6 @@
  */
 
 #include <common/errno.h>
-#include <common/ldt.h>
 #include <common/prctl.h>
 #include <syscall/mm.h>
 #include <syscall/syscall.h>
@@ -218,13 +217,12 @@ int tls_user_entry_to_offset(int entry)
 }
 
 /* Segment register format:
-* 15    3  2   0
-* [Index|TI|RPL]
-* TI: GDT = 0, LDT = 1
-* RPL: Ring 3
-*/
-
-DEFINE_SYSCALL(set_thread_area, struct user_desc *, u_info)
+ * 15    3  2   0
+ * [Index|TI|RPL]
+ * TI: GDT = 0, LDT = 1
+ * RPL: Ring 3
+ */
+int tls_set_thread_area(struct user_desc *u_info)
 {
 	log_info("set_thread_area(%p): entry=%d, base=%p, limit=%p\n", u_info, u_info->entry_number, u_info->base_addr, u_info->limit);
 	int ret = 0;
@@ -244,9 +242,14 @@ DEFINE_SYSCALL(set_thread_area, struct user_desc *, u_info)
 		}
 	}
 	else
-		TlsSetValue(tls_slot_to_offset(tls->entries[u_info->entry_number]), (LPVOID)u_info->base_addr);
+		TlsSetValue(tls->entries[u_info->entry_number], (LPVOID)u_info->base_addr);
 	ReleaseSRWLockExclusive(&tls->rw_lock);
 	return ret;
+}
+
+DEFINE_SYSCALL(set_thread_area, struct user_desc *, u_info)
+{
+	return tls_set_thread_area(u_info);
 }
 
 DEFINE_SYSCALL(arch_prctl, int, code, uintptr_t, addr)

@@ -1852,7 +1852,7 @@ done_prefix:
 			gen_fs_prefix(&out);
 			gen_mov_rm_r_32(&out, modrm_rm_disp(dbt_global->tls_gs_offset), temp_reg);
 
-			/* call tls_slot_to_offset() to get the offset */
+			/* call tls_user_entry_to_offset() to get the offset */
 			gen_shr_rm_32(&out, modrm_rm_reg(temp_reg), 3);
 			gen_push_rm(&out, modrm_rm_reg(0));
 			gen_push_rm(&out, modrm_rm_reg(1));
@@ -1966,6 +1966,18 @@ void __declspec(noreturn) dbt_restore_fork_context(struct syscall_context *ctx)
 {
 	log_info("dbt: Restoring fork context, (original: pc: %p, sp: %p)\n", ctx->eip, ctx->esp);
 	((void(*)(struct syscall_context *ctx))dbt->restore_fork_trampoline)(ctx);
+}
+
+int dbt_get_gs()
+{
+	return __readfsdword(dbt_global->tls_gs_offset);
+}
+
+void dbt_update_tls(int gs)
+{
+	DWORD gs_addr = __readfsdword(tls_user_entry_to_offset(gs >> 3));
+	__writefsdword(dbt_global->tls_gs_offset, gs);
+	__writefsdword(dbt_global->tls_gs_addr_offset, gs_addr);
 }
 
 void dbt_deliver_signal(HANDLE thread, CONTEXT *context)

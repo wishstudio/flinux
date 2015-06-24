@@ -191,6 +191,17 @@ void process_afterfork(void *stack_base, pid_t pid)
 	log_info("PID: %d\n", pid);
 }
 
+void process_thread_entry(pid_t tid)
+{
+	struct thread *thread = thread_alloc();
+	DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &thread->handle,
+		0, FALSE, DUPLICATE_SAME_ACCESS);
+	signal_init_thread(thread);
+	current_thread = thread;
+	/* TODO: stack_base */
+	log_info("PID: %d\n", tid);
+}
+
 void *process_get_stack_base()
 {
 	return current_thread->stack_base;
@@ -228,6 +239,27 @@ pid_t process_init_child(DWORD win_pid, DWORD win_tid, HANDLE process_handle)
 	signal_init_child(proc);
 
 	ReleaseSRWLockExclusive(&process->rw_lock);
+	return pid;
+}
+
+pid_t process_init_thread(DWORD win_tid)
+{
+	AcquireSRWLockExclusive(&process->rw_lock);
+	/* Allocate a new process table entry */
+	process_lock_shared();
+	pid_t pid = process_shared_alloc();
+	process_shared->processes[pid].status = PROCESS_RUNNING;
+	process_shared->processes[pid].win_pid = process->pid;
+	process_shared->processes[pid].tgid = process->pid;
+	process_shared->processes[pid].pgid = process_shared->processes[process->pid].pgid;
+	process_shared->processes[pid].ppid = process_shared->processes[process->pid].ppid;
+	process_shared->processes[pid].sid = process_shared->processes[process->pid].sid;
+	process_shared->processes[pid].sigwrite = NULL;
+	process_shared->processes[pid].query_mutex = NULL;
+	process->child_count++;
+	process_unlock_shared();
+	ReleaseSRWLockExclusive(&process->rw_lock);
+
 	return pid;
 }
 
@@ -934,10 +966,14 @@ DEFINE_SYSCALL(set_tid_address, int *, tidptr)
 DEFINE_SYSCALL(futex, int *, uaddr, int, op, int, val, const struct timespec *, timeout, int *, uaddr2, int, val3)
 {
 	log_info("futex(%p, %d, %d, %p, %p, %d)\n", uaddr, op, val, timeout, uaddr2, val3);
-	switch (op)
+	if (!mm_check_write(uaddr, sizeof(int)))
+		return -EACCES;
+	switch (op & FUTEX_CMD_MASK)
 	{
 	case FUTEX_WAIT:
 	{
+		if (timeout && !mm_check_read(timeout, sizeof(struct timespec)))
+			return -EFAULT;
 		DWORD time = timeout ? INFINITE : timeout->tv_sec * 1000 + timeout->tv_nsec / 1000000;
 		if (WaitOnAddress((volatile void *)uaddr, &val, sizeof(int), time))
 			return 0;
@@ -948,6 +984,7 @@ DEFINE_SYSCALL(futex, int *, uaddr, int, op, int, val, const struct timespec *, 
 	case FUTEX_WAKE:
 		/* Wake up at most val processes waiting on this futex address */
 		/* TODO: Check whether the logic and return value is correct */
+		val = min(val, process->thread_count);
 		for (int i = 0; i < val; i++)
 			WakeByAddressSingle(uaddr);
 		return val;

@@ -52,6 +52,12 @@ void dbt_shutdown();
 void __declspec(noreturn) dbt_run(size_t pc, size_t sp);
 void __declspec(noreturn) dbt_restore_fork_context(struct syscall_context *context);
 
+/* Get current GS register value */
+int dbt_get_gs();
+
+/* Reload TLS information at thread entry */
+void dbt_update_tls(int gs);
+
 /* Called when an executable code region changes, determines whether we need to flush code cache */
 void dbt_code_changed(size_t pc, size_t len);
 
