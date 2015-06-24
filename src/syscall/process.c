@@ -930,11 +930,32 @@ DEFINE_SYSCALL(set_tid_address, int *, tidptr)
 	return GetCurrentThreadId();
 }
 
+#pragma comment(lib, "synchronization.lib")
 DEFINE_SYSCALL(futex, int *, uaddr, int, op, int, val, const struct timespec *, timeout, int *, uaddr2, int, val3)
 {
 	log_info("futex(%p, %d, %d, %p, %p, %d)\n", uaddr, op, val, timeout, uaddr2, val3);
-	log_error("Unsupported futex operation, returning -ENOSYS\n");
-	return -ENOSYS;
+	switch (op)
+	{
+	case FUTEX_WAIT:
+	{
+		DWORD time = timeout ? INFINITE : timeout->tv_sec * 1000 + timeout->tv_nsec / 1000000;
+		if (WaitOnAddress((volatile void *)uaddr, &val, sizeof(int), time))
+			return 0;
+		else
+			return -ETIMEDOUT;
+	}
+
+	case FUTEX_WAKE:
+		/* Wake up at most val processes waiting on this futex address */
+		/* TODO: Check whether the logic and return value is correct */
+		for (int i = 0; i < val; i++)
+			WakeByAddressSingle(uaddr);
+		return val;
+
+	default:
+		log_error("Unsupported futex operation, returning -ENOSYS\n");
+		return -ENOSYS;
+	}
 }
 
 DEFINE_SYSCALL(set_robust_list, struct robust_list_head *, head, int, len)
