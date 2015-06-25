@@ -713,6 +713,11 @@ DEFINE_SYSCALL(setresuid, uid_t, ruid, uid_t, euid, uid_t, suid)
 DEFINE_SYSCALL(getresuid, uid_t *, ruid, uid_t *, euid, uid_t *, suid)
 {
 	log_info("getresuid(%d, %d, %d)\n", ruid, euid, suid);
+	if (!mm_check_write(ruid, sizeof(*ruid)) || !mm_check_write(euid, sizeof(*euid)) || !mm_check_write(suid, sizeof(*suid)))
+		return -EFAULT;
+	*ruid = 0;
+	*euid = 0;
+	*suid = 0;
 	return 0;
 }
 
@@ -724,6 +729,11 @@ DEFINE_SYSCALL(setresgid, gid_t, rgid, gid_t, egid, gid_t, sgid)
 DEFINE_SYSCALL(getresgid, uid_t *, rgid, gid_t *, egid, gid_t *, sgid)
 {
 	log_info("getresgid(%d, %d, %d)\n", rgid, egid, sgid);
+	if (!mm_check_write(rgid, sizeof(*rgid)) || !mm_check_write(egid, sizeof(*egid)) || !mm_check_write(sgid, sizeof(*sgid)))
+		return -EFAULT;
+	*rgid = 0;
+	*egid = 0;
+	*sgid = 0;
 	return 0;
 }
 DEFINE_SYSCALL(getgroups, int, size, gid_t *, list)
