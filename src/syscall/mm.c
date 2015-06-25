@@ -439,7 +439,8 @@ static size_t find_free_pages(size_t count, bool block_align)
 		else if (e->end_page >= last)
 		{
 			last = e->end_page + 1;
-			if (block_align)
+			/* MAP_SHARED entries always occupy entire blocks */
+			if (block_align || (e->flags & INTERNAL_MAP_SHARED))
 				last = (last + PAGES_PER_BLOCK - 1) & -PAGES_PER_BLOCK;
 		}
 		if (last >= GET_PAGE(ADDRESS_ALLOCATION_HIGH))
@@ -458,6 +459,10 @@ static size_t find_free_pages_topdown(size_t count, bool block_align)
 	for (struct rb_node *cur = rb_last(&mm->entry_tree); cur; cur = rb_prev(cur))
 	{
 		struct map_entry *e = rb_entry(cur, struct map_entry, tree);
+		size_t end_page = e->end_page;
+		/* MAP_SHARED entries always occupy entire blocks */
+		if (e->flags & INTERNAL_MAP_SHARED)
+			end_page = (end_page & -PAGES_PER_BLOCK) + (PAGES_PER_BLOCK - 1);
 		if (e->end_page < last && e->end_page + count < last)
 			return last - count;
 		else if (e->start_page < last)
@@ -927,12 +932,17 @@ int mm_fork(HANDLE process)
 			}
 		}
 		last_block = end_block;
-		/* Disable write permission */
-		if ((e->prot & PROT_WRITE) > 0)
+		/* Disable write permission on current process */
+		if (!(e->flags & INTERNAL_MAP_SHARED) && (e->prot & PROT_WRITE) > 0)
 		{
 			if (!mm_change_protection(process, e->start_page, e->end_page, e->prot & ~PROT_WRITE))
 				return 0;
 			if (!mm_change_protection(GetCurrentProcess(), e->start_page, e->end_page, e->prot & ~PROT_WRITE))
+				return 0;
+		}
+		else
+		{
+			if (!mm_change_protection(process, e->start_page, e->end_page, e->prot))
 				return 0;
 		}
 	}
@@ -957,13 +967,6 @@ static void *mmap_internal(void *addr, size_t length, int prot, int flags, int i
 		|| (size_t)addr + length < ADDRESS_SPACE_LOW || (size_t)addr + length >= ADDRESS_SPACE_HIGH
 		|| (size_t)addr + length < (size_t)addr)
 		return (void*)-EINVAL;
-	if (flags & MAP_SHARED)
-	{
-		log_error("MAP_SHARED is not supported yet.\n");
-		if (prot & PROT_WRITE)
-			return (void*)-EINVAL;
-		log_info("No write permission requested, ignoring MAP_SHARED.\n");
-	}
 	if ((flags & MAP_ANONYMOUS) && f != NULL)
 	{
 		log_error("MAP_ANONYMOUS with file descriptor.\n");
@@ -980,11 +983,41 @@ static void *mmap_internal(void *addr, size_t length, int prot, int flags, int i
 		log_error("INTERNAL_MAP_COPYONFORK memory regions must be aligned on entire blocks.\n");
 		return (void*)-EINVAL;
 	}
-	if (!(flags & MAP_FIXED))
+	if ((flags & MAP_FIXED))
+	{
+		if ((flags & MAP_SHARED) && !IS_ALIGNED(addr, BLOCK_SIZE))
+		{
+			log_error("MAP_SHARED with non-64kB aligned MAP_FIXED address is unsupported.\n");
+			return (void*)-ENOMEM;
+		}
+		if (!IS_ALIGNED(addr, PAGE_SIZE))
+		{
+			log_warning("Not page-aligned addr with MAP_FIXED.\n");
+			return (void*)-EINVAL;
+		}
+		if (!IS_ALIGNED(addr, BLOCK_SIZE))
+		{
+			/* For block unaligned fixed allocation, ensure it does not collide with MAP_SHARED memory regions */
+			/* Get the previous node whose start_page should be less than or equal to current page minus one */
+			struct rb_node *prev_node = start_node(GET_PAGE(addr) - 1);
+			if (prev_node) /* If previous node exists... */
+			{
+				struct map_entry *prev_entry = rb_entry(prev_node, struct map_entry, tree);
+				if ((prev_entry->flags & INTERNAL_MAP_SHARED)
+					&& GET_BLOCK_OF_PAGE(prev_entry->end_page) == GET_BLOCK(addr))
+				{
+					log_error("MAP_FIXED addr collides with an existing MAP_SHARED memory region.\n");
+					return (void*)-ENOMEM;
+				}
+			}
+		}
+	}
+	else /* MAP_FIXED */
 	{
 		bool block_align = false;
-		if (internal_flags & INTERNAL_MAP_COPYONFORK)
+		if ((flags & MAP_SHARED) || (internal_flags & INTERNAL_MAP_COPYONFORK))
 		{
+			/* MAP_SHARED blocks cannot be shared with any other memory regions */
 			/* Copy on fork memory regions are allocated via VirtualAlloc() thus must occupy entire blocks */
 			block_align = true;
 		}
@@ -1001,10 +1034,10 @@ static void *mmap_internal(void *addr, size_t length, int prot, int flags, int i
 
 		addr = GET_PAGE_ADDRESS(alloc_page);
 	}
-	if ((flags & MAP_FIXED) && !IS_ALIGNED(addr, PAGE_SIZE))
+	if ((flags & MAP_SHARED))
 	{
-		log_warning("Not aligned addr with MAP_FIXED.\n");
-		return (void*)-EINVAL;
+		/* Allocate memory for now */
+		flags |= MAP_POPULATE;
 	}
 
 	size_t start_page = GET_PAGE(addr);
@@ -1105,7 +1138,8 @@ static void *mmap_internal(void *addr, size_t length, int prot, int flags, int i
 	{
 		for (size_t i = start_block; i <= end_block; i++)
 			allocate_block(i);
-		map_entry_range(entry, GET_FIRST_PAGE_OF_BLOCK(start_block), GET_FIRST_PAGE_OF_BLOCK(end_block));
+		map_entry_range(entry, GET_FIRST_PAGE_OF_BLOCK(start_block), GET_LAST_PAGE_OF_BLOCK(end_block));
+		mm_change_protection(GetCurrentProcess(), GET_FIRST_PAGE_OF_BLOCK(start_block), GET_LAST_PAGE_OF_BLOCK(end_block), prot);
 	}
 	log_info("Allocated memory: [%p, %p)\n", addr, (size_t)addr + length);
 	return addr;
