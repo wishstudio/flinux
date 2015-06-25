@@ -155,7 +155,7 @@ void kfree(void *mem, int size)
 {
 	AcquireSRWLockExclusive(&heap->rw_lock);
 	/* Find memory bucket */
-	void *bucket_addr = (void *)((size_t) mem & (-PAGE_SIZE));
+	void *bucket_addr = (void *)((size_t) mem & (-BLOCK_SIZE));
 
 	/* Find pool */
 	int p = -1;
