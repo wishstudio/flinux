@@ -23,6 +23,7 @@
 #include <common/ioctls.h>
 #include <fs/console.h>
 #include <fs/devfs.h>
+#include <fs/epollfd.h>
 #include <fs/eventfd.h>
 #include <fs/pipe.h>
 #include <fs/procfs.h>
@@ -1996,9 +1997,8 @@ DEFINE_SYSCALL(lchown, const char *, pathname, uid_t, owner, gid_t, group)
 	return sys_fchownat(AT_FDCWD, pathname, owner, group, AT_SYMLINK_NOFOLLOW);
 }
 
-static int vfs_ppoll(struct linux_pollfd *fds, int nfds, int timeout, const sigset_t *sigmask)
+static int vfs_ppoll_internal(struct linux_pollfd *fds, int nfds, int timeout, const sigset_t *sigmask)
 {
-	AcquireSRWLockShared(&vfs->rw_lock);
 	/* Count of handles to be waited on */
 	int cnt = 0;
 	/* Handles to be waited on */
@@ -2066,20 +2066,11 @@ static int vfs_ppoll(struct linux_pollfd *fds, int nfds, int timeout, const sigs
 		{
 			DWORD result = signal_wait(cnt, handles, remain);
 			if (result == WAIT_TIMEOUT)
-			{
-				num_result = 0;
-				break;
-			}
+				return 0;
 			else if (result == WAIT_INTERRUPTED)
-			{
-				num_result = -EINTR;
-				break;
-			}
+				return -EINTR;
 			else if (result < WAIT_OBJECT_0 || result >= WAIT_OBJECT_0 + cnt)
-			{
-				num_result = -ENOMEM; /* TODO: Find correct errno */
-				break;
-			}
+				return -ENOMEM; /* TODO: Find correct errno */
 			else
 			{
 				/* Wait successfully, fill in the revents field of that handle */
@@ -2121,8 +2112,15 @@ static int vfs_ppoll(struct linux_pollfd *fds, int nfds, int timeout, const sigs
 		if (sigmask)
 			signal_after_pwait(&oldmask);
 	}
-	ReleaseSRWLockShared(&vfs->rw_lock);
 	return num_result;
+}
+
+static int vfs_ppoll(struct linux_pollfd *fds, int nfds, int timeout, const sigset_t *sigmask)
+{
+	AcquireSRWLockShared(&vfs->rw_lock);
+	int r = vfs_ppoll_internal(fds, nfds, timeout, sigmask);
+	ReleaseSRWLockShared(&vfs->rw_lock);
+	return r;
 }
 
 static int vfs_pselect6(int nfds, struct fdset *readfds, struct fdset *writefds, struct fdset *exceptfds,
@@ -2227,6 +2225,113 @@ DEFINE_SYSCALL(pselect6, int, nfds, struct fdset *, readfds, struct fdset *, wri
 		return -EFAULT;
 	int timeout = timeout_ts == NULL ? -1 : (timeout_ts->tv_sec * 1000 + timeout_ts->tv_nsec / 1000000);
 	return vfs_pselect6(nfds, readfds, writefds, exceptfds, timeout, sigmask);
+}
+
+DEFINE_SYSCALL(epoll_create1, int, flags)
+{
+	log_info("epoll_create1(%d)\n", flags);
+
+	AcquireSRWLockExclusive(&vfs->rw_lock);
+	struct file *epollfd;
+	int r = epollfd_alloc(&epollfd);
+	if (r)
+		goto out;
+	r = store_file_internal(epollfd, (flags & EPOLL_CLOEXEC) > 0);
+	if (r < 0)
+		vfs_release(epollfd);
+
+out:
+	ReleaseSRWLockExclusive(&vfs->rw_lock);
+	return r;
+}
+
+DEFINE_SYSCALL(epoll_create, int, size)
+{
+	log_info("epoll_create(%d)\n", size);
+	if (size <= 0)
+		return -EINVAL;
+	return sys_epoll_create1(0);
+}
+
+DEFINE_SYSCALL(epoll_ctl, int, epfd, int, op, int, fd, struct epoll_event *, event)
+{
+	log_info("epoll_ctl(epfd=%d, op=%d, fd=%d, epoll_event=%p)\n", epfd, op, fd, event);
+	if (!mm_check_read(event, sizeof(struct epoll_event)))
+		return -EINVAL;
+	if ((event->events & EPOLLET))
+	{
+		log_error("Edge triggered epoll is not supported.\n");
+		return -EINVAL;
+	}
+	AcquireSRWLockShared(&vfs->rw_lock);
+	int r = 0;
+	struct file *f = vfs_get_internal(epfd);
+	if (!f || !epollfd_is_epollfd(f))
+	{
+		r = -EBADF;
+		goto out;
+	}
+	struct file *mf = vfs_get_internal(fd);
+	if (!mf)
+	{
+		r = -EBADF;
+		goto out;
+	}
+	switch (op)
+	{
+	case EPOLL_CTL_ADD:
+	{
+		r = epollfd_ctl_add(f, fd, event);
+		break;
+	}
+	case EPOLL_CTL_DEL:
+	{
+		r = epollfd_ctl_del(f, fd);
+		break;
+	}
+	case EPOLL_CTL_MOD:
+	{
+		r = epollfd_ctl_mod(f, fd, event);
+		break;
+	}
+	default:
+		r = -EINVAL;
+	}
+out:
+	ReleaseSRWLockShared(&vfs->rw_lock);
+	return r;
+}
+
+DEFINE_SYSCALL(epoll_pwait, int, epfd, struct epoll_event *, events, int, maxevents, int, timeout, const sigset_t *, sigmask)
+{
+	log_info("epoll_pwait(%d, %p, %d, %d, %p)\n", epfd, events, maxevents, timeout, sigmask);
+	if (!mm_check_write(events, sizeof(struct epoll_event) * maxevents))
+		return -EFAULT;
+	if (sigmask && !mm_check_read(sigmask, sizeof(sigset_t)))
+		return -EFAULT;
+	AcquireSRWLockShared(&vfs->rw_lock);
+	struct file *f = vfs_get_internal(epfd);
+	int r;
+	if (!f || !epollfd_is_epollfd(f))
+	{
+		r = -EBADF;
+		goto out;
+	}
+	int nfds = epollfd_get_nfds(f);
+	struct linux_pollfd *pollfds = (struct linux_pollfd *)alloca(sizeof(struct linux_pollfd) * nfds);
+	epollfd_to_pollfds(f, pollfds);
+	r = vfs_ppoll(pollfds, nfds, timeout, sigmask);
+	if (r < 0)
+		goto out;
+	r = epollfd_to_events(f, pollfds, events, maxevents);
+out:
+	ReleaseSRWLockShared(&vfs->rw_lock);
+	return r;
+}
+
+DEFINE_SYSCALL(epoll_wait, int, epfd, struct epoll_event *, events, int, maxevents, int, timeout)
+{
+	return sys_epoll_pwait(epfd, events, maxevents, timeout, NULL);
 }
 
 DEFINE_SYSCALL(getxattr, const char *, path, const char *, name, void *, value, size_t, size)

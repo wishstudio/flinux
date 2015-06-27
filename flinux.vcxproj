@@ -23,6 +23,7 @@
     <ClInclude Include="src\binfmt\elf.h" />
     <ClInclude Include="src\common\auxvec.h" />
     <ClInclude Include="src\common\dirent.h" />
+    <ClInclude Include="src\common\eventpoll.h" />
     <ClInclude Include="src\common\fadvise.h" />
     <ClInclude Include="src\common\fcntl.h" />
     <ClInclude Include="src\common\fs.h" />
@@ -63,6 +64,7 @@
     <ClInclude Include="src\fs\console.h" />
     <ClInclude Include="src\fs\devfs.h" />
     <ClInclude Include="src\fs\dsp.h" />
+    <ClInclude Include="src\fs\epollfd.h" />
     <ClInclude Include="src\fs\eventfd.h" />
     <ClInclude Include="src\fs\file.h" />
     <ClInclude Include="src\fs\null.h" />
@@ -105,6 +107,7 @@
     <ClCompile Include="src\fs\console.c" />
     <ClCompile Include="src\fs\devfs.c" />
     <ClCompile Include="src\fs\dsp.c" />
+    <ClCompile Include="src\fs\epollfd.c" />
     <ClCompile Include="src\fs\eventfd.c" />
     <ClCompile Include="src\fs\procfs.c" />
     <ClCompile Include="src\fs\sysfs.c" />
