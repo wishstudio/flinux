@@ -945,6 +945,13 @@ DEFINE_SYSCALL(getcpu, unsigned int *, cpu, unsigned int *, node, void *, tcache
 	return 0;
 }
 
+DEFINE_SYSCALL(sched_yield)
+{
+	log_info("sched_yield()\n");
+	SwitchToThread();
+	return 0;
+}
+
 DEFINE_SYSCALL(sched_getaffinity, pid_t, pid, size_t, cpusetsize, uint8_t *, mask)
 {
 	log_info("sched_getaffinity(%d, %d, %p)\n", pid, cpusetsize, mask);
