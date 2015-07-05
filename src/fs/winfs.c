@@ -788,8 +788,15 @@ static int winfs_rename(struct file_system *fs, struct file *f, const char *newp
 	char buf[sizeof(FILE_RENAME_INFORMATION) + PATH_MAX * 2];
 	NTSTATUS status;
 	int r = 0;
+	int retry_count = 5;
+retry:
+	if (--retry_count == 0)
+	{
+		r = -EPERM;
+		goto out;
+	}
 	FILE_RENAME_INFORMATION *info = (FILE_RENAME_INFORMATION *)buf;
-	info->ReplaceIfExists = TRUE; /* TODO: This should be worked on to provide true Linux semantics (refer to unlink()) */
+	info->ReplaceIfExists = TRUE;
 	info->RootDirectory = NULL;
 	info->FileNameLength = 2 * filename_to_nt_pathname(newpath, info->FileName, PATH_MAX);
 	if (info->FileNameLength == 0)
@@ -801,6 +808,16 @@ static int winfs_rename(struct file_system *fs, struct file *f, const char *newp
 	status = NtSetInformationFile(winfile->handle, &status_block, info, info->FileNameLength + sizeof(FILE_RENAME_INFORMATION), FileRenameInformation);
 	if (!NT_SUCCESS(status))
 	{
+		if (status == STATUS_ACCESS_DENIED)
+		{
+			/* The destination exists and the operation cannot be completed via a native operation.
+			 * We remove the destination file first, then move this file again.
+			 */
+			r = winfs_unlink(fs, newpath);
+			if (r)
+				goto out;
+			goto retry;
+		}
 		log_warning("NtSetInformationFile() failed, status: %x\n", status);
 		r = -ENOENT;
 		goto out;
