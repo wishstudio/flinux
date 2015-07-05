@@ -1235,7 +1235,11 @@ DEFINE_SYSCALL(mmap, void *, addr, size_t, length, int, prot, int, flags, int, f
 	/* TODO: Initialize mapped area to zero */
 	if (!IS_ALIGNED(offset, PAGE_SIZE))
 		return -EINVAL;
-	return (intptr_t)mm_mmap(addr, length, prot, flags, 0, vfs_get(fd), offset / PAGE_SIZE);
+	struct file *f = vfs_get(fd);
+	intptr_t r = (intptr_t)mm_mmap(addr, length, prot, flags, 0, f, offset / PAGE_SIZE);
+	if (f)
+		vfs_release(f);
+	return r;
 }
 
 DEFINE_SYSCALL(oldmmap, void *, _args)
@@ -1257,7 +1261,11 @@ DEFINE_SYSCALL(oldmmap, void *, _args)
 DEFINE_SYSCALL(mmap2, void *, addr, size_t, length, int, prot, int, flags, int, fd, off_t, offset)
 {
 	log_info("mmap2(%p, %p, %x, %x, %d, %p)\n", addr, length, prot, flags, fd, offset);
-	return (intptr_t)mm_mmap(addr, length, prot, flags, 0, vfs_get(fd), offset);
+	struct file *f = vfs_get(fd);
+	intptr_t r = (intptr_t)mm_mmap(addr, length, prot, flags, 0, f, offset);
+	if (f)
+		vfs_release(f);
+	return r;
 }
 
 DEFINE_SYSCALL(munmap, void *, addr, size_t, length)
