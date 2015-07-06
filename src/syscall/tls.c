@@ -156,8 +156,9 @@ void tls_shutdown()
 		TlsFree(tls->kernel_entries[i]);
 }
 
-void tls_beforefork()
+int tls_fork(HANDLE process)
 {
+	AcquireSRWLockShared(&tls->rw_lock);
 	log_info("Saving TLS context...\n");
 	/* Save tls data for current thread into shared memory regions */
 	for (int i = 0; i < tls->entry_count; i++)
@@ -170,12 +171,14 @@ void tls_beforefork()
 		tls->current_kernel_values[i] = (XWORD)TlsGetValue(tls->kernel_entries[i]);
 		log_info("kernel entry %d value 0x%p\n", tls->kernel_entries[i], tls->current_kernel_values[i]);
 	}
+	return 1;
 }
 
-void tls_afterfork()
+void tls_afterfork_child()
 {
 	log_info("Restoring TLS context...\n");
 	tls = mm_static_alloc(sizeof(struct tls_data));
+	InitializeSRWLock(&tls->rw_lock);
 	for (int i = 0; i < tls->entry_count; i++)
 	{
 		tls->entries[i] = TlsAlloc();
@@ -188,6 +191,11 @@ void tls_afterfork()
 		TlsSetValue(tls->kernel_entries[i], (LPVOID)tls->current_kernel_values[i]);
 		log_info("kernel entry %d value 0x%p\n", tls->kernel_entries[i], tls->current_kernel_values[i]);
 	}
+}
+
+void tls_afterfork_parent()
+{
+	ReleaseSRWLockShared(&tls->rw_lock);
 }
 
 static int tls_slot_to_offset(int slot)

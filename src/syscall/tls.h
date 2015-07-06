@@ -22,6 +22,8 @@
 #include <common/ldt.h>
 
 #include <stdint.h>
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
 
 enum
 {
@@ -41,8 +43,9 @@ enum
 void tls_init();
 void tls_reset();
 void tls_shutdown();
-void tls_beforefork();
-void tls_afterfork();
+int tls_fork(HANDLE process);
+void tls_afterfork_parent();
+void tls_afterfork_child();
 
 int tls_kernel_entry_to_offset(int entry);
 int tls_user_entry_to_offset(int entry);

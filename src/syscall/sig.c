@@ -453,10 +453,21 @@ void signal_init()
 	signal_init_private();
 }
 
-void signal_afterfork()
+void signal_afterfork_child()
 {
 	signal = mm_static_alloc(sizeof(struct signal_data));
 	signal_init_private();
+}
+
+int signal_fork(HANDLE process)
+{
+	EnterCriticalSection(&signal->mutex);
+	return 1;
+}
+
+void signal_afterfork_parent()
+{
+	LeaveCriticalSection(&signal->mutex);
 }
 
 void signal_shutdown()

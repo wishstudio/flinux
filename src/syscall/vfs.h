@@ -38,7 +38,8 @@ void vfs_init();
 void vfs_reset();
 void vfs_shutdown();
 int vfs_fork(HANDLE process);
-void vfs_afterfork();
+void vfs_afterfork_parent();
+void vfs_afterfork_child();
 int vfs_store_file(struct file *f, int cloexec);
 
 int vfs_openat(int dirfd, const char *pathname, int flags, int mode, struct file **f);

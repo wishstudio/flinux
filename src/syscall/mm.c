@@ -858,6 +858,7 @@ int mm_handle_page_fault(void *addr)
 
 int mm_fork(HANDLE process)
 {
+	AcquireSRWLockShared(&mm->rw_lock);
 	/* Copy mm_data struct */
 	if (!WriteProcessMemory(process, mm, mm, sizeof(struct mm_data), NULL))
 	{
@@ -950,8 +951,14 @@ int mm_fork(HANDLE process)
 	return 1;
 }
 
-void mm_afterfork()
+void mm_afterfork_parent()
 {
+	ReleaseSRWLockShared(&mm->rw_lock);
+}
+
+void mm_afterfork_child()
+{
+	InitializeSRWLock(&mm->rw_lock);
 	mm->static_alloc_begin = (uint8_t *)mm->static_alloc_end - MM_STATIC_ALLOC_SIZE;
 	/* Remap global shared area */
 	/* TODO: Move this to mm_fork(), since parent may already be terminated at this point */

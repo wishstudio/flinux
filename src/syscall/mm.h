@@ -72,7 +72,8 @@ int mm_check_write(void *addr, size_t size);
 
 int mm_handle_page_fault(void *addr);
 int mm_fork(HANDLE process);
-void mm_afterfork();
+void mm_afterfork_parent();
+void mm_afterfork_child();
 
 size_t mm_find_free_pages(size_t count_bytes);
 struct file;

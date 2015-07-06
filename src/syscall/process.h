@@ -30,7 +30,9 @@
 #define STACK_SIZE	1048576
 
 void process_init();
-void process_after_fork(void *stack_base, pid_t pid);
+int process_fork(HANDLE process);
+void process_afterfork_parent();
+void process_afterfork_child(void *stack_base, pid_t pid);
 void process_shutdown();
 void *process_get_stack_base();
 pid_t process_init_child(DWORD win_pid, DWORD win_tid, HANDLE process_handle);

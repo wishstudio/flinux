@@ -19,9 +19,14 @@
 
 #pragma once
 
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
+
 void heap_init();
 void heap_shutdown();
-void heap_afterfork();
+int heap_fork(HANDLE process);
+void heap_afterfork_parent();
+void heap_afterfork_child();
 
 void *kmalloc(int size);
 void kfree(void *mem, int size);

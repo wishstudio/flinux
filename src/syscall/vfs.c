@@ -189,6 +189,10 @@ int vfs_fork(HANDLE process)
 {
 	if (!console_fork(process))
 		return 0;
+	AcquireSRWLockShared(&vfs->rw_lock);
+	for (int i = 0; i < MAX_FD_COUNT; i++)
+		if (vfs->filed[i].fd)
+			AcquireSRWLockShared(&vfs->filed[i].fd->rw_lock);
 	return 1;
 }
 
@@ -214,7 +218,7 @@ static int cmpfiled(const void *a, const void *b)
 	}
 }
 
-void vfs_afterfork()
+void vfs_afterfork_child()
 {
 	vfs = mm_static_alloc(sizeof(struct vfs_data));
 	InitializeSRWLock(&vfs->rw_lock);
@@ -238,6 +242,14 @@ void vfs_afterfork()
 		}
 		last = f;
 	}
+}
+
+void vfs_afterfork_parent()
+{
+	for (int i = 0; i < MAX_FD_COUNT; i++)
+		if (vfs->filed[i].fd)
+			ReleaseSRWLockShared(&vfs->filed[i].fd->rw_lock);
+	ReleaseSRWLockShared(&vfs->rw_lock);
 }
 
 static int store_file_internal(struct file *f, int cloexec)

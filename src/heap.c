@@ -74,7 +74,18 @@ void heap_shutdown()
 {
 }
 
-void heap_afterfork()
+int heap_fork(HANDLE process)
+{
+	AcquireSRWLockShared(&heap->rw_lock);
+	return 1;
+}
+
+void heap_afterfork_parent()
+{
+	ReleaseSRWLockShared(&heap->rw_lock);
+}
+
+void heap_afterfork_child()
 {
 	heap = mm_static_alloc(sizeof(struct heap_data));
 	InitializeSRWLock(&heap->rw_lock);

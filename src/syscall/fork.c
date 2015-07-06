@@ -57,12 +57,12 @@ static struct fork_info *fork = &_fork;
 __declspec(noreturn) static void fork_child()
 {
 	install_syscall_handler();
-	mm_afterfork();
-	heap_afterfork();
-	signal_afterfork();
-	process_afterfork(fork->stack_base, fork->pid);
-	tls_afterfork();
-	vfs_afterfork();
+	mm_afterfork_child();
+	heap_afterfork_child();
+	signal_afterfork_child();
+	process_afterfork_child(fork->stack_base, fork->pid);
+	tls_afterfork_child();
+	vfs_afterfork_child();
 	dbt_init();
 	if (fork->ctid)
 		*(pid_t *)fork->ctid = fork->pid;
@@ -158,8 +158,6 @@ static pid_t fork_process(struct syscall_context *context, unsigned long flags, 
 {
 	wchar_t filename[MAX_PATH];
 	GetModuleFileNameW(NULL, filename, sizeof(filename) / sizeof(filename[0]));
-
-	tls_beforefork();
 	
 	PROCESS_INFORMATION info;
 	STARTUPINFOW si = { 0 };
@@ -170,7 +168,19 @@ static pid_t fork_process(struct syscall_context *context, unsigned long flags, 
 		return -1;
 	}
 
+	if (!tls_fork(info.hProcess))
+		goto fail;
+
 	if (!mm_fork(info.hProcess))
+		goto fail;
+
+	if (!heap_fork(info.hProcess))
+		goto fail;
+
+	if (!signal_fork(info.hProcess))
+		goto fail;
+
+	if (!process_fork(info.hProcess))
 		goto fail;
 
 	if (!vfs_fork(info.hProcess))
@@ -195,6 +205,14 @@ static pid_t fork_process(struct syscall_context *context, unsigned long flags, 
 		(SIZE_T)((char *)stack_base + STACK_SIZE - context->esp), NULL);
 	ResumeThread(info.hThread);
 	CloseHandle(info.hThread);
+
+	/* Call afterfork routines */
+	vfs_afterfork_parent();
+	tls_afterfork_parent();
+	process_afterfork_parent();
+	signal_afterfork_parent();
+	heap_afterfork_parent();
+	mm_afterfork_parent();
 
 	log_info("Child pid: %d, win_pid: %d\n", pid, info.dwProcessId);
 	return pid;

@@ -173,7 +173,7 @@ void process_init()
 	log_info("PID: %d\n", pid);
 }
 
-void process_afterfork(void *stack_base, pid_t pid)
+void process_afterfork_child(void *stack_base, pid_t pid)
 {
 	process_init_private();
 	/* The parent should have global process table slot set for us
@@ -189,6 +189,15 @@ void process_afterfork(void *stack_base, pid_t pid)
 	current_thread = thread;
 	current_thread->stack_base = stack_base;
 	log_info("PID: %d\n", pid);
+}
+
+int process_fork(HANDLE hProcess)
+{
+	return 1;
+}
+
+void process_afterfork_parent()
+{
 }
 
 void process_thread_entry(pid_t tid)
