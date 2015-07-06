@@ -94,19 +94,24 @@ void vfs_release(struct file *f)
 		f->op_vtable->close(f);
 }
 
-/* Get file handle to a fd */
+/* Get file handle to a fd (caller locks vfs, either exclusive or shared is okay) */
 static struct file *vfs_get_internal(int fd)
 {
 	if (fd < 0 || fd >= MAX_FD_COUNT)
 		return NULL;
-
-	return vfs->filed[fd].fd;
+	struct file *f = vfs->filed[fd].fd;
+	if (f)
+		vfs_ref(f);
+	return f;
 }
 
+/* Get file handle to a fd */
 struct file *vfs_get(int fd)
 {
+	if (fd < 0 || fd >= MAX_FD_COUNT)
+		return NULL;
 	AcquireSRWLockShared(&vfs->rw_lock);
-	struct file *f = vfs_get_internal(fd);
+	struct file *f = vfs->filed[fd].fd;
 	if (f)
 		vfs_ref(f);
 	ReleaseSRWLockShared(&vfs->rw_lock);
@@ -347,6 +352,7 @@ static int vfs_dup(int fd, int newfd, int flags)
 		if (newfd == -1)
 		{
 			newfd = -EMFILE;
+			vfs_release(f);
 			goto out;
 		}
 	}
@@ -355,6 +361,7 @@ static int vfs_dup(int fd, int newfd, int flags)
 		if (newfd == fd || newfd < 0 || newfd >= MAX_FD_COUNT)
 		{
 			newfd = -EINVAL;
+			vfs_release(f);
 			goto out;
 		}
 		if (vfs->filed[newfd].fd)
@@ -362,7 +369,6 @@ static int vfs_dup(int fd, int newfd, int flags)
 	}
 	vfs->filed[newfd].fd = f;
 	vfs->filed[newfd].cloexec = !!(flags & O_CLOEXEC);
-	vfs_ref(f);
 
 out:
 	ReleaseSRWLockExclusive(&vfs->rw_lock);
@@ -392,14 +398,14 @@ DEFINE_SYSCALL(read, int, fd, char *, buf, size_t, count)
 	log_info("read(%d, %p, %p)\n", fd, buf, count);
 	if (!mm_check_write(buf, count))
 		return -EFAULT;
-	AcquireSRWLockShared(&vfs->rw_lock);
-	struct file *f = vfs_get_internal(fd);
+	struct file *f = vfs_get(fd);
 	ssize_t r;
 	if (f && f->op_vtable->read)
 		r = f->op_vtable->read(f, buf, count);
 	else
 		r = -EBADF;
-	ReleaseSRWLockShared(&vfs->rw_lock);
+	if (f)
+		vfs_release(f);
 	return r;
 }
 
@@ -408,14 +414,14 @@ DEFINE_SYSCALL(write, int, fd, const char *, buf, size_t, count)
 	log_info("write(%d, %p, %p)\n", fd, buf, count);
 	if (!mm_check_read(buf, count))
 		return -EFAULT;
-	AcquireSRWLockShared(&vfs->rw_lock);
-	struct file *f = vfs_get_internal(fd);
+	struct file *f = vfs_get(fd);
 	ssize_t r;
 	if (f && f->op_vtable->write)
 		r = f->op_vtable->write(f, buf, count);
 	else
 		r = -EBADF;
-	ReleaseSRWLockShared(&vfs->rw_lock);
+	if (f)
+		vfs_release(f);
 	return r;
 }
 
@@ -424,14 +430,14 @@ DEFINE_SYSCALL(pread64, int, fd, char *, buf, size_t, count, loff_t, offset)
 	log_info("pread64(%d, %p, %p, %lld)\n", fd, buf, count, offset);
 	if (!mm_check_write(buf, count))
 		return -EFAULT;
-	AcquireSRWLockShared(&vfs->rw_lock);
-	struct file *f = vfs_get_internal(fd);
+	struct file *f = vfs_get(fd);
 	ssize_t r;
 	if (f && f->op_vtable->pread)
 		r = f->op_vtable->pread(f, buf, count, offset);
 	else
 		r = -EBADF;
-	ReleaseSRWLockShared(&vfs->rw_lock);
+	if (f)
+		vfs_release(f);
 	return r;
 }
 
@@ -440,14 +446,14 @@ DEFINE_SYSCALL(pwrite64, int, fd, const char *, buf, size_t, count, loff_t, offs
 	log_info("pwrite64(%d, %p, %p, %lld)\n", fd, buf, count, offset);
 	if (!mm_check_read(buf, count))
 		return -EFAULT;
-	AcquireSRWLockShared(&vfs->rw_lock);
-	struct file *f = vfs_get_internal(fd);
+	struct file *f = vfs_get(fd);
 	ssize_t r;
 	if (f && f->op_vtable->pwrite)
 		r = f->op_vtable->pwrite(f, buf, count, offset);
 	else
 		r = -EBADF;
-	ReleaseSRWLockShared(&vfs->rw_lock);
+	if (f)
+		vfs_release(f);
 	return r;
 }
 
@@ -457,8 +463,7 @@ DEFINE_SYSCALL(readv, int, fd, const struct iovec *, iov, int, iovcnt)
 	for (int i = 0; i < iovcnt; i++)
 		if (!mm_check_write(iov[i].iov_base, iov[i].iov_len))
 			return -EFAULT;
-	AcquireSRWLockShared(&vfs->rw_lock);
-	struct file *f = vfs_get_internal(fd);
+	struct file *f = vfs_get(fd);
 	ssize_t r;
 	if (f && f->op_vtable->read)
 	{
@@ -478,7 +483,8 @@ DEFINE_SYSCALL(readv, int, fd, const struct iovec *, iov, int, iovcnt)
 	}
 	else
 		r = -EBADF;
-	ReleaseSRWLockShared(&vfs->rw_lock);
+	if (f)
+		vfs_release(f);
 	return r;
 }
 
@@ -488,8 +494,7 @@ DEFINE_SYSCALL(writev, int, fd, const struct iovec *, iov, int, iovcnt)
 	for (int i = 0; i < iovcnt; i++)
 		if (!mm_check_read(iov[i].iov_base, iov[i].iov_len))
 			return -EFAULT;
-	AcquireSRWLockShared(&vfs->rw_lock);
-	struct file *f = vfs_get_internal(fd);
+	struct file *f = vfs_get(fd);
 	ssize_t r;
 	if (f && f->op_vtable->write)
 	{
@@ -509,7 +514,8 @@ DEFINE_SYSCALL(writev, int, fd, const struct iovec *, iov, int, iovcnt)
 	}
 	else
 		r = -EBADF;
-	ReleaseSRWLockShared(&vfs->rw_lock);
+	if (f)
+		vfs_release(f);
 	return r;
 }
 
@@ -519,8 +525,7 @@ DEFINE_SYSCALL(preadv, int, fd, const struct iovec *, iov, int, iovcnt, off_t, o
 	for (int i = 0; i < iovcnt; i++)
 		if (!mm_check_write(iov[i].iov_base, iov[i].iov_len))
 			return -EFAULT;
-	AcquireSRWLockShared(&vfs->rw_lock);
-	struct file *f = vfs_get_internal(fd);
+	struct file *f = vfs_get(fd);
 	ssize_t r;
 	if (f && f->op_vtable->pread)
 	{
@@ -541,7 +546,8 @@ DEFINE_SYSCALL(preadv, int, fd, const struct iovec *, iov, int, iovcnt, off_t, o
 	}
 	else
 		r = -EBADF;
-	ReleaseSRWLockShared(&vfs->rw_lock);
+	if (f)
+		vfs_release(f);
 	return r;
 }
 
@@ -551,8 +557,7 @@ DEFINE_SYSCALL(pwritev, int, fd, const struct iovec *, iov, int, iovcnt, off_t, 
 	for (int i = 0; i < iovcnt; i++)
 		if (!mm_check_read(iov[i].iov_base, iov[i].iov_len))
 			return -EFAULT;
-	AcquireSRWLockShared(&vfs->rw_lock);
-	struct file *f = vfs_get_internal(fd);
+	struct file *f = vfs_get(fd);
 	ssize_t r;
 	if (f && f->op_vtable->pwrite)
 	{
@@ -573,7 +578,8 @@ DEFINE_SYSCALL(pwritev, int, fd, const struct iovec *, iov, int, iovcnt, off_t, 
 	}
 	else
 		r = -EBADF;
-	ReleaseSRWLockShared(&vfs->rw_lock);
+	if (f)
+		vfs_release(f);
 	return r;
 }
 
@@ -585,6 +591,11 @@ DEFINE_SYSCALL(truncate, const char *, path, off_t, length)
 	int r = vfs_openat(AT_FDCWD, path, O_WRONLY, 0, &f);
 	if (r < 0)
 		goto out;
+	if (!f->op_vtable->truncate)
+	{
+		r = -EPERM;
+		goto out;
+	}
 	r = f->op_vtable->truncate(f, length);
 	vfs_release(f);
 
@@ -596,14 +607,14 @@ out:
 DEFINE_SYSCALL(ftruncate, int, fd, off_t, length)
 {
 	log_info("ftruncate(%d, %p)\n", fd, length);
-	AcquireSRWLockShared(&vfs->rw_lock);
-	struct file *f = vfs_get_internal(fd);
+	struct file *f = vfs_get(fd);
 	int r;
-	if (!f)
-		r = -EBADF;
-	else
+	if (f && f->op_vtable->truncate)
 		r = f->op_vtable->truncate(f, length);
-	ReleaseSRWLockShared(&vfs->rw_lock);
+	else
+		r = -EBADF;
+	if (f)
+		vfs_release(f);
 	return r;
 }
 
@@ -615,6 +626,11 @@ DEFINE_SYSCALL(truncate64, const char *, path, loff_t, length)
 	int r = vfs_openat(AT_FDCWD, path, O_WRONLY, 0, &f);
 	if (r < 0)
 		goto out;
+	if (!f->op_vtable->truncate)
+	{
+		r = -EPERM;
+		goto out;
+	}
 	r = f->op_vtable->truncate(f, length);
 	vfs_release(f);
 
@@ -626,22 +642,21 @@ out:
 DEFINE_SYSCALL(ftruncate64, int, fd, loff_t, length)
 {
 	log_info("ftruncate(%d, %lld)\n", fd, length);
-	AcquireSRWLockShared(&vfs->rw_lock);
-	struct file *f = vfs_get_internal(fd);
+	struct file *f = vfs_get(fd);
 	int r;
-	if (!f)
-		r = -EBADF;
-	else
+	if (f && f->op_vtable->truncate)
 		r = f->op_vtable->truncate(f, length);
-	ReleaseSRWLockShared(&vfs->rw_lock);
+	else
+		r = -EBADF;
+	if (f)
+		vfs_release(f);
 	return r;
 }
 
 DEFINE_SYSCALL(fsync, int, fd)
 {
 	log_info("fsync(%d)\n", fd);
-	AcquireSRWLockShared(&vfs->rw_lock);
-	struct file *f = vfs_get_internal(fd);
+	struct file *f = vfs_get(fd);
 	int r;
 	if (!f)
 		r = -EBADF;
@@ -649,15 +664,15 @@ DEFINE_SYSCALL(fsync, int, fd)
 		r = -EINVAL;
 	else
 		r = f->op_vtable->fsync(f);
-	ReleaseSRWLockShared(&vfs->rw_lock);
+	if (f)
+		vfs_release(f);
 	return r;
 }
 
 DEFINE_SYSCALL(fdatasync, int, fd)
 {
 	log_info("fdatasync(%d)\n", fd);
-	AcquireSRWLockShared(&vfs->rw_lock);
-	struct file *f = vfs_get_internal(fd);
+	struct file *f = vfs_get(fd);
 	int r;
 	if (!f)
 		r = -EBADF;
@@ -665,15 +680,15 @@ DEFINE_SYSCALL(fdatasync, int, fd)
 		r = -EINVAL;
 	else
 		r = f->op_vtable->fsync(f);
-	ReleaseSRWLockShared(&vfs->rw_lock);
+	if (f)
+		vfs_release(f);
 	return r;
 }
 
 DEFINE_SYSCALL(lseek, int, fd, off_t, offset, int, whence)
 {
 	log_info("lseek(%d, %d, %d)\n", fd, offset, whence);
-	AcquireSRWLockShared(&vfs->rw_lock);
-	struct file *f = vfs_get_internal(fd);
+	struct file *f = vfs_get(fd);
 	intptr_t r;
 	if (f && f->op_vtable->llseek)
 	{
@@ -688,7 +703,8 @@ DEFINE_SYSCALL(lseek, int, fd, off_t, offset, int, whence)
 	}
 	else
 		r = -EBADF;
-	ReleaseSRWLockShared(&vfs->rw_lock);
+	if (f)
+		vfs_release(f);
 	return r;
 }
 
@@ -698,14 +714,14 @@ DEFINE_SYSCALL(llseek, int, fd, unsigned long, offset_high, unsigned long, offse
 	log_info("llseek(%d, %lld, %p, %d)\n", fd, offset, result, whence);
 	if (!mm_check_write(result, sizeof(loff_t)))
 		return -EFAULT;
-	AcquireSRWLockShared(&vfs->rw_lock);
-	struct file *f = vfs_get_internal(fd);
+	struct file *f = vfs_get(fd);
 	int r = 0;
 	if (f && f->op_vtable->llseek)
 		r = f->op_vtable->llseek(f, offset, result, whence);
 	else
 		r = -EBADF;
-	ReleaseSRWLockShared(&vfs->rw_lock);
+	if (f)
+		vfs_release(f);
 	return r;
 }
 
@@ -860,6 +876,8 @@ int resolve_pathat(int dirfd, const char *pathname, char *realpath, int *symlink
 		if (!f)
 			return -EBADF;
 		f->op_vtable->getpath(f, dirpath);
+		if (dirfd != AT_FDCWD)
+			vfs_release(f);
 	}
 	return resolve_path(dirpath, pathname, realpath, symlink_remain);
 }
@@ -968,10 +986,9 @@ DEFINE_SYSCALL(creat, const char *, pathname, int, mode)
 DEFINE_SYSCALL(close, int, fd)
 {
 	log_info("close(%d)\n", fd);
-	AcquireSRWLockExclusive(&vfs->rw_lock);
-	struct file *f = vfs_get_internal(fd);
 	int r = 0;
-	if (!f)
+	AcquireSRWLockExclusive(&vfs->rw_lock);
+	if (!vfs->filed[fd].fd)
 		r = -EBADF;
 	else
 		vfs_close(fd);
@@ -1303,14 +1320,14 @@ DEFINE_SYSCALL(getdents, int, fd, struct linux_dirent *, dirent, unsigned int, c
 	log_info("getdents(%d, %p, %d)\n", fd, dirent, count);
 	if (!mm_check_write(dirent, count))
 		return -EFAULT;
-	AcquireSRWLockShared(&vfs->rw_lock);
-	struct file *f = vfs_get_internal(fd);
+	struct file *f = vfs_get(fd);
 	int r;
 	if (f && f->op_vtable->getdents)
 		r = f->op_vtable->getdents(f, dirent, count, getdents_fill);
 	else
 		r = -EBADF;
-	ReleaseSRWLockShared(&vfs->rw_lock);
+	if (f)
+		vfs_release(f);
 	return r;
 }
 
@@ -1319,14 +1336,14 @@ DEFINE_SYSCALL(getdents64, int, fd, struct linux_dirent64 *, dirent, unsigned in
 	log_info("getdents64(%d, %p, %d)\n", fd, dirent, count);
 	if (!mm_check_write(dirent, count))
 		return -EFAULT;
-	AcquireSRWLockShared(&vfs->rw_lock);
-	struct file *f = vfs_get_internal(fd);
+	struct file *f = vfs_get(fd);
 	int r;
 	if (f && f->op_vtable->getdents)
 		r = f->op_vtable->getdents(f, dirent, count, getdents64_fill);
 	else
 		r = -EBADF;
-	ReleaseSRWLockShared(&vfs->rw_lock);
+	if (f)
+		vfs_release(f);
 	return r;
 }
 
@@ -1397,7 +1414,6 @@ static int vfs_statat(int dirfd, const char *pathname, struct newstat *stat, int
 			r = -EBADF;
 			goto out;
 		}
-		vfs_ref(f);
 	}
 	else
 	{
@@ -1564,14 +1580,14 @@ static int statfs_from_statfs64(struct statfs *statfs, struct statfs64 *statfs64
 
 static int vfs_fstatfs(int fd, struct statfs64 *buf)
 {
-	AcquireSRWLockShared(&vfs->rw_lock);
-	struct file *f = vfs_get_internal(fd);
+	struct file *f = vfs_get(fd);
 	int r;
 	if (f && f->op_vtable->statfs)
 		r = f->op_vtable->statfs(f, buf);
 	else
 		r = -EBADF;
-	ReleaseSRWLockShared(&vfs->rw_lock);
+	if (f)
+		vfs_release(f);
 	return r;
 }
 
@@ -1642,9 +1658,9 @@ DEFINE_SYSCALL(fadvise64_64, int, fd, loff_t, offset, loff_t, len, int, advice)
 	/* It seems windows does not support any of the fadvise semantics
 	 * We simply check the validity of parameters and return
 	 */
-	AcquireSRWLockShared(&vfs->rw_lock);
 	int r;
-	if (!vfs_get_internal(fd))
+	struct file *f = vfs_get(fd);
+	if (!f)
 		r = -EBADF;
 	else
 	{
@@ -1662,8 +1678,8 @@ DEFINE_SYSCALL(fadvise64_64, int, fd, loff_t, offset, loff_t, len, int, advice)
 		default:
 			r = -EINVAL;
 		}
+		vfs_release(f);
 	}
-	ReleaseSRWLockShared(&vfs->rw_lock);
 	return r;
 }
 
@@ -1679,14 +1695,14 @@ DEFINE_SYSCALL(ioctl, int, fd, unsigned int, cmd, unsigned long, arg)
 		return sys_fcntl(fd, F_SETFD, FD_CLOEXEC);
 	else if (cmd == FIONCLEX)
 		return sys_fcntl(fd, F_SETFD, 0);
-	AcquireSRWLockShared(&vfs->rw_lock);
-	struct file *f = vfs_get_internal(fd);
+	struct file *f = vfs_get(fd);
 	int r;
 	if (f && f->op_vtable->ioctl)
 		r = f->op_vtable->ioctl(f, cmd, arg);
 	else
 		r = -EBADF;
-	ReleaseSRWLockShared(&vfs->rw_lock);
+	if (f)
+		vfs_release(f);
 	return r;
 }
 
@@ -1751,14 +1767,14 @@ DEFINE_SYSCALL(utimensat, int, dirfd, const char *, pathname, const struct times
 	if (!pathname)
 	{
 		/* Special case: use dirfd as file fd */
-		AcquireSRWLockShared(&vfs->rw_lock);
-		struct file *f = vfs_get_internal(dirfd);
+		struct file *f = vfs_get(dirfd);
 		int r;
 		if (f && f->op_vtable->utimens)
 			r = f->op_vtable->utimens(f, times);
 		else
 			r = -EBADF;
-		ReleaseSRWLockShared(&vfs->rw_lock);
+		if (f)
+			vfs_release(f);
 		return r;
 	}
 	AcquireSRWLockExclusive(&vfs->rw_lock);
@@ -1804,7 +1820,6 @@ DEFINE_SYSCALL(fchdir, int, fd)
 		r = -EBADF;
 		goto out;
 	}
-	vfs_ref(f);
 	vfs_release(vfs->cwd);
 	vfs->cwd = f;
 out:
@@ -1837,8 +1852,7 @@ DEFINE_SYSCALL(fcntl, int, fd, int, cmd, int, arg)
 	log_info("fcntl(%d, %d)\n", fd, cmd);
 	if (cmd == F_DUPFD)
 		return sys_dup(fd);
-	AcquireSRWLockShared(&vfs->rw_lock);
-	struct file *f = vfs_get_internal(fd);
+	struct file *f = vfs_get(fd);
 	int r = 0;
 	if (!f)
 		r = -EBADF;
@@ -1881,8 +1895,8 @@ DEFINE_SYSCALL(fcntl, int, fd, int, cmd, int, arg)
 			r = -EINVAL;
 			break;
 		}
+		vfs_release(f);
 	}
-	ReleaseSRWLockShared(&vfs->rw_lock);
 	return r;
 }
 
@@ -2263,15 +2277,14 @@ DEFINE_SYSCALL(epoll_ctl, int, epfd, int, op, int, fd, struct epoll_event *, eve
 		log_error("Edge triggered epoll is not supported.\n");
 		return -EINVAL;
 	}
-	AcquireSRWLockShared(&vfs->rw_lock);
 	int r = 0;
-	struct file *f = vfs_get_internal(epfd);
+	struct file *f = vfs_get(epfd);
 	if (!f || !epollfd_is_epollfd(f))
 	{
 		r = -EBADF;
 		goto out;
 	}
-	struct file *mf = vfs_get_internal(fd);
+	struct file *mf = vfs_get(fd);
 	if (!mf)
 	{
 		r = -EBADF;
@@ -2298,7 +2311,10 @@ DEFINE_SYSCALL(epoll_ctl, int, epfd, int, op, int, fd, struct epoll_event *, eve
 		r = -EINVAL;
 	}
 out:
-	ReleaseSRWLockShared(&vfs->rw_lock);
+	if (mf)
+		vfs_release(mf);
+	if (f)
+		vfs_release(f);
 	return r;
 }
 
@@ -2309,8 +2325,7 @@ DEFINE_SYSCALL(epoll_pwait, int, epfd, struct epoll_event *, events, int, maxeve
 		return -EFAULT;
 	if (sigmask && !mm_check_read(sigmask, sizeof(sigset_t)))
 		return -EFAULT;
-	AcquireSRWLockShared(&vfs->rw_lock);
-	struct file *f = vfs_get_internal(epfd);
+	struct file *f = vfs_get(epfd);
 	int r;
 	if (!f || !epollfd_is_epollfd(f))
 	{
@@ -2325,7 +2340,8 @@ DEFINE_SYSCALL(epoll_pwait, int, epfd, struct epoll_event *, events, int, maxeve
 		goto out;
 	r = epollfd_to_events(f, pollfds, events, maxevents);
 out:
-	ReleaseSRWLockShared(&vfs->rw_lock);
+	if (f)
+		vfs_release(f);
 	return r;
 }
 
