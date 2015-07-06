@@ -2011,10 +2011,12 @@ DEFINE_SYSCALL(lchown, const char *, pathname, uid_t, owner, gid_t, group)
 	return sys_fchownat(AT_FDCWD, pathname, owner, group, AT_SYMLINK_NOFOLLOW);
 }
 
-static int vfs_ppoll_internal(struct linux_pollfd *fds, int nfds, int timeout, const sigset_t *sigmask)
+static int vfs_ppoll(struct linux_pollfd *fds, int nfds, int timeout, const sigset_t *sigmask)
 {
 	/* Count of handles to be waited on */
 	int cnt = 0;
+	/* File structures */
+	struct file **files = (struct file **)alloca(nfds * sizeof(struct file *));
 	/* Handles to be waited on */
 	HANDLE *handles = (HANDLE *)alloca(nfds * sizeof(HANDLE));
 	/* Indices of handles in the original fds[] array */
@@ -2029,8 +2031,11 @@ static int vfs_ppoll_internal(struct linux_pollfd *fds, int nfds, int timeout, c
 	for (int i = 0; i < nfds; i++)
 	{
 		if (fds[i].fd < 0)
+		{
+			files[i] = NULL;
 			continue;
-		struct file *f = vfs->filed[fds[i].fd].fd;
+		}
+		struct file *f = files[i] = vfs_get(fds[i].fd);
 		/* TODO: Support for regular files */
 		if (!f)
 		{
@@ -2080,16 +2085,25 @@ static int vfs_ppoll_internal(struct linux_pollfd *fds, int nfds, int timeout, c
 		{
 			DWORD result = signal_wait(cnt, handles, remain);
 			if (result == WAIT_TIMEOUT)
-				return 0;
+			{
+				num_result = 0;
+				goto out;
+			}
 			else if (result == WAIT_INTERRUPTED)
-				return -EINTR;
+			{
+				num_result = -EINTR;
+				goto out;
+			}
 			else if (result < WAIT_OBJECT_0 || result >= WAIT_OBJECT_0 + cnt)
-				return -ENOMEM; /* TODO: Find correct errno */
+			{
+				num_result = -ENOMEM; /* TODO: Find correct errno */
+				goto out;
+			}
 			else
 			{
 				/* Wait successfully, fill in the revents field of that handle */
 				int id = indices[result - WAIT_OBJECT_0];
-				struct file *f = vfs->filed[fds[id].fd].fd;
+				struct file *f = files[id];
 				/* Retrieve current event flags */
 				int e;
 				if (f->op_vtable->get_poll_status)
@@ -2126,15 +2140,11 @@ static int vfs_ppoll_internal(struct linux_pollfd *fds, int nfds, int timeout, c
 		if (sigmask)
 			signal_after_pwait(&oldmask);
 	}
+out:
+	for (int i = 0; i < nfds; i++)
+		if (files[i])
+			vfs_release(files[i]);
 	return num_result;
-}
-
-static int vfs_ppoll(struct linux_pollfd *fds, int nfds, int timeout, const sigset_t *sigmask)
-{
-	AcquireSRWLockShared(&vfs->rw_lock);
-	int r = vfs_ppoll_internal(fds, nfds, timeout, sigmask);
-	ReleaseSRWLockShared(&vfs->rw_lock);
-	return r;
 }
 
 static int vfs_pselect6(int nfds, struct fdset *readfds, struct fdset *writefds, struct fdset *exceptfds,
