@@ -407,7 +407,7 @@ DEFINE_SYSCALL(rt_sigreturn, uintptr_t, bx, uintptr_t, cx, uintptr_t, dx, uintpt
 	if (!mm_check_read(frame, sizeof(*frame)))
 	{
 		log_error("sigreturn: Invalid frame.\n");
-		return -EFAULT;
+		return -L_EFAULT;
 	}
 	/* TODO: Check validity of fpstate */
 	fpu_fxrstor(frame->uc.uc_mcontext.fpstate);
@@ -503,7 +503,7 @@ int signal_kill(pid_t pid, siginfo_t *info)
 	else
 	{
 		log_error("signal_kill: Killing other processes are not supported.\n");
-		return -ESRCH;
+		return -L_ESRCH;
 	}
 }
 
@@ -546,7 +546,7 @@ int signal_query(DWORD win_pid, HANDLE sigwrite, HANDLE query_mutex, int query_t
 {
 	HANDLE process = OpenProcess(PROCESS_DUP_HANDLE, FALSE, win_pid);
 	if (process == NULL)
-		return -ENOENT;
+		return -L_ENOENT;
 	HANDLE pipe, mutex;
 	DuplicateHandle(process, sigwrite, GetCurrentProcess(), &pipe, 0, FALSE, DUPLICATE_SAME_ACCESS);
 	DuplicateHandle(process, query_mutex, GetCurrentProcess(), &mutex, 0, FALSE, DUPLICATE_SAME_ACCESS);
@@ -578,7 +578,7 @@ int signal_query(DWORD win_pid, HANDLE sigwrite, HANDLE query_mutex, int query_t
 	CloseHandle(process);
 
 	if (len == 0)
-		return -ENOENT;
+		return -L_ENOENT;
 	else
 		return len;
 }
@@ -610,7 +610,7 @@ DEFINE_SYSCALL(personality, unsigned long, persona)
 	if (persona != 0 && persona != 0xFFFFFFFFU)
 	{
 		log_error("ERROR: persona != 0");
-		return -EINVAL;
+		return -L_EINVAL;
 	}
 	return 0;
 }
@@ -619,13 +619,13 @@ DEFINE_SYSCALL(rt_sigaction, int, signum, const struct sigaction *, act, struct 
 {
 	log_info("rt_sigaction(%d, %p, %p)\n", signum, act, oldact);
 	if (sigsetsize != sizeof(sigset_t))
-		return -EINVAL;
+		return -L_EINVAL;
 	if (signum < 0 || signum >= _NSIG || signum == SIGKILL || signum == SIGSTOP)
-		return -EINVAL;
+		return -L_EINVAL;
 	if (act && !mm_check_read(act, sizeof(*act)))
-		return -EFAULT;
+		return -L_EFAULT;
 	if (oldact && !mm_check_write(oldact, sizeof(*oldact)))
-		return -EFAULT;
+		return -L_EFAULT;
 	EnterCriticalSection(&signal->mutex);
 	if (oldact)
 		memcpy(oldact, &signal->actions[signum], sizeof(struct sigaction));
@@ -639,13 +639,13 @@ DEFINE_SYSCALL(rt_sigprocmask, int, how, const sigset_t *, set, sigset_t *, olds
 {
 	log_info("rt_sigprocmask(%d, 0x%p, 0x%p)\n", how, set, oldset);
 	if (sigsetsize != sizeof(sigset_t))
-		return -EINVAL;
+		return -L_EINVAL;
 	if (how != SIG_BLOCK && how != SIG_UNBLOCK && how != SIG_SETMASK)
-		return -EINVAL;
+		return -L_EINVAL;
 	if (set && !mm_check_read(set, sizeof(*set)))
-		return -EFAULT;
+		return -L_EFAULT;
 	if (oldset && !mm_check_write(oldset, sizeof(*oldset)))
-		return -EFAULT;
+		return -L_EFAULT;
 	EnterCriticalSection(&signal->mutex);
 	if (oldset)
 		*oldset = current_thread->sigmask;
@@ -675,7 +675,7 @@ DEFINE_SYSCALL(rt_sigsuspend, const sigset_t *, mask)
 {
 	log_info("rt_sigsuspend(%p)\n", mask);
 	if (!mm_check_read(mask, sizeof(*mask)))
-		return -EFAULT;
+		return -L_EFAULT;
 	sigset_t oldmask;
 	/* TODO: Is this race free? */
 	EnterCriticalSection(&signal->mutex);
@@ -686,12 +686,12 @@ DEFINE_SYSCALL(rt_sigsuspend, const sigset_t *, mask)
 	EnterCriticalSection(&signal->mutex);
 	current_thread->sigmask = oldmask;
 	LeaveCriticalSection(&signal->mutex);
-	return -EINTR;
+	return -L_EINTR;
 }
 
 DEFINE_SYSCALL(sigaltstack, const stack_t *, ss, stack_t *, oss)
 {
 	log_info("sigaltstack(ss=%p, oss=%p)\n", ss, oss);
 	log_error("sigaltstack() not implemented.\n");
-	return -ENOSYS;
+	return -L_ENOSYS;
 }

@@ -238,7 +238,7 @@ int tls_set_thread_area(struct user_desc *u_info)
 	if (u_info->entry_number == -1)
 	{
 		if (tls->entry_count == MAX_TLS_ENTRIES)
-			ret = -ESRCH;
+			ret = -L_ESRCH;
 		else
 		{
 			int slot = TlsAlloc();
@@ -267,22 +267,22 @@ DEFINE_SYSCALL(arch_prctl, int, code, uintptr_t, addr)
 	{
 	case ARCH_SET_FS:
 		log_error("ARCH_SET_FS not supported.\n");
-		return -EINVAL;
+		return -L_EINVAL;
 
 	case ARCH_GET_FS:
 		log_error("ARCH_GET_FS not supported.\n");
-		return -EINVAL;
+		return -L_EINVAL;
 
 	case ARCH_SET_GS:
 		log_error("ARCH_SET_GS not supported.\n");
-		return -EINVAL;
+		return -L_EINVAL;
 
 	case ARCH_GET_GS:
 		log_error("ARCH_GET_GS not supported.\n");
-		return -EINVAL;
+		return -L_EINVAL;
 
 	default:
 		log_error("Unknown code.\n");
-		return -EINVAL;
+		return -L_EINVAL;
 	}
 }

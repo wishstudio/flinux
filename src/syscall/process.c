@@ -295,13 +295,13 @@ static pid_t process_wait(pid_t pid, int *status, int options, struct rusage *ru
 				if (options & WNOHANG)
 				{
 					if (!proc->terminated)
-						return -ECHILD;
+						return -L_ECHILD;
 				}
 				else
 				{
 					DWORD result = signal_wait(1, &proc->hProcess, INFINITE);
 					if (result == WAIT_INTERRUPTED)
-						return -EINTR;
+						return -L_EINTR;
 				}
 				/* Decrement semaphore */
 				WaitForSingleObject(signal_get_process_wait_semaphore(), INFINITE);
@@ -315,7 +315,7 @@ static pid_t process_wait(pid_t pid, int *status, int options, struct rusage *ru
 		if (proc == NULL)
 		{
 			log_warning("pid %d is not a child.\n", pid);
-			return -ECHILD;
+			return -L_ECHILD;
 		}
 	}
 	else if (pid == -1)
@@ -323,14 +323,14 @@ static pid_t process_wait(pid_t pid, int *status, int options, struct rusage *ru
 		if (process->child_count == 0)
 		{
 			log_warning("No children.\n");
-			return -ECHILD;
+			return -L_ECHILD;
 		}
 		if (!(options & WNOHANG))
 		{
 			HANDLE sem = signal_get_process_wait_semaphore();
 			DWORD result = signal_wait(1, &sem, INFINITE);
 			if (result == WAIT_INTERRUPTED)
-				return -EINTR;
+				return -L_EINTR;
 		}
 		/* Find the terminated child */
 		slist_iterate_safe(&process->child_list, prev, cur)
@@ -352,12 +352,12 @@ static pid_t process_wait(pid_t pid, int *status, int options, struct rusage *ru
 			}
 		}
 		if (proc == NULL) /* WNOHANG and no unwaited child */
-			return -ECHILD;
+			return -L_ECHILD;
 	}
 	else
 	{
 		log_error("pid unhandled.\n");
-		return -EINVAL;
+		return -L_EINVAL;
 	}
 	pid = proc->pid;
 	process_lock_shared();
@@ -471,7 +471,7 @@ pid_t process_get_tgid(pid_t pid)
 	if (pid != process->pid)
 		process_lock_shared();
 	if (process_shared->processes[pid].status == PROCESS_NOTEXIST)
-		tgid = -ESRCH;
+		tgid = -L_ESRCH;
 	else
 		tgid = process_shared->processes[pid].tgid;
 	if (pid != process->pid)
@@ -487,7 +487,7 @@ pid_t process_get_pgid(pid_t pid)
 	if (pid != process->pid)
 		process_lock_shared();
 	if (process_shared->processes[pid].status == PROCESS_NOTEXIST)
-		pgid = -ESRCH;
+		pgid = -L_ESRCH;
 	else
 		pgid = process_shared->processes[pid].pgid;
 	if (pid != process->pid)
@@ -652,7 +652,7 @@ int process_query(int query_type, char *buf)
 int process_query_pid(int pid, int query_type, char *buf)
 {
 	if (pid == 1)
-		return -ENOENT;
+		return -L_ENOENT;
 	if (pid == 0 || pid == process->pid)
 		return process_query(query_type, buf);
 	else
@@ -661,7 +661,7 @@ int process_query_pid(int pid, int query_type, char *buf)
 		if (!process_pid_exist(pid))
 		{
 			process_unlock_shared();
-			return -ENOENT;
+			return -L_ENOENT;
 		}
 		DWORD win_pid = process_shared->processes[pid].win_pid;
 		HANDLE sigwrite = process_shared->processes[pid].sigwrite;
@@ -723,7 +723,7 @@ DEFINE_SYSCALL(getresuid, uid_t *, ruid, uid_t *, euid, uid_t *, suid)
 {
 	log_info("getresuid(%d, %d, %d)\n", ruid, euid, suid);
 	if (!mm_check_write(ruid, sizeof(*ruid)) || !mm_check_write(euid, sizeof(*euid)) || !mm_check_write(suid, sizeof(*suid)))
-		return -EFAULT;
+		return -L_EFAULT;
 	*ruid = 0;
 	*euid = 0;
 	*suid = 0;
@@ -739,7 +739,7 @@ DEFINE_SYSCALL(getresgid, uid_t *, rgid, gid_t *, egid, gid_t *, sgid)
 {
 	log_info("getresgid(%d, %d, %d)\n", rgid, egid, sgid);
 	if (!mm_check_write(rgid, sizeof(*rgid)) || !mm_check_write(egid, sizeof(*egid)) || !mm_check_write(sgid, sizeof(*sgid)))
-		return -EFAULT;
+		return -L_EFAULT;
 	*rgid = 0;
 	*egid = 0;
 	*sgid = 0;
@@ -777,7 +777,7 @@ DEFINE_SYSCALL(uname, struct utsname *, buf)
 {
 	log_info("sys_uname(%p)\n", buf);
 	if (!mm_check_write(buf, sizeof(struct utsname)))
-		return -EFAULT;
+		return -L_EFAULT;
 	/* Just mimic a reasonable Linux uname */
 	strcpy(buf->sysname, "Linux");
 	strcpy(buf->nodename, "ForeignLinux");
@@ -795,7 +795,7 @@ DEFINE_SYSCALL(uname, struct utsname *, buf)
 DEFINE_SYSCALL(olduname, struct old_utsname *, buf)
 {
 	if (!mm_check_write(buf, sizeof(struct old_utsname)))
-		return -EFAULT;
+		return -L_EFAULT;
 	struct utsname newbuf;
 	sys_uname(&newbuf);
 	strcpy(buf->sysname, newbuf.sysname);
@@ -809,7 +809,7 @@ DEFINE_SYSCALL(olduname, struct old_utsname *, buf)
 DEFINE_SYSCALL(oldolduname, struct oldold_utsname *, buf)
 {
 	if (!mm_check_write(buf, sizeof(struct oldold_utsname)))
-		return -EFAULT;
+		return -L_EFAULT;
 	struct utsname newbuf;
 	sys_uname(&newbuf);
 	strncpy(buf->sysname, newbuf.sysname, __OLD_UTS_LEN + 1);
@@ -824,7 +824,7 @@ DEFINE_SYSCALL(sysinfo, struct sysinfo *, info)
 {
 	log_info("sysinfo(%p)\n", info);
 	if (!mm_check_write(info, sizeof(*info)))
-		return -EFAULT;
+		return -L_EFAULT;
 	MEMORYSTATUSEX memory;
 	memory.dwLength = sizeof(memory);
 	GlobalMemoryStatusEx(&memory);
@@ -849,7 +849,7 @@ DEFINE_SYSCALL(getrlimit, int, resource, struct rlimit *, rlim)
 {
 	log_info("getrlimit(%d, %p)\n", resource, rlim);
 	if (!mm_check_write(rlim, sizeof(struct rlimit)))
-		return -EFAULT;
+		return -L_EFAULT;
 	switch (resource)
 	{
 	case RLIMIT_STACK:
@@ -870,7 +870,7 @@ DEFINE_SYSCALL(getrlimit, int, resource, struct rlimit *, rlim)
 
 	default:
 		log_error("Unsupported resource: %d\n", resource);
-		return -EINVAL;
+		return -L_EINVAL;
 	}
 	return 0;
 }
@@ -879,12 +879,12 @@ DEFINE_SYSCALL(setrlimit, int, resource, const struct rlimit *, rlim)
 {
 	log_info("setrlimit(%d, %p)\n", resource, rlim);
 	if (!mm_check_read(rlim, sizeof(struct rlimit)))
-		return -EFAULT;
+		return -L_EFAULT;
 	switch (resource)
 	{
 	default:
 		log_error("Unsupported resource: %d\n", resource);
-		return -EINVAL;
+		return -L_EINVAL;
 	}
 }
 
@@ -892,13 +892,13 @@ DEFINE_SYSCALL(getrusage, int, who, struct rusage *, usage)
 {
 	log_info("getrusage(%d, %p)\n", who, usage);
 	if (!mm_check_write(usage, sizeof(struct rusage)))
-		return -EFAULT;
+		return -L_EFAULT;
 	ZeroMemory(usage, sizeof(struct rusage));
 	switch (who)
 	{
 	default:
 		log_error("Unhandled who: %d.\n", who);
-		return -EINVAL;
+		return -L_EINVAL;
 	}
 }
 
@@ -967,11 +967,11 @@ DEFINE_SYSCALL(sched_getaffinity, pid_t, pid, size_t, cpusetsize, uint8_t *, mas
 	if (pid != 0)
 	{
 		log_error("pid != 0.\n");
-		return -ESRCH;
+		return -L_ESRCH;
 	}
 	int bytes = (cpusetsize + 7) & ~7;
 	if (!mm_check_write(mask, bytes))
-		return -EFAULT;
+		return -L_EFAULT;
 	for (int i = 0; i < bytes; i++)
 		mask[i] = 0;
 	/* TODO: Applications (i.e. ffmpeg) use this to detect the number of cpus and enable multithreading
@@ -1003,18 +1003,18 @@ DEFINE_SYSCALL(futex, int *, uaddr, int, op, int, val, const struct timespec *, 
 {
 	log_info("futex(%p, %d, %d, %p, %p, %d)\n", uaddr, op, val, timeout, uaddr2, val3);
 	if (!mm_check_write(uaddr, sizeof(int)))
-		return -EACCES;
+		return -L_EACCES;
 	switch (op & FUTEX_CMD_MASK)
 	{
 	case FUTEX_WAIT:
 	{
 		if (timeout && !mm_check_read(timeout, sizeof(struct timespec)))
-			return -EFAULT;
+			return -L_EFAULT;
 		DWORD time = timeout ? timeout->tv_sec * 1000 + timeout->tv_nsec / 1000000 : INFINITE;
 		if (WaitOnAddress((volatile void *)uaddr, &val, sizeof(int), time))
 			return 0;
 		else
-			return -ETIMEDOUT;
+			return -L_ETIMEDOUT;
 	}
 
 	case FUTEX_WAKE:
@@ -1027,7 +1027,7 @@ DEFINE_SYSCALL(futex, int *, uaddr, int, op, int, val, const struct timespec *, 
 
 	default:
 		log_error("Unsupported futex operation, returning -ENOSYS\n");
-		return -ENOSYS;
+		return -L_ENOSYS;
 	}
 }
 

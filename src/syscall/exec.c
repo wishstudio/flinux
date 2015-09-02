@@ -143,7 +143,7 @@ static int load_elf(struct file *f, struct binfmt *binary)
 	if (eh.e_type != ET_EXEC && eh.e_type != ET_DYN)
 	{
 		log_error("Only ET_EXEC and ET_DYN executables can be loaded.\n");
-		return -EACCES;
+		return -L_EACCES;
 	}
 
 #ifdef _WIN64
@@ -155,7 +155,7 @@ static int load_elf(struct file *f, struct binfmt *binary)
 	{
 		log_error("Not an i386 executable.\n");
 #endif
-		return -EACCES;
+		return -L_EACCES;
 	}
 
 	/* Load program header table */
@@ -192,7 +192,7 @@ static int load_elf(struct file *f, struct binfmt *binary)
 	{
 		size_t free_addr = mm_find_free_pages(elf->high - elf->low) * PAGE_SIZE;
 		if (!free_addr)
-			return -ENOMEM;
+			return -L_ENOMEM;
 		elf->load_base = free_addr - elf->low;
 		log_info("ET_DYN load offset: %p, real range [%p, %p)\n", elf->load_base, elf->load_base + elf->low, elf->load_base + elf->high);
 	}
@@ -253,7 +253,7 @@ static int load_elf(struct file *f, struct binfmt *binary)
 		if (ph->p_type == PT_INTERP)
 		{
 			if (binary->interpreter) /* This is already an interpreter */
-				return -EACCES; /* Bad interpreter */
+				return -L_EACCES; /* Bad interpreter */
 			char path[MAX_PATH];
 			f->op_vtable->pread(f, path, ph->p_filesz, ph->p_offset); /* TODO */
 			path[ph->p_filesz] = 0;
@@ -266,13 +266,13 @@ static int load_elf(struct file *f, struct binfmt *binary)
 			if (!winfs_is_winfile(fi))
 			{
 				vfs_release(fi);
-				return -EACCES;
+				return -L_EACCES;
 			}
 
 			r = load_elf(fi, binary);
 			vfs_release(fi);
 			if (r < 0)
-				return -EACCES; /* Bad interpreter */
+				return -L_EACCES; /* Bad interpreter */
 		}
 	}
 	return 0;
@@ -290,13 +290,13 @@ static int load_script(struct file *f, struct binfmt *binary)
 	while (p < end && *p == ' ')
 		p++;
 	if (p == end)
-		return -EACCES;
+		return -L_EACCES;
 	const char *executable = p;
 	binary->argv0 = p;
 	while (p < end && *p != ' ' && *p != '\n')
 		p++;
 	if (p == end)
-		return -EACCES;
+		return -L_EACCES;
 	if (*p == '\n')
 		*p = 0; /* It has no argument */
 	else
@@ -305,7 +305,7 @@ static int load_script(struct file *f, struct binfmt *binary)
 		while (p < end && *p == ' ')
 			p++;
 		if (p == end)
-			return -EACCES;
+			return -L_EACCES;
 		if (*p != '\n')
 		{
 			/* It has an argument */
@@ -313,7 +313,7 @@ static int load_script(struct file *f, struct binfmt *binary)
 			while (p < end && *p != '\n')
 				p++;
 			if (p == end)
-				return -EACCES;
+				return -L_EACCES;
 			*p = 0;
 		}
 	}
@@ -326,7 +326,7 @@ static int load_script(struct file *f, struct binfmt *binary)
 	if (!winfs_is_winfile(fe))
 	{
 		vfs_release(fe);
-		return -EACCES;
+		return -L_EACCES;
 	}
 	/* TODO: Recursive interpreters */
 	return load_elf(fe, binary);
@@ -347,11 +347,11 @@ int do_execve(const char *filename, int argc, char *argv[], int env_size, char *
 	if (!winfs_is_winfile(f))
 	{
 		vfs_release(f);
-		return -EACCES;
+		return -L_EACCES;
 	}
 	r = f->op_vtable->pread(f, magic, 4, 0);
 	if (r < 4)
-		return -EACCES;
+		return -L_EACCES;
 
 	struct binfmt binary;
 	binary.argv0 = NULL;
@@ -379,7 +379,7 @@ int do_execve(const char *filename, int argc, char *argv[], int env_size, char *
 	else
 	{
 		log_error("Unknown binary magic: %c%c%c%c", magic[0], magic[1], magic[2], magic[3]);
-		return -EACCES;
+		return -L_EACCES;
 	}
 	vfs_release(f);
 	if (r < 0)

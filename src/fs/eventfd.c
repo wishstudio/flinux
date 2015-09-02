@@ -53,7 +53,7 @@ int eventfd_alloc(struct file **eventfdfile, uint64_t count, int flags)
 	if (flags & (EFD_SEMAPHORE))
 	{
 		log_error("eventfd: EFD_SEMAPHORE is unsupported!\n");
-		return -EINVAL;
+		return -L_EINVAL;
 	}
 
 	struct eventfd_file *efd = kmalloc(sizeof(struct eventfd_file));
@@ -68,14 +68,14 @@ int eventfd_alloc(struct file **eventfdfile, uint64_t count, int flags)
 	if (efd->efd_handle == NULL)
 	{
 		log_error("eventfd: Can't create handle: %u\n", GetLastError());
-		return -ENOMEM;
+		return -L_ENOMEM;
 	}
 
 	efd->efd_value = MapViewOfFile(efd->efd_handle, FILE_MAP_ALL_ACCESS, 0, 0, 8);
 	if (efd->efd_value == NULL)
 	{
 		log_error("eventfd: Can't map handle: %u\n", GetLastError());
-		return -ENOMEM;
+		return -L_ENOMEM;
 	}
 
 	efd->efd_mutex = CreateMutex(&attrs, FALSE, NULL);
@@ -151,7 +151,7 @@ static size_t eventfd_read(struct file *f, void *buf, size_t count)
 
 	if (count < 8)
 	{
-		return -EINVAL;
+		return -L_EINVAL;
 	}
 
 	WaitForSingleObject(efd->efd_mutex, INFINITE);
@@ -162,7 +162,7 @@ static size_t eventfd_read(struct file *f, void *buf, size_t count)
 
 		if (efd->efd_flags & EFD_NONBLOCK)
 		{
-			return -EAGAIN;
+			return -L_EAGAIN;
 		}
 		else
 		{
@@ -191,7 +191,7 @@ static size_t eventfd_write(struct file *f, const void *buf, size_t count)
 
 	if (count < 8)
 	{
-		return -EINVAL;
+		return -L_EINVAL;
 	}
 
 	WaitForSingleObject(efd->efd_mutex, INFINITE);
@@ -203,7 +203,7 @@ static size_t eventfd_write(struct file *f, const void *buf, size_t count)
 
 		if (efd->efd_flags & EFD_NONBLOCK)
 		{
-			return -EAGAIN;
+			return -L_EAGAIN;
 		}
 		else
 		{

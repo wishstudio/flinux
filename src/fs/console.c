@@ -1357,7 +1357,7 @@ static size_t console_read(struct file *f, void *b, size_t count)
 			if (signal_wait(1, &console->in, INFINITE) == WAIT_INTERRUPTED)
 			{
 				if (bytes_read == 0)
-					bytes_read = -EINTR;
+					bytes_read = -L_EINTR;
 				break;
 			}
 			ReadConsoleInputA(console->in, &ir, 1, &read);
@@ -1428,7 +1428,7 @@ static size_t console_read(struct file *f, void *b, size_t count)
 				if (r == WAIT_INTERRUPTED)
 				{
 					if (bytes_read == 0)
-						bytes_read = -EINTR;
+						bytes_read = -L_EINTR;
 					break;
 				}
 			}
@@ -1438,7 +1438,7 @@ static size_t console_read(struct file *f, void *b, size_t count)
 				if (signal_wait(1, &console->in, INFINITE) == WAIT_INTERRUPTED)
 				{
 					if (bytes_read == 0)
-						bytes_read = -EINTR;
+						bytes_read = -L_EINTR;
 					break;
 				}
 			}
@@ -1693,7 +1693,7 @@ static int console_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 
 	default:
 		log_error("console: unknown ioctl command: %x\n", cmd);
-		r = -EINVAL;
+		r = -L_EINVAL;
 		break;
 	}
 	console_unlock();

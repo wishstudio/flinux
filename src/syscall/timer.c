@@ -32,7 +32,7 @@ DEFINE_SYSCALL(time, intptr_t *, c)
 {
 	log_info("time(%p)\n", c);
 	if (c && !mm_check_write(c, sizeof(int)))
-		return -EFAULT;
+		return -L_EFAULT;
 	FILETIME systime;
 	GetSystemTimeAsFileTime(&systime);
 	uint64_t t = filetime_to_unix_sec(&systime);
@@ -60,7 +60,7 @@ DEFINE_SYSCALL(nanosleep, const struct timespec *, req, struct timespec *, rem)
 {
 	log_info("nanospeep(0x%p, 0x%p)\n", req, rem);
 	if (!mm_check_read(req, sizeof(struct timespec)) || rem && !mm_check_write(rem, sizeof(struct timespec)))
-		return -EFAULT;
+		return -L_EFAULT;
 	LARGE_INTEGER delay_interval;
 	delay_interval.QuadPart = 0ULL - (((uint64_t)req->tv_sec * 1000000000ULL + req->tv_nsec) / 100ULL);
 	NtDelayExecution(FALSE, &delay_interval);
@@ -71,7 +71,7 @@ DEFINE_SYSCALL(clock_gettime, int, clk_id, struct timespec *, tp)
 {
 	log_info("sys_clock_gettime(%d, 0x%p)\n", clk_id, tp);
 	if (!mm_check_write(tp, sizeof(struct timespec)))
-		return -EFAULT;
+		return -L_EFAULT;
 	switch (clk_id)
 	{
 	case CLOCK_REALTIME:
@@ -95,7 +95,7 @@ DEFINE_SYSCALL(clock_gettime, int, clk_id, struct timespec *, tp)
 		return 0;
 	}
 	default:
-		return -EINVAL;
+		return -L_EINVAL;
 	}
 }
 
@@ -103,7 +103,7 @@ DEFINE_SYSCALL(clock_getres, int, clk_id, struct timespec *, res)
 {
 	log_info("clock_getres(%d, 0x%p)\n", clk_id, res);
 	if (!mm_check_write(res, sizeof(struct timespec)))
-		return -EFAULT;
+		return -L_EFAULT;
 	switch (clk_id)
 	{
 	case CLOCK_REALTIME:
@@ -135,7 +135,7 @@ DEFINE_SYSCALL(clock_getres, int, clk_id, struct timespec *, res)
 		return 0;
 	}
 	default:
-		return -EINVAL;
+		return -L_EINVAL;
 	}
 }
 

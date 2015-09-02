@@ -225,7 +225,7 @@ static int dsp_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 	{
 		if (!mm_check_read((int *)arg, sizeof(int)))
 		{
-			r = -EFAULT;
+			r = -L_EFAULT;
 			break;
 		}
 		int speed = *(int *)arg;
@@ -236,7 +236,7 @@ static int dsp_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 		{
 			log_warning("Speed not supported.\n");
 			dsp->format.nSamplesPerSec = old_speed;
-			r = -EINVAL;
+			r = -L_EINVAL;
 		}
 		break;
 	}
@@ -244,7 +244,7 @@ static int dsp_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 	{
 		if (!mm_check_read((int *)arg, sizeof(int)))
 		{
-			r = -EFAULT;
+			r = -L_EFAULT;
 			break;
 		}
 		int c = *(int *)arg;
@@ -256,7 +256,7 @@ static int dsp_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 		else
 		{
 			log_warning("Invalid argument (can only be 0 or 1).\n");
-			r = -EINVAL;
+			r = -L_EINVAL;
 		}
 		break;
 	}
@@ -264,7 +264,7 @@ static int dsp_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 	{
 		if (!mm_check_read((int *)arg, sizeof(int)))
 		{
-			r = -EFAULT;
+			r = -L_EFAULT;
 			break;
 		}
 		int fmt = *(int *)arg;
@@ -276,7 +276,7 @@ static int dsp_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 		else
 		{
 			log_warning("Invalid argument (can only be AFMT_S16_LE or AFMT_U8).\n");
-			r = -EINVAL;
+			r = -L_EINVAL;
 		}
 		break;
 	}
@@ -284,7 +284,7 @@ static int dsp_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 	{
 		if (!mm_check_write((int *)arg, sizeof(int)))
 		{
-			r = -EFAULT;
+			r = -L_EFAULT;
 			break;
 		}
 		log_info("SNDCTL_DSP_GETFMTS\n");

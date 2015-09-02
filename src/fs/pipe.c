@@ -61,7 +61,7 @@ static size_t pipe_read(struct file *f, void *buf, size_t count)
 	if (!pipe->is_read)
 	{
 		log_warning("read() on pipe write end.\n");
-		r = -EBADF;
+		r = -L_EBADF;
 		goto out;
 	}
 	size_t num_read;
@@ -73,7 +73,7 @@ static size_t pipe_read(struct file *f, void *buf, size_t count)
 			r = 0;
 			goto out;
 		}
-		r = -EIO;
+		r = -L_EIO;
 		goto out;
 	}
 	r = num_read;
@@ -90,7 +90,7 @@ static size_t pipe_write(struct file *f, const void *buf, size_t count)
 	if (pipe->is_read)
 	{
 		log_warning("write() on pipe read end.\n");
-		r = -EBADF;
+		r = -L_EBADF;
 	}
 	size_t num_written;
 	if (!WriteFile(pipe->handle, buf, count, &num_written, NULL))
@@ -99,10 +99,10 @@ static size_t pipe_write(struct file *f, const void *buf, size_t count)
 		{
 			log_info("Write failed: broken pipe.\n");
 			/* TODO: Send SIGPIPE signal */
-			r = -EPIPE;
+			r = -L_EPIPE;
 			goto out;
 		}
-		r = -EIO;
+		r = -L_EIO;
 		goto out;
 	}
 	r = num_written;
@@ -113,7 +113,7 @@ out:
 
 static int pipe_llseek(struct file *f, loff_t offset, loff_t *newoffset, int whence)
 {
-	return -ESPIPE;
+	return -L_ESPIPE;
 }
 
 static int pipe_stat(struct file *f, struct newstat *buf)
@@ -166,7 +166,7 @@ int pipe_alloc(struct file **fread, struct file **fwrite, int flags)
 	if (!CreatePipe(&read_handle, &write_handle, &attr, 0))
 	{
 		log_warning("CreatePipe() failed, error code: %d\n");
-		return -EMFILE; /* TODO: Find an appropriate flag */
+		return -L_EMFILE; /* TODO: Find an appropriate flag */
 	}
 	*fread = pipe_create_file(read_handle, 1, flags);
 	*fwrite = pipe_create_file(write_handle, 0, flags);

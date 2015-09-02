@@ -51,7 +51,7 @@ static int translate_address_family(int af)
 	case LINUX_AF_INET6: return AF_INET6;
 	default:
 		log_error("Unknown af: %d\n", af);
-		return -EAFNOSUPPORT;
+		return -L_EAFNOSUPPORT;
 	}
 }
 
@@ -60,46 +60,46 @@ static int translate_socket_error(int error)
 	switch (error)
 	{
 	case 0: return 0;
-	case WSA_NOT_ENOUGH_MEMORY: return -ENOMEM;
-	case WSAEINTR: return -EINTR;
-	case WSAEBADF: return -EBADF;
-	case WSAEACCES: return -EACCES;
-	case WSAEFAULT: return -EFAULT;
-	case WSAEINVAL: return -EINVAL;
-	case WSAEMFILE: return -EMFILE;
-	case WSAEWOULDBLOCK: return -EWOULDBLOCK;
-	case WSAEALREADY: return -EALREADY;
-	case WSAENOTSOCK: return -ENOTSOCK;
-	case WSAEDESTADDRREQ: return -EDESTADDRREQ;
-	case WSAEMSGSIZE: return -EMSGSIZE;
-	case WSAEPROTOTYPE: return -EPROTOTYPE;
-	case WSAENOPROTOOPT: return -ENOPROTOOPT;
-	case WSAEPROTONOSUPPORT: return -EPROTONOSUPPORT;
-	case WSAESOCKTNOSUPPORT: return -EPROTONOSUPPORT;
-	case WSAEOPNOTSUPP: return -EOPNOTSUPP;
-	case WSAEPFNOSUPPORT: return -EAFNOSUPPORT;
-	case WSAEAFNOSUPPORT: return -EAFNOSUPPORT;
-	case WSAEADDRINUSE: return -EADDRINUSE;
-	case WSAEADDRNOTAVAIL: return -EADDRNOTAVAIL;
-	case WSAENETDOWN: return -ENETDOWN;
-	case WSAENETUNREACH: return -ENETUNREACH;
-	case WSAENETRESET: return -ENETRESET;
-	case WSAECONNABORTED: return -ECONNABORTED;
-	case WSAECONNRESET: return -ECONNRESET;
-	case WSAENOBUFS: return -ENOBUFS;
-	case WSAEISCONN: return -EISCONN;
-	case WSAENOTCONN: return -ENOTCONN;
-	case WSAETIMEDOUT: return -ETIMEDOUT;
-	case WSAECONNREFUSED: return -ECONNREFUSED;
-	case WSAELOOP: return -ELOOP;
-	case WSAENAMETOOLONG: return -ENAMETOOLONG;
-	case WSAEHOSTDOWN: return -ETIMEDOUT;
-	case WSAEHOSTUNREACH: return -EHOSTUNREACH;
-	case WSAENOTEMPTY: return -ENOTEMPTY;
-	case WSAECANCELLED: return -ECANCELED;
+	case WSA_NOT_ENOUGH_MEMORY: return -L_ENOMEM;
+	case WSAEINTR: return -L_EINTR;
+	case WSAEBADF: return -L_EBADF;
+	case WSAEACCES: return -L_EACCES;
+	case WSAEFAULT: return -L_EFAULT;
+	case WSAEINVAL: return -L_EINVAL;
+	case WSAEMFILE: return -L_EMFILE;
+	case WSAEWOULDBLOCK: return -L_EWOULDBLOCK;
+	case WSAEALREADY: return -L_EALREADY;
+	case WSAENOTSOCK: return -L_ENOTSOCK;
+	case WSAEDESTADDRREQ: return -L_EDESTADDRREQ;
+	case WSAEMSGSIZE: return -L_EMSGSIZE;
+	case WSAEPROTOTYPE: return -L_EPROTOTYPE;
+	case WSAENOPROTOOPT: return -L_ENOPROTOOPT;
+	case WSAEPROTONOSUPPORT: return -L_EPROTONOSUPPORT;
+	case WSAESOCKTNOSUPPORT: return -L_EPROTONOSUPPORT;
+	case WSAEOPNOTSUPP: return -L_EOPNOTSUPP;
+	case WSAEPFNOSUPPORT: return -L_EPFNOSUPPORT;
+	case WSAEAFNOSUPPORT: return -L_EAFNOSUPPORT;
+	case WSAEADDRINUSE: return -L_EADDRINUSE;
+	case WSAEADDRNOTAVAIL: return -L_EADDRNOTAVAIL;
+	case WSAENETDOWN: return -L_ENETDOWN;
+	case WSAENETUNREACH: return -L_ENETUNREACH;
+	case WSAENETRESET: return -L_ENETRESET;
+	case WSAECONNABORTED: return -L_ECONNABORTED;
+	case WSAECONNRESET: return -L_ECONNRESET;
+	case WSAENOBUFS: return -L_ENOBUFS;
+	case WSAEISCONN: return -L_EISCONN;
+	case WSAENOTCONN: return -L_ENOTCONN;
+	case WSAETIMEDOUT: return -L_ETIMEDOUT;
+	case WSAECONNREFUSED: return -L_ECONNREFUSED;
+	case WSAELOOP: return -L_ELOOP;
+	case WSAENAMETOOLONG: return -L_ENAMETOOLONG;
+	case WSAEHOSTDOWN: return -L_ETIMEDOUT;
+	case WSAEHOSTUNREACH: return -L_EHOSTUNREACH;
+	case WSAENOTEMPTY: return -L_ENOTEMPTY;
+	case WSAECANCELLED: return -L_ECANCELED;
 	default:
 		log_error("Unhandled WSA error code: %d\n", error);
-		return -EIO;
+		return -L_EIO;
 	}
 }
 
@@ -245,9 +245,9 @@ static int socket_wait_event(struct socket_file *f, int event, int flags)
 		if (e & event)
 			return 0;
 		if ((f->base_file.flags & O_NONBLOCK) || (flags & LINUX_MSG_DONTWAIT))
-			return -EWOULDBLOCK;
+			return -L_EWOULDBLOCK;
 		if (signal_wait(1, &f->event_handle, INFINITE) == WAIT_INTERRUPTED)
-			return -EINTR;
+			return -L_EINTR;
 	} while (1);
 }
 
@@ -259,7 +259,7 @@ static int socket_sendto(struct socket_file *f, const void *buf, size_t len, int
 	if (addrlen)
 	{
 		if ((addrlen = translate_socket_addr_to_winsock((const struct sockaddr_storage *)dest_addr, &addr_storage, addrlen)) == SOCKET_ERROR)
-			return -EINVAL;
+			return -L_EINVAL;
 		dest_addr = (const struct sockaddr *)&addr_storage;
 	}
 	else
@@ -296,7 +296,7 @@ static int socket_sendmsg(struct socket_file *f, const struct msghdr *msg, int f
 	if (msg->msg_namelen)
 	{
 		if ((wsamsg.namelen = translate_socket_addr_to_winsock(msg->msg_name, &addr_storage, msg->msg_namelen)) == SOCKET_ERROR)
-			return -EINVAL;
+			return -L_EINVAL;
 		wsamsg.name = (LPSOCKADDR)&addr_storage;
 	}
 	else
@@ -391,7 +391,7 @@ static int socket_recvmsg(struct socket_file *f, struct msghdr *msg, int flags)
 		if (WSAIoctl(f->socket, SIO_GET_EXTENSION_FUNCTION_POINTER, &guid, sizeof(guid), &WSARecvMsg, sizeof(WSARecvMsg), &bytes, NULL, NULL) == SOCKET_ERROR)
 		{
 			log_error("WSAIoctl(WSARecvMsg) failed, error code: %d\n", WSAGetLastError());
-			return -EIO;
+			return -L_EIO;
 		}
 	}
 
@@ -495,9 +495,9 @@ static int get_sockfd(int fd, struct socket_file **sock)
 {
 	struct file *f = vfs_get(fd);
 	if (!f)
-		return -EBADF;
+		return -L_EBADF;
 	if (f->op_vtable != &socket_ops)
-		return -ENOTSOCK;
+		return -L_ENOTSOCK;
 	*sock = (struct socket_file *)f;
 	return 0;
 }
@@ -560,7 +560,7 @@ DEFINE_SYSCALL(socket, int, domain, int, type, int, protocol)
 	case LINUX_SOCK_SEQPACKET: win32_type = SOCK_SEQPACKET; break;
 	default:
 		log_error("Unknown type: %d\n", type & LINUX_SOCK_TYPE_MASK);
-		return -EPROTONOSUPPORT;
+		return -L_EPROTONOSUPPORT;
 	}
 
 	SOCKET sock = socket(win32_af, win32_type, protocol);
@@ -574,7 +574,7 @@ DEFINE_SYSCALL(socket, int, domain, int, type, int, protocol)
 	{
 		closesocket(sock);
 		log_error("init_socket_event() failed.\n");
-		return -ENFILE;
+		return -L_ENFILE;
 	}
 
 	struct socket_file *f = (struct socket_file *) kmalloc(sizeof(struct socket_file));
@@ -599,7 +599,7 @@ DEFINE_SYSCALL(connect, int, sockfd, const struct sockaddr *, addr, size_t, addr
 {
 	log_info("connect(%d, %p, %d)\n", sockfd, addr, addrlen);
 	if (!mm_check_read(addr, sizeof(struct sockaddr)))
-		return -EFAULT;
+		return -L_EFAULT;
 	struct socket_file *f;
 	int r = get_sockfd(sockfd, &f);
 	if (r)
@@ -608,7 +608,7 @@ DEFINE_SYSCALL(connect, int, sockfd, const struct sockaddr *, addr, size_t, addr
 	struct sockaddr_storage addr_storage;
 	int addr_storage_len;
 	if ((addr_storage_len = translate_socket_addr_to_winsock((const struct sockaddr_storage *)addr, &addr_storage, addrlen)) == SOCKET_ERROR)
-		r = -EINVAL;
+		r = -L_EINVAL;
 	else if (connect(f->socket, (struct sockaddr *)&addr_storage, addr_storage_len) == SOCKET_ERROR)
 	{
 		int err = WSAGetLastError();
@@ -620,7 +620,7 @@ DEFINE_SYSCALL(connect, int, sockfd, const struct sockaddr *, addr, size_t, addr
 		else if ((f->base_file.flags & O_NONBLOCK) > 0)
 		{
 			log_info("connect() returned EINPROGRESS.\n");
-			r = -EINPROGRESS;
+			r = -L_EINPROGRESS;
 		}
 		else
 		{
@@ -637,9 +637,9 @@ DEFINE_SYSCALL(getsockname, int, sockfd, struct sockaddr *, addr, int *, addrlen
 {
 	log_info("getsockname(%d, %p, %p)\n", sockfd, addr, addrlen);
 	if (!mm_check_write(addrlen, sizeof(*addrlen)))
-		return -EFAULT;
+		return -L_EFAULT;
 	if (!mm_check_write(addr, *addrlen))
-		return -EFAULT;
+		return -L_EFAULT;
 	struct socket_file *f;
 	int r = get_sockfd(sockfd, &f);
 	if (r)
@@ -675,7 +675,7 @@ DEFINE_SYSCALL(getsockname, int, sockfd, struct sockaddr *, addr, int *, addrlen
 			}
 
 			default:
-				r = -EOPNOTSUPP;
+				r = -L_EOPNOTSUPP;
 				goto out;
 			}
 		}
@@ -699,9 +699,9 @@ DEFINE_SYSCALL(getpeername, int, sockfd, struct sockaddr *, addr, int *, addrlen
 {
 	log_info("getpeername(%d, %p, %p)\n", sockfd, addr, addrlen);
 	if (!mm_check_write(addrlen, sizeof(*addrlen)))
-		return -EFAULT;
+		return -L_EFAULT;
 	if (!mm_check_write(addr, *addrlen))
-		return -EFAULT;
+		return -L_EFAULT;
 	struct socket_file *f;
 	int r = get_sockfd(sockfd, &f);
 	if (r)
@@ -729,7 +729,7 @@ DEFINE_SYSCALL(send, int, sockfd, const void *, buf, size_t, len, int, flags)
 {
 	log_info("send(%d, %p, %d, %x)\n", sockfd, buf, len, flags);
 	if (!mm_check_read(buf, len))
-		return -EFAULT;
+		return -L_EFAULT;
 	struct socket_file *f;
 	int r = get_sockfd(sockfd, &f);
 	if (r)
@@ -745,7 +745,7 @@ DEFINE_SYSCALL(recv, int, sockfd, void *, buf, size_t, len, int, flags)
 {
 	log_info("recv(%d, %p, %d, %x)\n", sockfd, buf, len, flags);
 	if (!mm_check_write(buf, len))
-		return -EFAULT;
+		return -L_EFAULT;
 	struct socket_file *f;
 	int r = get_sockfd(sockfd, &f);
 	if (r)
@@ -761,9 +761,9 @@ DEFINE_SYSCALL(sendto, int, sockfd, const void *, buf, size_t, len, int, flags, 
 {
 	log_info("sendto(%d, %p, %d, %x, %p, %d)\n", sockfd, buf, len, flags, dest_addr, addrlen);
 	if (!mm_check_read(buf, len))
-		return -EFAULT;
+		return -L_EFAULT;
 	if (dest_addr && !mm_check_read(dest_addr, addrlen))
-		return -EFAULT;
+		return -L_EFAULT;
 	struct socket_file *f;
 	int r = get_sockfd(sockfd, &f);
 	if (r)
@@ -779,13 +779,13 @@ DEFINE_SYSCALL(recvfrom, int, sockfd, void *, buf, size_t, len, int, flags, stru
 {
 	log_info("recvfrom(%d, %p, %d, %x, %p, %p)\n", sockfd, buf, len, flags, src_addr, addrlen);
 	if (!mm_check_write(buf, len))
-		return -EFAULT;
+		return -L_EFAULT;
 	if (src_addr)
 	{
 		if (!mm_check_write(addrlen, sizeof(*addrlen)))
-			return -EFAULT;
+			return -L_EFAULT;
 		if (!mm_check_write(src_addr, *addrlen))
-			return -EFAULT;
+			return -L_EFAULT;
 	}
 	struct socket_file *f;
 	int r = get_sockfd(sockfd, &f);
@@ -815,7 +815,7 @@ DEFINE_SYSCALL(shutdown, int, sockfd, int, how)
 		win32_how = SD_BOTH;
 	else
 	{
-		r = -EINVAL;
+		r = -L_EINVAL;
 		goto out;
 	}
 	if (shutdown(f->socket, win32_how) == SOCKET_ERROR)
@@ -896,7 +896,7 @@ static int socket_get_set_sockopt(int call, struct socket_file *f, int level, in
 	}
 	}
 	log_error("Unhandled sockopt level %d, optname %d\n", in_level, in_optname);
-	return -EINVAL;
+	return -L_EINVAL;
 
 get_set_sockopt:
 	/* The default case */
@@ -924,7 +924,7 @@ DEFINE_SYSCALL(setsockopt, int, sockfd, int, level, int, optname, const void *, 
 {
 	log_info("setsockopt(%d, %d, %d, %p, %d)\n", sockfd, level, optname, optval, optlen);
 	if (optval && !mm_check_read(optval, optlen))
-		return -EFAULT;
+		return -L_EFAULT;
 	struct socket_file *f;
 	int r = get_sockfd(sockfd, &f);
 	if (r)
@@ -940,9 +940,9 @@ DEFINE_SYSCALL(getsockopt, int, sockfd, int, level, int, optname, void *, optval
 {
 	log_info("getsockopt(%d, %d, %d, %p, %p)\n", sockfd, level, optname, optval, optlen);
 	if (optlen && !mm_check_write(optlen, sizeof(*optlen)))
-		return -EFAULT;
+		return -L_EFAULT;
 	if (optlen && !mm_check_write(optval, *optlen))
-		return -EFAULT;
+		return -L_EFAULT;
 	struct socket_file *f;
 	int r = get_sockfd(sockfd, &f);
 	if (r)
@@ -958,7 +958,7 @@ DEFINE_SYSCALL(sendmsg, int, sockfd, const struct msghdr *, msg, int, flags)
 {
 	log_info("sendmsg(%d, %p, %x)\n", sockfd, msg, flags);
 	if (!mm_check_read_msghdr(msg))
-		return -EFAULT;
+		return -L_EFAULT;
 	struct socket_file *f;
 	int r = get_sockfd(sockfd, &f);
 	if (r)
@@ -974,7 +974,7 @@ DEFINE_SYSCALL(recvmsg, int, sockfd, struct msghdr *, msg, int, flags)
 {
 	log_info("recvmsg(%d, %p, %x)\n", sockfd, msg, flags);
 	if (!mm_check_write_msghdr(msg))
-		return -EFAULT;
+		return -L_EFAULT;
 	struct socket_file *f;
 	int r = get_sockfd(sockfd, &f);
 	if (r < 0)
@@ -990,12 +990,12 @@ DEFINE_SYSCALL(sendmmsg, int, sockfd, struct mmsghdr *, msgvec, unsigned int, vl
 {
 	log_info("sendmmsg(sockfd=%d, msgvec=%p, vlen=%d, flags=%d)\n", sockfd, msgvec, vlen, flags);
 	if (!mm_check_write(msgvec, sizeof(struct mmsghdr) * vlen))
-		return -EFAULT;
+		return -L_EFAULT;
 	for (int i = 0; i < vlen; i++)
 	{
 		log_info("msgvec %d:\n", i);
 		if (!mm_check_read_msghdr(&msgvec[i].msg_hdr))
-			return -EFAULT;
+			return -L_EFAULT;
 	}
 	struct socket_file *f;
 	int r = get_sockfd(sockfd, &f);
@@ -1013,7 +1013,7 @@ DEFINE_SYSCALL(sendmmsg, int, sockfd, struct mmsghdr *, msgvec, unsigned int, vl
 		}
 		if (i == 0 && len == 0)
 		{
-			r = -EWOULDBLOCK;
+			r = -L_EWOULDBLOCK;
 			goto out;
 		}
 		if (len <= 0)
@@ -1050,9 +1050,9 @@ static const unsigned char nargs[21] = {
 DEFINE_SYSCALL(socketcall, int, call, uintptr_t *, args)
 {
 	if (call < 1 || call > SYS_SENDMMSG)
-		return -EINVAL;
+		return -L_EINVAL;
 	if (!mm_check_read(args, nargs[call]))
-		return -EFAULT;
+		return -L_EFAULT;
 	switch (call)
 	{
 	case SYS_SOCKET:
@@ -1100,7 +1100,7 @@ DEFINE_SYSCALL(socketcall, int, call, uintptr_t *, args)
 	default:
 	{
 		log_error("Unimplemented socketcall: %d\n", call);
-		return -EINVAL;
+		return -L_EINVAL;
 	}
 	}
 }

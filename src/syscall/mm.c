@@ -968,39 +968,39 @@ void mm_afterfork_child()
 static void *mmap_internal(void *addr, size_t length, int prot, int flags, int internal_flags, struct file *f, off_t offset_pages)
 {
 	if (length == 0)
-		return (void*)-EINVAL;
+		return (void*)-L_EINVAL;
 	length = ALIGN_TO_PAGE(length);
 	if ((size_t)addr < ADDRESS_SPACE_LOW || (size_t)addr >= ADDRESS_SPACE_HIGH
 		|| (size_t)addr + length < ADDRESS_SPACE_LOW || (size_t)addr + length >= ADDRESS_SPACE_HIGH
 		|| (size_t)addr + length < (size_t)addr)
-		return (void*)-EINVAL;
+		return (void*)-L_EINVAL;
 	if ((flags & MAP_ANONYMOUS) && f != NULL)
 	{
 		log_error("MAP_ANONYMOUS with file descriptor.\n");
-		return (void*)-EINVAL;
+		return (void*)-L_EINVAL;
 	}
 	if (!(flags & MAP_ANONYMOUS) && f == NULL)
 	{
 		log_error("MAP_FILE with bad file descriptor.\n");
-		return (void*)-EBADF;
+		return (void*)-L_EBADF;
 	}
 	if ((internal_flags & INTERNAL_MAP_COPYONFORK) &&
 		(!IS_ALIGNED(addr, BLOCK_SIZE) || !IS_ALIGNED(length, BLOCK_SIZE)))
 	{
 		log_error("INTERNAL_MAP_COPYONFORK memory regions must be aligned on entire blocks.\n");
-		return (void*)-EINVAL;
+		return (void*)-L_EINVAL;
 	}
 	if ((flags & MAP_FIXED))
 	{
 		if ((flags & MAP_SHARED) && !IS_ALIGNED(addr, BLOCK_SIZE))
 		{
 			log_error("MAP_SHARED with non-64kB aligned MAP_FIXED address is unsupported.\n");
-			return (void*)-ENOMEM;
+			return (void*)-L_ENOMEM;
 		}
 		if (!IS_ALIGNED(addr, PAGE_SIZE))
 		{
 			log_warning("Not page-aligned addr with MAP_FIXED.\n");
-			return (void*)-EINVAL;
+			return (void*)-L_EINVAL;
 		}
 		if (!IS_ALIGNED(addr, BLOCK_SIZE))
 		{
@@ -1014,7 +1014,7 @@ static void *mmap_internal(void *addr, size_t length, int prot, int flags, int i
 					&& GET_BLOCK_OF_PAGE(prev_entry->end_page) == GET_BLOCK(addr))
 				{
 					log_error("MAP_FIXED addr collides with an existing MAP_SHARED memory region.\n");
-					return (void*)-ENOMEM;
+					return (void*)-L_ENOMEM;
 				}
 			}
 		}
@@ -1036,7 +1036,7 @@ static void *mmap_internal(void *addr, size_t length, int prot, int flags, int i
 		if (!alloc_page)
 		{
 			log_error("Cannot find free pages.\n");
-			return (void*)-ENOMEM;
+			return (void*)-L_ENOMEM;
 		}
 
 		addr = GET_PAGE_ADDRESS(alloc_page);
@@ -1069,7 +1069,7 @@ static void *mmap_internal(void *addr, size_t length, int prot, int flags, int i
 				if (end_page < e->start_page)
 					break;
 				else if (start_page <= e->end_page && e->start_page <= end_page)
-					return (void*)-ENOMEM;
+					return (void*)-L_ENOMEM;
 			}
 		}
 		else
@@ -1104,7 +1104,7 @@ static void *mmap_internal(void *addr, size_t length, int prot, int flags, int i
 			log_error("VirtualAlloc(%p, %p) failed, error code: %d\n", GET_PAGE_ADDRESS(start_page),
 				(end_page - start_page + 1) * PAGE_SIZE, GetLastError());
 			mm_dump_windows_memory_mappings(GetCurrentProcess());
-			return (void*)-ENOMEM;
+			return (void*)-L_ENOMEM;
 		}
 	}
 
@@ -1115,7 +1115,7 @@ static void *mmap_internal(void *addr, size_t length, int prot, int flags, int i
 		if (!take_block_ownership(start_block))
 		{
 			log_error("Taking ownership of block %p failed.\n", start_block);
-			return (void*)-ENOMEM;
+			return (void*)-L_ENOMEM;
 		}
 		size_t last_page = GET_LAST_PAGE_OF_BLOCK(start_block);
 		last_page = min(last_page, end_page);
@@ -1131,7 +1131,7 @@ static void *mmap_internal(void *addr, size_t length, int prot, int flags, int i
 		if (!take_block_ownership(end_block))
 		{
 			log_error("Taking ownership of block %p failed.\n", start_block);
-			return (void*)-ENOMEM;
+			return (void*)-L_ENOMEM;
 		}
 		size_t first_page = GET_FIRST_PAGE_OF_BLOCK(end_block);
 		DWORD oldProtect;
@@ -1156,13 +1156,13 @@ static int munmap_internal(void *addr, size_t length)
 {
 	/* TODO: We should mark NOACCESS for munmap()-ed but not VirtualFree()-ed pages */
 	if (!IS_ALIGNED(addr, PAGE_SIZE))
-		return -EINVAL;
+		return -L_EINVAL;
 	length = ALIGN_TO_PAGE(length);
 	if ((size_t)addr < ADDRESS_SPACE_LOW || (size_t)addr >= ADDRESS_SPACE_HIGH
 		|| (size_t)addr + length < ADDRESS_SPACE_LOW || (size_t)addr + length >= ADDRESS_SPACE_HIGH
 		|| (size_t)addr + length < (size_t)addr)
 	{
-		return -EINVAL;
+		return -L_EINVAL;
 	}
 
 	size_t start_page = GET_PAGE(addr);
@@ -1241,7 +1241,7 @@ DEFINE_SYSCALL(mmap, void *, addr, size_t, length, int, prot, int, flags, int, f
 	log_info("mmap(%p, %p, %x, %x, %d, %p)\n", addr, length, prot, flags, fd, offset);
 	/* TODO: Initialize mapped area to zero */
 	if (!IS_ALIGNED(offset, PAGE_SIZE))
-		return -EINVAL;
+		return -L_EINVAL;
 	struct file *f = vfs_get(fd);
 	intptr_t r = (intptr_t)mm_mmap(addr, length, prot, flags, 0, f, offset / PAGE_SIZE);
 	if (f)
@@ -1288,7 +1288,7 @@ DEFINE_SYSCALL(mprotect, void *, addr, size_t, length, int, prot)
 	AcquireSRWLockExclusive(&mm->rw_lock);
 	if (!IS_ALIGNED(addr, PAGE_SIZE))
 	{
-		r = -EINVAL;
+		r = -L_EINVAL;
 		goto out;
 	}
 	length = ALIGN_TO_PAGE(length);
@@ -1296,7 +1296,7 @@ DEFINE_SYSCALL(mprotect, void *, addr, size_t, length, int, prot)
 		|| (size_t)addr + length < ADDRESS_SPACE_LOW || (size_t)addr + length >= ADDRESS_SPACE_HIGH
 		|| (size_t)addr + length < (size_t)addr)
 	{
-		r = -EINVAL;
+		r = -L_EINVAL;
 		goto out;
 	}
 	/* Validate all pages are mapped */
@@ -1318,7 +1318,7 @@ DEFINE_SYSCALL(mprotect, void *, addr, size_t, length, int, prot)
 	}
 	if (last_page < end_page)
 	{
-		r = -ENOMEM;
+		r = -L_ENOMEM;
 		goto out;
 	}
 
@@ -1358,7 +1358,7 @@ DEFINE_SYSCALL(mprotect, void *, addr, size_t, length, int, prot)
 	if (!mm_change_protection(GetCurrentProcess(), start_page, end_page, prot & ~PROT_WRITE))
 	{
 		/* We remove the write protection in case the pages are already shared */
-		r = -ENOMEM; /* TODO */
+		r = -L_ENOMEM; /* TODO */
 		goto out;
 	}
 
@@ -1371,7 +1371,7 @@ DEFINE_SYSCALL(msync, void *, addr, size_t, len, int, flags)
 {
 	log_info("msync(0x%p, 0x%p, %d)\n", addr, len, flags);
 	log_error("msync() not implemented.\n");
-	return -ENOSYS;
+	return -L_ENOSYS;
 }
 
 static int mm_populate_internal(const void *addr, size_t len)
@@ -1399,7 +1399,7 @@ static int mm_populate_internal(const void *addr, size_t len)
 				else
 				{
 					if (!allocate_block(i))
-						return -ENOMEM;
+						return -L_ENOMEM;
 					size_t first_page = max(range_start, GET_FIRST_PAGE_OF_BLOCK(i));
 					size_t last_page = min(range_end, GET_LAST_PAGE_OF_BLOCK(i));
 					map_entry_range(e, first_page, last_page);
@@ -1433,7 +1433,7 @@ DEFINE_SYSCALL(mlock, const void *, addr, size_t, len)
 	AcquireSRWLockExclusive(&mm->rw_lock);
 	if (!IS_ALIGNED(addr, PAGE_SIZE))
 	{
-		r = -EINVAL;
+		r = -L_EINVAL;
 		goto out;
 	}
 
@@ -1447,7 +1447,7 @@ DEFINE_SYSCALL(mlock, const void *, addr, size_t, len)
 	if (!VirtualLock((LPVOID)addr, len))
 	{
 		log_warning("VirtualLock() failed, error code: %d\n", GetLastError());
-		r = -ENOMEM;
+		r = -L_ENOMEM;
 		goto out;
 	}
 	ReleaseSRWLockExclusive(&mm->rw_lock);
@@ -1460,11 +1460,11 @@ DEFINE_SYSCALL(munlock, const void *, addr, size_t, len)
 {
 	log_info("munlock(0x%p, 0x%p)\n", addr, len);
 	if (!IS_ALIGNED(addr, PAGE_SIZE))
-		return -EINVAL;
+		return -L_EINVAL;
 	if (!VirtualUnlock((LPVOID)addr, len))
 	{
 		log_warning("VirtualUnlock() failed, error code: %d\n", GetLastError());
-		return -ENOMEM;
+		return -L_ENOMEM;
 	}
 	return 0;
 }
@@ -1473,7 +1473,7 @@ DEFINE_SYSCALL(mremap, void *, old_address, size_t, old_size, size_t, new_size, 
 {
 	log_info("mremap(old_address=%p, old_size=%p, new_size=%p, flags=%x, new_address=%p)\n", old_address, old_size, new_size, flags, new_address);
 	log_error("mremap() not implemented.\n");
-	return -ENOSYS;
+	return -L_ENOSYS;
 }
 
 DEFINE_SYSCALL(madvise, void *, addr, size_t, length, int, advise)

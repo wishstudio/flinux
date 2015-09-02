@@ -56,7 +56,7 @@ int epollfd_ctl_add(struct file *f, int fd, struct epoll_event *event)
 	for (int i = 0; i < epollfd->fd_count; i++)
 		if (epollfd->fds[i].fd == fd)
 		{
-			r = -EEXIST;
+			r = -L_EEXIST;
 			goto out;
 		}
 	/* Add the file */
@@ -82,7 +82,7 @@ int epollfd_ctl_del(struct file *f, int fd)
 			epollfd->fd_count--;
 			goto out;
 		}
-	r = -ENOENT;
+	r = -L_ENOENT;
 out:
 	ReleaseSRWLockExclusive(&epollfd->base_file.rw_lock);
 	return r;
@@ -100,7 +100,7 @@ int epollfd_ctl_mod(struct file *f, int fd, struct epoll_event *event)
 			epollfd->fds[i].event = *event;
 			goto out;
 		}
-	r = -ENOENT;
+	r = -L_ENOENT;
 out:
 	ReleaseSRWLockExclusive(&epollfd->base_file.rw_lock);
 	return r;

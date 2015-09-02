@@ -17,10 +17,10 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <common/errno.h>
 #include <fs/file.h>
 #include <fs/virtual.h>
 #include <syscall/syscall.h>
-#include <errno.h>
 #include <log.h>
 
 #define SystemFunction036 NTAPI SystemFunction036
@@ -31,7 +31,7 @@ DEFINE_SYSCALL(getrandom, void *, buf, size_t, buflen, unsigned int, flags)
 {
 	log_info("getrandom(%p, %d, %x)\n", buf, buflen, flags);
 	if (!mm_check_write(buf, buflen))
-		return -EFAULT;
+		return -L_EFAULT;
 	if (!RtlGenRandom(buf, buflen))
 		return 0;
 	return buflen;

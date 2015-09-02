@@ -54,14 +54,14 @@ static int procfs_pid_open(int dir_tag, const char *name, int namelen, int *file
 {
 	char buf[32];
 	if (namelen >= sizeof(buf))
-		return -ENOENT;
+		return -L_ENOENT;
 	strncpy(buf, name, namelen);
 	buf[namelen] = 0;
 	pid_t pid;
 	if (!katou(buf, &pid))
-		return -ENOENT;
+		return -L_ENOENT;
 	if (!process_pid_exist(pid))
-		return -ENOENT;
+		return -L_ENOENT;
 	*file_tag = pid;
 	*desc = (struct virtualfs_desc *)&proc_pid_desc;
 	return 0;

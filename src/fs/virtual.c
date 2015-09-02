@@ -78,7 +78,7 @@ static int virtualfs_directory_llseek(struct file *f, loff_t offset, loff_t *new
 		r = 0;
 	}
 	else
-		r = -EINVAL;
+		r = -L_EINVAL;
 	ReleaseSRWLockExclusive(&f->rw_lock);
 	return r;
 }
@@ -148,7 +148,7 @@ static int virtualfs_directory_getdents(struct file *f, void *dirent, size_t cou
 				default:
 					log_error("Invalid virtual fs file type. Corrupted internal data structure.\n");
 					__debugbreak();
-					r = -EIO;
+					r = -L_EIO;
 					goto out;
 				}
 			}
@@ -367,7 +367,7 @@ static int virtualfs_text_llseek(struct file *f, loff_t offset, loff_t *newoffse
 	case SEEK_SET: target = offset; break;
 	case SEEK_CUR: target = file->position + offset; break;
 	case SEEK_END: target = file->textlen - offset; break;
-	default: r = -EINVAL; goto out;
+	default: r = -L_EINVAL; goto out;
 	}
 	if (target >= 0 && target < file->textlen)
 	{
@@ -376,7 +376,7 @@ static int virtualfs_text_llseek(struct file *f, loff_t offset, loff_t *newoffse
 		r = 0;
 	}
 	else
-		r = -EINVAL;
+		r = -L_EINVAL;
 out:
 	ReleaseSRWLockExclusive(&f->rw_lock);
 	return r;
@@ -573,7 +573,7 @@ struct virtualfs
 static int virtualfs_open(struct file_system *fs, const char *path, int flags, int mode, struct file **p, char *target, int buflen)
 {
 	if (flags & O_EXCL)
-		return -EPERM;
+		return -L_EPERM;
 	const struct virtualfs_directory_desc *dir = ((struct virtualfs *)fs)->dir;
 	const char *fullpath = path;
 	int tag = 0;
@@ -617,9 +617,9 @@ do_component:;
 			goto do_component;
 		}
 		if (*end)
-			return -ENOTDIR;
+			return -L_ENOTDIR;
 		if (flags & O_DIRECTORY)
-			return -ENOTDIR;
+			return -L_ENOTDIR;
 		if (!p) /* Don't need allocate file */
 			return 0;
 		switch (base_desc->type)
@@ -629,7 +629,7 @@ do_component:;
 			struct virtualfs_custom_desc *desc = (struct virtualfs_custom_desc *)base_desc;
 			*p = desc->alloc();
 			if (*p == NULL)
-				return -ENOENT;
+				return -L_ENOENT;
 			return 0;
 		}
 
@@ -638,7 +638,7 @@ do_component:;
 			struct virtualfs_char_desc *desc = (struct virtualfs_char_desc *)base_desc;
 			*p = virtualfs_char_alloc(desc, tag);
 			if (*p == NULL)
-				return -ENOENT;
+				return -L_ENOENT;
 			return 0;
 		}
 
@@ -647,7 +647,7 @@ do_component:;
 			struct virtualfs_text_desc *desc = (struct virtualfs_text_desc *)base_desc;
 			*p = virtualfs_text_alloc(desc, tag);
 			if (*p == NULL)
-				return -ENOENT;
+				return -L_ENOENT;
 			return 0;
 		}
 
@@ -656,23 +656,23 @@ do_component:;
 			struct virtualfs_param_desc *desc = (struct virtualfs_param_desc *)base_desc;
 			int accmode = flags & O_ACCMODE;
 			if (!desc->get && (accmode == O_RDONLY || accmode == O_RDWR))
-				return -EACCES;
+				return -L_EACCES;
 			if (!desc->set && (accmode == O_WRONLY || accmode == O_RDWR))
-				return -EACCES;
+				return -L_EACCES;
 			*p = virtualfs_param_alloc(desc, tag, flags);
 			if (*p == NULL)
-				return -ENOENT;
+				return -L_ENOENT;
 			return 0;
 		}
 
 		default:
 			log_error("Invalid virtual fs file type. Corrupted internal data structure.\n");
 			__debugbreak();
-			return -ENOENT;
+			return -L_ENOENT;
 		}
 	}
 	log_warning("File not found in virtual fs.\n");
-	return -ENOENT;
+	return -L_ENOENT;
 }
 
 struct file_system *virtualfs_alloc(const char *mountpoint, const struct virtualfs_directory_desc *dir)
