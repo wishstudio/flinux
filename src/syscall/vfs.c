@@ -127,14 +127,6 @@ static void vfs_close(int fd)
 	vfs->filed[fd].cloexec = 0;
 }
 
-static __inline void vfs_handle_fork(struct file *f)
-{
-	if (f && f->op_vtable->after_fork)
-	{
-		f->op_vtable->after_fork(f);
-	}
-}
-
 void vfs_init()
 {
 	log_info("vfs subsystem initializing...\n");
@@ -238,7 +230,9 @@ void vfs_afterfork_child()
 		struct file *f = vfs->filed[index[i]].fd;
 		if (f && f != last)
 		{
-			vfs_handle_fork(f);
+			InitializeSRWLock(&f->rw_lock);
+			if (f->op_vtable->after_fork)
+				f->op_vtable->after_fork(f);
 		}
 		last = f;
 	}
