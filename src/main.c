@@ -34,6 +34,12 @@
 
 #pragma comment(linker,"/entry:main")
 #pragma comment(lib,"delayimp")
+ /* VS 2015 does not pull this in when manually specifying entrypoint, don't know why. */
+#ifdef _DEBUG
+#pragma comment(lib,"libucrtd")
+#else
+#pragma comment(lib,"libucrt")
+#endif
 
 /*
  * Startup data is divided into two parts

@@ -153,5 +153,6 @@ static LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
 
 void install_syscall_handler()
 {
-	AddVectoredExceptionHandler(TRUE, exception_handler);
+	if (!AddVectoredExceptionHandler(TRUE, exception_handler))
+		log_error("AddVectoredExceptionHandler() failed.\n");
 }
