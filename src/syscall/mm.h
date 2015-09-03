@@ -52,8 +52,7 @@
 #define INTERNAL_MAP_TOPDOWN		1	/* Allocate at highest possible address */
 #define INTERNAL_MAP_NOOVERWRITE	2	/* Don't automatically overwrite existing mappings, report error in such case */
 #define INTERNAL_MAP_NORESET		4	/* Don't unmap the memory region at mm_reset() */
-#define INTERNAL_MAP_COPYONFORK		8	/* Make a real copy on forking instead of copying on write
-										 * This will cause the memory region to be allocated via VirtualAlloc() */
+#define INTERNAL_MAP_VIRTUALALLOC	8	/* This will cause the memory region to be allocated via VirtualAlloc() */
 #define INTERNAL_MAP_SHARED			16	/* A MAP_SHARED memory region */
 
 void mm_init();

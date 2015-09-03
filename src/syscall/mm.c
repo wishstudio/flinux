@@ -246,7 +246,7 @@ static void split_map_entry(struct map_entry *e, size_t last_page_of_first_entry
 
 static void free_map_entry_blocks(struct map_entry *e)
 {
-	if (e->flags & INTERNAL_MAP_COPYONFORK)
+	if (e->flags & INTERNAL_MAP_VIRTUALALLOC)
 	{
 		VirtualFree(GET_PAGE_ADDRESS(e->start_page), 0, MEM_RELEASE);
 		return;
@@ -315,7 +315,7 @@ void mm_init()
 	mm_section_handle = VirtualAlloc(NULL, BLOCK_COUNT * sizeof(HANDLE), MEM_RESERVE | MEM_TOP_DOWN, PAGE_READWRITE);
 	/* Initialize static alloc */
 	mm->static_alloc_begin = mm_mmap(NULL, MM_STATIC_ALLOC_SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS,
-		INTERNAL_MAP_TOPDOWN | INTERNAL_MAP_NORESET | INTERNAL_MAP_COPYONFORK, NULL, 0);
+		INTERNAL_MAP_TOPDOWN | INTERNAL_MAP_NORESET | INTERNAL_MAP_VIRTUALALLOC, NULL, 0);
 	mm->static_alloc_end = (uint8_t*)mm->static_alloc_begin + MM_STATIC_ALLOC_SIZE;
 	/* Initialize global shared alloc */
 	LPCWSTR section_name = L"flinux_global_shared";
@@ -894,7 +894,7 @@ int mm_fork(HANDLE process)
 		size_t end_block = GET_BLOCK_OF_PAGE(e->end_page);
 		if (start_block == last_block)
 			start_block++;
-		if (e->flags & INTERNAL_MAP_COPYONFORK)
+		if (e->flags & INTERNAL_MAP_VIRTUALALLOC)
 		{
 			/* Copy on fork memory region */
 			if (!VirtualAllocEx(process, GET_BLOCK_ADDRESS(start_block), (end_block - start_block + 1) * BLOCK_SIZE, MEM_RESERVE | MEM_COMMIT, prot_linux2win(e->prot)))
@@ -984,10 +984,10 @@ static void *mmap_internal(void *addr, size_t length, int prot, int flags, int i
 		log_error("MAP_FILE with bad file descriptor.\n");
 		return (void*)-L_EBADF;
 	}
-	if ((internal_flags & INTERNAL_MAP_COPYONFORK) &&
+	if ((internal_flags & INTERNAL_MAP_VIRTUALALLOC) &&
 		(!IS_ALIGNED(addr, BLOCK_SIZE) || !IS_ALIGNED(length, BLOCK_SIZE)))
 	{
-		log_error("INTERNAL_MAP_COPYONFORK memory regions must be aligned on entire blocks.\n");
+		log_error("INTERNAL_MAP_VIRTUALALLOC memory regions must be aligned on entire blocks.\n");
 		return (void*)-L_EINVAL;
 	}
 	if ((flags & MAP_FIXED))
@@ -1022,7 +1022,7 @@ static void *mmap_internal(void *addr, size_t length, int prot, int flags, int i
 	else /* MAP_FIXED */
 	{
 		bool block_align = false;
-		if ((flags & MAP_SHARED) || (internal_flags & INTERNAL_MAP_COPYONFORK))
+		if ((flags & MAP_SHARED) || (internal_flags & INTERNAL_MAP_VIRTUALALLOC))
 		{
 			/* MAP_SHARED blocks cannot be shared with any other memory regions */
 			/* Copy on fork memory regions are allocated via VirtualAlloc() thus must occupy entire blocks */
@@ -1091,12 +1091,12 @@ static void *mmap_internal(void *addr, size_t length, int prot, int flags, int i
 	entry->flags = 0;
 	if (internal_flags & INTERNAL_MAP_NORESET)
 		entry->flags |= INTERNAL_MAP_NORESET;
-	if (internal_flags & INTERNAL_MAP_COPYONFORK)
-		entry->flags |= INTERNAL_MAP_COPYONFORK;
+	if (internal_flags & INTERNAL_MAP_VIRTUALALLOC)
+		entry->flags |= INTERNAL_MAP_VIRTUALALLOC;
 
 	rb_add(&mm->entry_tree, &entry->tree, map_entry_cmp);
 
-	if (internal_flags & INTERNAL_MAP_COPYONFORK)
+	if (internal_flags & INTERNAL_MAP_VIRTUALALLOC)
 	{
 		/* Allocate the memory now */
 		if (!VirtualAlloc(GET_PAGE_ADDRESS(start_page), (end_page - start_page + 1) * PAGE_SIZE, MEM_RESERVE | MEM_COMMIT, prot_linux2win(prot)))
