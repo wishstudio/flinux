@@ -848,10 +848,7 @@ static void change_private_mode(int mode, int set)
 		else
 		{
 			if (console->out == console->alternate_buffer)
-			{
 				switch_to_normal_buffer();
-				erase_screen(ERASE_SCREEN_BEGIN_TO_END);
-			}
 		}
 		break;
 
@@ -875,10 +872,7 @@ static void change_private_mode(int mode, int set)
 		else
 		{
 			if (console->out == console->alternate_buffer)
-			{
 				switch_to_normal_buffer();
-				erase_screen(ERASE_SCREEN_BEGIN_TO_END);
-			}
 			restore_cursor();
 		}
 		break;
