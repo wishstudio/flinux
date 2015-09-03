@@ -904,21 +904,60 @@ int mm_fork(HANDLE process)
 			start_block++;
 		if (e->flags & INTERNAL_MAP_VIRTUALALLOC)
 		{
-			/* Copy on fork memory region */
+			/* Memory region allocated via VirtualAlloc() */
 			if (!VirtualAllocEx(process, GET_BLOCK_ADDRESS(start_block), (end_block - start_block + 1) * BLOCK_SIZE, MEM_RESERVE | MEM_COMMIT, prot_linux2win(e->prot)))
 			{
 				log_error("VirtualAllocEx() failed, error code: %d\n", GetLastError());
 				mm_dump_windows_memory_mappings(process);
 				return 0;
 			}
+			/* VirtualAlloc()-ed memory blocks are special, they can only be operated as a whole.
+			 * They are never splitted and their protection flags are not stored in e->prot.
+			 * Instead use VirtualQuery() to find out protection flags for each part of the memory block.
+			 */
 			/* Copy memory content to child process */
-			SIZE_T written;
-			if (!WriteProcessMemory(process, GET_BLOCK_ADDRESS(start_block), GET_BLOCK_ADDRESS(start_block),
-				(end_block - start_block + 1) * BLOCK_SIZE, &written))
+			size_t current = e->start_page;
+			while (current <= e->end_page)
 			{
-				log_error("WriteProcessMemory() failed, error code: %d\n", GetLastError());
-				mm_dump_windows_memory_mappings(process);
-				return 0;
+				MEMORY_BASIC_INFORMATION info;
+				if (!VirtualQuery(GET_PAGE_ADDRESS(current), &info, sizeof(info)))
+				{
+					log_error("VirtualQuery(%p) failed, error code: %d\n", current, GetLastError());
+					mm_dump_memory_mappings();
+					mm_dump_windows_memory_mappings(GetCurrentProcess());
+					return 0;
+				}
+				size_t start_page = current;
+				size_t end_page = min(e->end_page, GET_PAGE((size_t)info.BaseAddress + info.RegionSize));
+				//assert(info.State == MEM_COMMIT && info.Type == MEM_PRIVATE);
+				if (info.Protect == PAGE_NOACCESS || info.Protect == 0)
+				{
+					// FIXME: How to handle this case?
+					log_warning("FIXME: PAGE_NOACCESS page ignored for copying. Range: [%p, %p)\n",
+						GET_PAGE_ADDRESS(start_page), GET_PAGE_ADDRESS(end_page + 1));
+				}
+				else
+				{
+					/* TODO: Check unhandled/invalid protections */
+					SIZE_T written;
+					if (!WriteProcessMemory(process, GET_PAGE_ADDRESS(e->start_page), GET_PAGE_ADDRESS(e->start_page),
+						(e->end_page - e->start_page + 1) * PAGE_SIZE, &written))
+					{
+						log_error("WriteProcessMemory() failed, error code: %d\n", GetLastError());
+						mm_dump_windows_memory_mappings(process);
+						return 0;
+					}
+				}
+				/* Change memory protection */
+				DWORD old;
+				if (!VirtualProtectEx(process, GET_PAGE_ADDRESS(start_page), (end_page - start_page + 1) * PAGE_SIZE,
+					info.Protect, &old))
+				{
+					log_error("VirtualProtectEx() failed, error code: %d\n", GetLastError());
+					mm_dump_windows_memory_mappings(process);
+					return 0;
+				}
+				current = end_page + 1;
 			}
 			continue;
 		}
@@ -1042,8 +1081,13 @@ static void *mmap_internal(void *addr, size_t length, int prot, int flags, int i
 		/* Allocate memory immediately */
 		flags |= MAP_POPULATE;
 	}
-	if ((flags & MAP_STACK)) /* We cannot use CoW for stack allocations */
-		internal_flags |= INTERNAL_MAP_COPYONFORK;
+	if ((flags & MAP_STACK))
+	{
+		/* Windows shows strange behaviour when the stack is on a shared section object */
+		/* For example, it sometimes crashes when returning from a blocking system call */
+		/* To avoid this, we always use VirtualAlloc() for holding stacks */
+		internal_flags |= INTERNAL_MAP_VIRTUALALLOC;
+	}
 
 	bool block_align = BLOCK_ALIGNED(internal_flags);
 	if ((flags & MAP_FIXED))
@@ -1379,7 +1423,10 @@ DEFINE_SYSCALL(mprotect, void *, addr, size_t, length, int, prot)
 			size_t range_end = min(end_page, e->end_page);
 			if (range_start > range_end)
 				continue;
-			if ((range_start == e->start_page && range_end == e->end_page) || (e->flags & INTERNAL_MAP_VIRTUALALLOC))
+			/* Do not split VirtualAlloc()-ed memory regions, so we can deal with the entire entry at mm_fork() */
+			if ((e->flags & INTERNAL_MAP_VIRTUALALLOC))
+				continue;
+			if ((range_start == e->start_page && range_end == e->end_page))
 			{
 				/* That's good, the current entry is fully overlapped */
 				e->prot = prot;
