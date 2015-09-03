@@ -446,8 +446,8 @@ static size_t find_free_pages(size_t count, bool block_align)
 		else if (e->end_page >= last)
 		{
 			last = e->end_page + 1;
-			/* MAP_SHARED entries always occupy entire blocks */
-			if (block_align || (e->flags & INTERNAL_MAP_SHARED))
+			/* Make sure not collide with block aligned entries */
+			if (block_align || BLOCK_ALIGNED(e->flags))
 				last = (last + PAGES_PER_BLOCK - 1) & -PAGES_PER_BLOCK;
 		}
 		if (last >= GET_PAGE(ADDRESS_ALLOCATION_HIGH))
@@ -1035,16 +1035,17 @@ static void *mmap_internal(void *addr, size_t length, int prot, int flags, int i
 		log_error("INTERNAL_MAP_VIRTUALALLOC memory regions must be aligned on entire blocks.\n");
 		return (void*)-L_EINVAL;
 	}
+	if ((flags & MAP_SHARED))
+	{
+		/* Translate to internal flag, which will be recorded in entry->flags */
+		internal_flags |= INTERNAL_MAP_SHARED;
+		/* Allocate memory immediately */
+		flags |= MAP_POPULATE;
+	}
 	if ((flags & MAP_STACK)) /* We cannot use CoW for stack allocations */
 		internal_flags |= INTERNAL_MAP_COPYONFORK;
 
-	bool block_align = false;
-	if ((flags & MAP_SHARED) || (internal_flags & INTERNAL_MAP_VIRTUALALLOC) || (internal_flags & INTERNAL_MAP_COPYONFORK))
-	{
-		/* MAP_SHARED and INTERNAL_MAP_COPYONFORK blocks cannot be shared with any other memory regions */
-		/* INTERNAL_MAP_VIRTUALALLOC blocks are allocated via VirtualAlloc() thus must occupy entire blocks */
-		block_align = true;
-	}
+	bool block_align = BLOCK_ALIGNED(internal_flags);
 	if ((flags & MAP_FIXED))
 	{
 		if (block_align && !IS_ALIGNED(addr, BLOCK_SIZE))
@@ -1059,14 +1060,13 @@ static void *mmap_internal(void *addr, size_t length, int prot, int flags, int i
 		}
 		if (!IS_ALIGNED(addr, BLOCK_SIZE))
 		{
-			/* For block unaligned fixed allocation, ensure it does not collide with MAP_SHARED memory regions */
+			/* For block unaligned fixed allocation, ensure it does not collide with block aligned memory regions */
 			/* Get the previous node whose start_page should be less than or equal to current page minus one */
 			struct rb_node *prev_node = start_node(GET_PAGE(addr) - 1);
 			if (prev_node) /* If previous node exists... */
 			{
 				struct map_entry *prev_entry = rb_entry(prev_node, struct map_entry, tree);
-				if ((prev_entry->flags & INTERNAL_MAP_SHARED)
-					&& GET_BLOCK_OF_PAGE(prev_entry->end_page) == GET_BLOCK(addr))
+				if (BLOCK_ALIGNED(prev_entry->flags) && GET_BLOCK_OF_PAGE(prev_entry->end_page) == GET_BLOCK(addr))
 				{
 					log_error("MAP_FIXED addr collides with an existing MAP_SHARED memory region.\n");
 					return (void*)-L_ENOMEM;
@@ -1088,11 +1088,6 @@ static void *mmap_internal(void *addr, size_t length, int prot, int flags, int i
 		}
 
 		addr = GET_PAGE_ADDRESS(alloc_page);
-	}
-	if ((flags & MAP_SHARED))
-	{
-		/* Allocate memory for now */
-		flags |= MAP_POPULATE;
 	}
 
 	size_t start_page = GET_PAGE(addr);
@@ -1384,7 +1379,7 @@ DEFINE_SYSCALL(mprotect, void *, addr, size_t, length, int, prot)
 			size_t range_end = min(end_page, e->end_page);
 			if (range_start > range_end)
 				continue;
-			if (range_start == e->start_page && range_end == e->end_page)
+			if ((range_start == e->start_page && range_end == e->end_page) || (e->flags & INTERNAL_MAP_VIRTUALALLOC))
 			{
 				/* That's good, the current entry is fully overlapped */
 				e->prot = prot;
