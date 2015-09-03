@@ -133,10 +133,23 @@ static int map_entry_cmp(const struct rb_node *l, const struct rb_node *r)
 		return 1;
 }
 
+struct mm_munmap_list_entry
+{
+	void *addr;
+	size_t length;
+	struct mm_munmap_list_entry *next;
+};
+
 struct mm_data
 {
 	/* RW lock for multi-threading protection */
 	SRWLOCK rw_lock;
+
+	/* Thread ID for recursive munmap */
+	DWORD thread_id;
+
+	/* Recursive munmap block list */
+	struct mm_munmap_list_entry *munmap_list;
 
 	/* Program break address, brk() will use this */
 	void *brk;
@@ -191,6 +204,27 @@ static __forceinline void remove_section_handle(size_t i)
 	size_t t = GET_SECTION_TABLE(i);
 	if (--mm->section_table_handle_count[t] == 0)
 		VirtualFree(&mm_section_handle[t * SECTION_HANDLE_PER_TABLE], BLOCK_SIZE, MEM_DECOMMIT);
+}
+
+static void munmap_list_add(void *addr, size_t length)
+{
+	struct mm_munmap_list_entry *e = HeapAlloc(GetProcessHeap(), 0, sizeof(struct mm_munmap_list_entry));
+	e->addr = addr;
+	e->length = length;
+	e->next = mm->munmap_list;
+	mm->munmap_list = e;
+}
+
+static void *munmap_list_pop(size_t *length)
+{
+	struct mm_munmap_list_entry *e = mm->munmap_list;
+	if (e == NULL)
+		return NULL;
+	void *addr = e->addr;
+	*length = e->length;
+	mm->munmap_list = e->next;
+	HeapFree(GetProcessHeap(), 0, e);
+	return addr;
 }
 
 static struct map_entry *new_map_entry()
@@ -305,6 +339,10 @@ void mm_init()
 {
 	/* Initialize RW lock */
 	InitializeSRWLock(&mm->rw_lock);
+	/* Initialize thread ID */
+	mm->thread_id = 0;
+	/* Initialize munmap_list */
+	mm->munmap_list = NULL;
 	/* Initialize mapping info freelist */
 	rb_init(&mm->entry_tree);
 	slist_init(&mm->entry_free_list);
@@ -674,7 +712,7 @@ static HANDLE duplicate_section(HANDLE source, void *source_addr)
 		log_error("NtCreateSection() failed, status: %x\n", status);
 		return NULL;
 	}
-	
+
 	status = NtMapViewOfSection(dest, NtCurrentProcess(), &dest_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, PAGE_READWRITE);
 	if (!NT_SUCCESS(status))
 	{
@@ -720,7 +758,7 @@ static int take_block_ownership(size_t block)
 		log_info("We're the only owner.\n");
 		return 1;
 	}
-	
+
 	/* We are not the only one holding the section, duplicate it */
 	log_info("Duplicating section %p...\n", block);
 	HANDLE new_section;
@@ -1152,55 +1190,50 @@ static void *mmap_internal(void *addr, size_t length, int prot, int flags, int i
 	return addr;
 }
 
-static int munmap_internal(void *addr, size_t length)
+static int munmap_internal_check(void *addr, size_t *length)
 {
 	/* TODO: We should mark NOACCESS for munmap()-ed but not VirtualFree()-ed pages */
 	if (!IS_ALIGNED(addr, PAGE_SIZE))
 		return -L_EINVAL;
-	length = ALIGN_TO_PAGE(length);
+	*length = ALIGN_TO_PAGE(*length);
 	if ((size_t)addr < ADDRESS_SPACE_LOW || (size_t)addr >= ADDRESS_SPACE_HIGH
-		|| (size_t)addr + length < ADDRESS_SPACE_LOW || (size_t)addr + length >= ADDRESS_SPACE_HIGH
-		|| (size_t)addr + length < (size_t)addr)
+		|| (size_t)addr + *length < ADDRESS_SPACE_LOW || (size_t)addr + *length >= ADDRESS_SPACE_HIGH
+		|| (size_t)addr + *length < (size_t)addr)
 	{
 		return -L_EINVAL;
 	}
+	return 0;
+}
 
-	size_t start_page = GET_PAGE(addr);
-	size_t end_page = GET_PAGE((size_t)addr + length - 1);
-	for (struct rb_node *cur = start_node(start_page); cur;)
+static void munmap_internal_unsafe(void *addr, size_t length)
+{
+	mm->thread_id = GetCurrentThreadId();
+	do
 	{
-		struct map_entry *e = rb_entry(cur, struct map_entry, tree);
-		if (end_page < e->start_page)
-			break;
-		else
+		size_t start_page = GET_PAGE(addr);
+		size_t end_page = GET_PAGE((size_t)addr + length - 1);
+		for (struct rb_node *cur = start_node(start_page); cur;)
 		{
-			size_t range_start = max(start_page, e->start_page);
-			size_t range_end = min(end_page, e->end_page);
-			if (range_start > range_end)
-			{
-				cur = rb_next(cur);
-				continue;
-			}
-			if (range_start == e->start_page && range_end == e->end_page)
-			{
-				/* That's good, the current entry is fully overlapped */
-				if (e->prot & PROT_EXEC)
-				{
-					/* Notify dbt subsystem the executable pages has been lost */
-					dbt_code_changed((size_t)GET_PAGE_ADDRESS(e->start_page), (e->end_page - e->start_page + 1) * PAGE_SIZE);
-				}
-				struct rb_node *next = rb_next(cur);
-				free_map_entry_blocks(e);
-				rb_remove(&mm->entry_tree, cur);
-				free_map_entry(e);
-				cur = next;
-			}
+			struct map_entry *e = rb_entry(cur, struct map_entry, tree);
+			if (end_page < e->start_page)
+				break;
 			else
 			{
-				/* Not so good, part of current entry is overlapped */
-				if (range_start == e->start_page)
+				size_t range_start = max(start_page, e->start_page);
+				size_t range_end = min(end_page, e->end_page);
+				if (range_start > range_end)
 				{
-					split_map_entry(e, range_end);
+					cur = rb_next(cur);
+					continue;
+				}
+				if (range_start == e->start_page && range_end == e->end_page)
+				{
+					/* That's good, the current entry is fully overlapped */
+					if (e->prot & PROT_EXEC)
+					{
+						/* Notify dbt subsystem the executable pages has been lost */
+						dbt_code_changed((size_t)GET_PAGE_ADDRESS(e->start_page), (e->end_page - e->start_page + 1) * PAGE_SIZE);
+					}
 					struct rb_node *next = rb_next(cur);
 					free_map_entry_blocks(e);
 					rb_remove(&mm->entry_tree, cur);
@@ -1209,13 +1242,37 @@ static int munmap_internal(void *addr, size_t length)
 				}
 				else
 				{
-					split_map_entry(e, range_start - 1);
-					/* The current entry is unrelated, we just skip to next entry (which we just generated) */
-					cur = rb_next(cur);
+					/* Not so good, part of current entry is overlapped */
+					if (range_start == e->start_page)
+					{
+						split_map_entry(e, range_end);
+						struct rb_node *next = rb_next(cur);
+						free_map_entry_blocks(e);
+						rb_remove(&mm->entry_tree, cur);
+						free_map_entry(e);
+						cur = next;
+					}
+					else
+					{
+						split_map_entry(e, range_start - 1);
+						/* The current entry is unrelated, we just skip to next entry (which we just generated) */
+						cur = rb_next(cur);
+					}
 				}
 			}
 		}
-	}
+		addr = munmap_list_pop(&length);
+	} while (addr != NULL);
+	mm->thread_id = 0;
+}
+
+static int munmap_internal(void *addr, size_t length)
+{
+	int err = munmap_internal_check(addr, &length);
+	if (err)
+		return err;
+
+	munmap_internal_unsafe(addr, length);
 	return 0;
 }
 
@@ -1229,10 +1286,22 @@ void *mm_mmap(void *addr, size_t length, int prot, int flags, int internal_flags
 
 int mm_munmap(void *addr, size_t length)
 {
+	/* Pure function, no need for locking */
+	int err = munmap_internal_check(addr, &length);
+	if (err)
+		return err;
+
+	/* Recursive case */
+	if (mm->thread_id == GetCurrentThreadId())
+	{
+		munmap_list_add(addr, length);
+		return 0;
+	}
+
 	AcquireSRWLockExclusive(&mm->rw_lock);
-	int r = munmap_internal(addr, length);
+	munmap_internal_unsafe(addr, length);
 	ReleaseSRWLockExclusive(&mm->rw_lock);
-	return r;
+	return 0;
 }
 
 DEFINE_SYSCALL(mmap, void *, addr, size_t, length, int, prot, int, flags, int, fd, off_t, offset)
