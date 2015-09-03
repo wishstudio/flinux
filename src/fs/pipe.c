@@ -108,7 +108,7 @@ static size_t pipe_write(struct file *f, const void *buf, size_t count)
 	r = num_written;
 out:
 	ReleaseSRWLockShared(&f->rw_lock);
-	return num_written;
+	return r;
 }
 
 static int pipe_llseek(struct file *f, loff_t offset, loff_t *newoffset, int whence)
