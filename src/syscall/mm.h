@@ -54,6 +54,7 @@
 #define INTERNAL_MAP_NORESET		4	/* Don't unmap the memory region at mm_reset() */
 #define INTERNAL_MAP_VIRTUALALLOC	8	/* This will cause the memory region to be allocated via VirtualAlloc() */
 #define INTERNAL_MAP_SHARED			16	/* A MAP_SHARED memory region */
+#define INTERNAL_MAP_COPYONFORK		32	/* Copy the memory region on forking instead of using CoW */
 
 void mm_init();
 void mm_reset();
