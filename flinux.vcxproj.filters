@@ -245,6 +245,12 @@
     <ClInclude Include="src\common\eventpoll.h">
       <Filter>common</Filter>
     </ClInclude>
+    <ClInclude Include="src\fs\inotify.h">
+      <Filter>fs</Filter>
+    </ClInclude>
+    <ClInclude Include="src\common\inotify.h">
+      <Filter>common</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
@@ -331,6 +337,9 @@
       <Filter>fs</Filter>
     </ClCompile>
     <ClCompile Include="src\fs\epollfd.c">
+      <Filter>fs</Filter>
+    </ClCompile>
+    <ClCompile Include="src\fs\inotify.c">
       <Filter>fs</Filter>
     </ClCompile>
   </ItemGroup>

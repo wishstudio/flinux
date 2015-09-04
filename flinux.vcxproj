@@ -29,6 +29,7 @@
     <ClInclude Include="src\common\fs.h" />
     <ClInclude Include="src\common\futex.h" />
     <ClInclude Include="src\common\in.h" />
+    <ClInclude Include="src\common\inotify.h" />
     <ClInclude Include="src\common\ioctls.h" />
     <ClInclude Include="src\common\ldt.h" />
     <ClInclude Include="src\common\net.h" />
@@ -67,6 +68,7 @@
     <ClInclude Include="src\fs\epollfd.h" />
     <ClInclude Include="src\fs\eventfd.h" />
     <ClInclude Include="src\fs\file.h" />
+    <ClInclude Include="src\fs\inotify.h" />
     <ClInclude Include="src\fs\null.h" />
     <ClInclude Include="src\fs\pipe.h" />
     <ClInclude Include="src\fs\procfs.h" />
@@ -109,6 +111,7 @@
     <ClCompile Include="src\fs\dsp.c" />
     <ClCompile Include="src\fs\epollfd.c" />
     <ClCompile Include="src\fs\eventfd.c" />
+    <ClCompile Include="src\fs\inotify.c" />
     <ClCompile Include="src\fs\procfs.c" />
     <ClCompile Include="src\fs\sysfs.c" />
     <ClCompile Include="src\fs\virtual.c" />
