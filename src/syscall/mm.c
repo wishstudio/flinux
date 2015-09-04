@@ -25,6 +25,7 @@
 #include <syscall/syscall.h>
 #include <syscall/vfs.h>
 #include <log.h>
+#include <str.h>
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -653,10 +654,11 @@ void mm_dump_stack_trace(PCONTEXT context)
 #endif
 	for (size_t i = sp & ~15; i < ((sp + 256) & ~15); i += 16)
 	{
-		log_raw("%p ", i);
+		char buf[256];
+		int t = ksprintf(buf, "%p ", i);
 		for (size_t j = i; j < i + 16 && j < ((sp + 256) & ~15); j++)
-			log_raw("%02x ", *(unsigned char *)j);
-		log_raw("\n");
+			t += ksprintf(buf + t, "%02x ", *(unsigned char *)j);
+		log_info("%s\n", buf);
 	}
 }
 

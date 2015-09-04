@@ -86,19 +86,6 @@ void log_shutdown()
 		CloseHandle(hLoggerPipe);
 }
 
-void log_raw_internal(const char *format, ...)
-{
-	va_list ap;
-	va_start(ap, format);
-	int size = kvsprintf(buffer, format, ap);
-	DWORD bytes_written;
-	if (!WriteFile(hLoggerPipe, buffer, size, &bytes_written, NULL))
-	{
-		CloseHandle(hLoggerPipe);
-		logger_attached = 0;
-	}
-}
-
 static void log_internal(char type, const char *format, va_list ap)
 {
 	SYSTEMTIME ts;
