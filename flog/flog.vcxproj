@@ -75,6 +75,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\LogServer.cpp" />
+    <ClCompile Include="src\LogViewer.cpp" />
     <ClCompile Include="src\Main.cpp" />
     <ClCompile Include="src\MainWindow.cpp" />
     <ClCompile Include="src\pch.cpp">
@@ -84,6 +85,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\LogServer.h" />
+    <ClInclude Include="src\LogViewer.h" />
     <ClInclude Include="src\MainWindow.h" />
     <ClInclude Include="src\pch.h" />
     <ClInclude Include="src\Resource.h" />

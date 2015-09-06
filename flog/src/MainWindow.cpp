@@ -110,7 +110,8 @@ LRESULT MainWindow::OnLogReceive(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL &
 				{
 					if (client->tid == msg->tid)
 					{
-						client->logViewer.AppendText(wbuffer, TRUE, FALSE);
+						//client->logViewer.AppendText(wbuffer, TRUE, FALSE);
+						client->logViewer.AddLine(wbuffer);
 						if (m_splitter.GetSplitterPane(SPLIT_PANE_RIGHT) != client->logViewer)
 							m_processTree.SetItemState(client->item, TVIS_BOLD, TVIS_BOLD);
 						return 0;
@@ -135,16 +136,13 @@ LRESULT MainWindow::OnTreeItemChange(LPNMHDR pnmh)
 	return 0;
 }
 
-void MainWindow::InitLogViewer(CEdit &logViewer)
+void MainWindow::InitLogViewer(LogViewer &logViewer)
 {
-	logViewer.Create(m_splitter, rcDefault, NULL,
-		WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_WANTRETURN | ES_MULTILINE | ES_AUTOVSCROLL,
-		WS_EX_CLIENTEDGE);
+	logViewer.Create(m_splitter, rcDefault);
 	logViewer.SetFont(m_logViewerFont);
-	logViewer.SetLimitText(-1);
 }
 
-void MainWindow::SetCurrentLogViewer(CEdit &logViewer)
+void MainWindow::SetCurrentLogViewer(LogViewer &logViewer)
 {
 	HWND hOldPane = m_splitter.GetSplitterPane(SPLIT_PANE_RIGHT);
 	if (hOldPane != logViewer)

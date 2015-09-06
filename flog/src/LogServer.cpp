@@ -53,7 +53,7 @@ void LogServer::AddClient()
 	/* Create named pipe instance */
 	std::unique_ptr<Client> client(new Client());
 	client->hPipe = CreateNamedPipeW(L"\\\\.\\pipe\\flog_server", PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
-		PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_REJECT_REMOTE_CLIENTS,
+		PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
 		PIPE_UNLIMITED_INSTANCES, 32, LOG_BUFFER_SIZE, 0, nullptr);
 	memset(&client->overlapped, 0, sizeof(client->overlapped));
 
