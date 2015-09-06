@@ -44,11 +44,10 @@ public:
 	HWND Create(HWND hWndParent, ATL::_U_RECT rect = NULL, LPCTSTR szWindowName = NULL);
 	LRESULT DoPaint(CDCHandle dc);
 	HRESULT OnTimer(UINT_PTR id);
-	void AddLine(const std::wstring &line);
+	void AddText(const std::wstring &text);
 
 private:
 	CFont m_font;
 	bool m_timerShot;
 	std::vector<std::wstring> m_lines;
-	std::wstring m_lastLine;
 };

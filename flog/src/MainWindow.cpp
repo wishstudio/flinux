@@ -112,7 +112,7 @@ LRESULT MainWindow::OnLogReceive(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL &
 					if (client->tid == msg->tid)
 					{
 						//client->logViewer.AppendText(wbuffer, TRUE, FALSE);
-						client->logViewer.AddLine(wbuffer);
+						client->logViewer.AddText(wbuffer);
 						if (m_splitter.GetSplitterPane(SPLIT_PANE_RIGHT) != client->logViewer)
 							m_processTree.SetItemState(client->item, TVIS_BOLD, TVIS_BOLD);
 						return 0;

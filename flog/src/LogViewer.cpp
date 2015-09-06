@@ -75,12 +75,20 @@ HRESULT LogViewer::OnTimer(UINT_PTR id)
 	return 0;
 }
 
-void LogViewer::AddLine(const std::wstring &line)
+void LogViewer::AddText(const std::wstring &text)
 {
-	m_lines.push_back(line);
+	std::wstring line;
+	for (wchar_t ch : text)
+		if (ch == '\n')
+		{
+			m_lines.push_back(line);
+			line.clear();
+		}
+		else
+			line += ch;
 	if (!m_timerShot)
 	{
-		SetTimer(1, 100); /* 10 FPS is enough */
+		SetTimer(1, 33); /* 30 FPS is enough */
 		m_timerShot = true;
 	}
 }
