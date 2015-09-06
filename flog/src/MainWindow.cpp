@@ -90,6 +90,7 @@ LRESULT MainWindow::OnNewClient(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL &b
 	if (m_splitter.GetSplitterPane(SPLIT_PANE_RIGHT) == m_defaultLogViewer)
 		SetCurrentLogViewer(client->logViewer);
 	m_clients[parentId].push_back(std::move(client));
+	m_processTree.Invalidate();
 	return 0;
 }
 
