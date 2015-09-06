@@ -22,7 +22,6 @@
 class LogViewer: public CWindowImpl<LogViewer>, public CScrollImpl<LogViewer>, public CDoubleBufferImpl<LogViewer>
 {
 public:
-	//DECLARE_WND_CLASS_EX(_T("FLOG_LogViewer"), CS_DBLCLKS, COLOR_WINDOW)
 	static ATL::CWndClassInfo& GetWndClassInfo()
 	{
 		static ATL::CWndClassInfo wc =

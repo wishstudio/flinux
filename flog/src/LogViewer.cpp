@@ -29,6 +29,7 @@ HWND LogViewer::Create(HWND hWndParent, ATL::_U_RECT rect, LPCTSTR szWindowName)
 		WS_EX_CLIENTEDGE);
 	m_font.CreateFont(FONT_SIZE, 0, 0, 0, FW_DONTCARE, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, FF_DONTCARE, _T("Consolas"));
 	m_timerShot = false;
+	SetScrollSize(1, 1, FALSE);
 	return hWnd;
 }
 
@@ -61,12 +62,12 @@ HRESULT LogViewer::OnTimer(UINT_PTR id)
 	POINT offset;
 	GetScrollOffset(offset);
 	bool atBottom = false;
-	if (offset.y == m_sizeClient.cy - m_sizeAll.cy)
+	if (offset.y >= m_sizeAll.cy - m_sizeClient.cy - 1)
 		atBottom = true;
 	SetScrollSize(1, m_lines.size() * FONT_SIZE, TRUE, FALSE);
 	if (atBottom)
 	{
-		offset.y = m_sizeClient.cy - m_sizeAll.cy;
+		offset.y = m_sizeAll.cy - m_sizeClient.cy;
 		SetScrollOffset(offset);
 	}
 	KillTimer(id);
