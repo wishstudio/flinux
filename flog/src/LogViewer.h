@@ -39,9 +39,13 @@ public:
 
 	BEGIN_MSG_MAP(LogViewer)
 		MSG_WM_TIMER(OnTimer)
+		MSG_WM_SETFOCUS(OnSetFocus)
+		MSG_WM_KILLFOCUS(OnKillFocus)
 		MSG_WM_LBUTTONDOWN(OnLButtonDown)
 		MSG_WM_LBUTTONUP(OnLButtonUp)
 		MSG_WM_MOUSEMOVE(OnMouseMove)
+		MSG_WM_RBUTTONDOWN(OnRButtonDown)
+		MSG_WM_MBUTTONDOWN(OnMButtonDown)
 		CHAIN_MSG_MAP(CDoubleBufferImpl<LogViewer>)
 		CHAIN_MSG_MAP(CScrollImpl<LogViewer>)
 	END_MSG_MAP()
@@ -49,13 +53,18 @@ public:
 	HWND Create(HWND hWndParent, ATL::_U_RECT rect = NULL, LPCTSTR szWindowName = NULL);
 	void DoPaint(CDCHandle dc);
 	void OnTimer(UINT_PTR id);
+	void OnSetFocus(CWindow wndOld);
+	void OnKillFocus(CWindow wndFocus);
 	void OnLButtonDown(UINT nFlags, CPoint point);
 	void OnLButtonUp(UINT nFlags, CPoint point);
 	void OnMouseMove(UINT nFlags, CPoint point);
+	void OnRButtonDown(UINT nFlags, CPoint point);
+	void OnMButtonDown(UINT nFlags, CPoint point);
 	void AddLine(int type, const std::wstring &msg);
 
 private:
 	CPoint TranslateMousePoint(CPoint mousePoint);
+	void UpdateCaret();
 
 	CFont m_font;
 	bool m_timerShot, m_mouseDown;

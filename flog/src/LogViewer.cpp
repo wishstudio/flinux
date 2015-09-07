@@ -123,8 +123,21 @@ void LogViewer::OnTimer(UINT_PTR id)
 	m_timerShot = false;
 }
 
+void LogViewer::OnSetFocus(CWindow wndOld)
+{
+	CreateSolidCaret(1, FONT_SIZE);
+	UpdateCaret();
+	ShowCaret();
+}
+
+void LogViewer::OnKillFocus(CWindow wndFocus)
+{
+	DestroyCaret();
+}
+
 void LogViewer::OnLButtonDown(UINT nFlags, CPoint point)
 {
+	SetFocus();
 	CPoint pos = TranslateMousePoint(point);
 	m_mouseDown = true;
 	if (nFlags & MK_SHIFT)
@@ -133,6 +146,7 @@ void LogViewer::OnLButtonDown(UINT nFlags, CPoint point)
 		m_selStart = m_selEnd = std::make_pair(pos.y, pos.x);
 	Invalidate();
 	SetCapture();
+	UpdateCaret();
 }
 
 void LogViewer::OnLButtonUp(UINT nFlags, CPoint point)
@@ -148,7 +162,18 @@ void LogViewer::OnMouseMove(UINT nFlags, CPoint point)
 		CPoint pos = TranslateMousePoint(point);
 		m_selEnd = std::make_pair(pos.y, pos.x);
 		Invalidate();
+		UpdateCaret();
 	}
+}
+
+void LogViewer::OnRButtonDown(UINT nFlags, CPoint point)
+{
+	SetFocus();
+}
+
+void LogViewer::OnMButtonDown(UINT nFlags, CPoint point)
+{
+	SetFocus();
 }
 
 void LogViewer::AddLine(int type, const std::wstring &line)
@@ -204,4 +229,23 @@ CPoint LogViewer::TranslateMousePoint(CPoint mousePoint)
 	}
 	ReleaseDC(dc);
 	return CPoint(x, y);
+}
+
+void LogViewer::UpdateCaret()
+{
+	int y = m_selEnd.first * FONT_SIZE;
+	int x = 0;
+	if (!m_lines.empty())
+	{
+		SIZE size;
+		CDCHandle dc = GetDC();
+		dc.SelectFont(m_font);
+		GetTextExtentPoint32W(dc, m_lines[m_selEnd.first].c_str(), m_selEnd.second, &size);
+		x = size.cx;
+		ReleaseDC(dc);
+	}
+	POINT offset;
+	GetScrollOffset(offset);
+	SetCaretPos(x - offset.x, y - offset.y);
+	ShowCaret();
 }
