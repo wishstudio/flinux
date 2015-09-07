@@ -19,6 +19,8 @@
 
 #pragma once
 
+#include "LogServer.h"
+
 class LogViewer: public CWindowImpl<LogViewer>, public CScrollImpl<LogViewer>, public CDoubleBufferImpl<LogViewer>
 {
 public:
@@ -44,10 +46,11 @@ public:
 	HWND Create(HWND hWndParent, ATL::_U_RECT rect = NULL, LPCTSTR szWindowName = NULL);
 	LRESULT DoPaint(CDCHandle dc);
 	HRESULT OnTimer(UINT_PTR id);
-	void AddText(const std::wstring &text);
+	void AddLine(int type, const std::wstring &msg);
 
 private:
 	CFont m_font;
 	bool m_timerShot;
+	std::vector<int> m_types;
 	std::vector<std::wstring> m_lines;
 };

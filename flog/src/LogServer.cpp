@@ -91,7 +91,7 @@ void LogServer::RemoveClient(Client *client)
  * Disconnect
  */
 
-#define PROTOCOL_VERSION	1
+#define PROTOCOL_VERSION	2
 #define PROTOCOL_MAGIC		'flog'
 struct Request
 {

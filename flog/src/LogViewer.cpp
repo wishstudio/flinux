@@ -44,6 +44,7 @@ LRESULT LogViewer::DoPaint(CDCHandle dc)
 	dc.FillRect(&clientRect, COLOR_WINDOW);
 
 	dc.SelectFont(m_font);
+	dc.SetBkMode(TRANSPARENT);
 	for (int i = offset.y / FONT_SIZE; i < (int)m_lines.size(); i++)
 	{
 		int y = clientRect.top + i * FONT_SIZE - offset.y;
@@ -52,6 +53,12 @@ LRESULT LogViewer::DoPaint(CDCHandle dc)
 		RECT rect = clientRect;
 		rect.top = y;
 		rect.bottom = y + FONT_SIZE;
+		if (m_types[i] == LOG_DEBUG)
+			dc.FillSolidRect(&rect, RGB(0xE0, 0xF0, 0xFF));
+		if (m_types[i] == LOG_WARNING)
+			dc.FillSolidRect(&rect, RGB(0xFF, 0xDD, 0x44));
+		if (m_types[i] == LOG_ERROR)
+			dc.FillSolidRect(&rect, RGB(0xFF, 0x88, 0x88));
 		dc.DrawText(m_lines[i].c_str(), -1, &rect, 0);
 	}
 	return 0;
@@ -75,17 +82,10 @@ HRESULT LogViewer::OnTimer(UINT_PTR id)
 	return 0;
 }
 
-void LogViewer::AddText(const std::wstring &text)
+void LogViewer::AddLine(int type, const std::wstring &line)
 {
-	std::wstring line;
-	for (wchar_t ch : text)
-		if (ch == '\n')
-		{
-			m_lines.push_back(line);
-			line.clear();
-		}
-		else
-			line += ch;
+	m_types.push_back(type);
+	m_lines.push_back(line);
 	if (!m_timerShot)
 	{
 		SetTimer(1, 33); /* 30 FPS is enough */

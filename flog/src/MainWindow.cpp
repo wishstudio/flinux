@@ -98,29 +98,42 @@ LRESULT MainWindow::OnLogReceive(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL &
 {
 	bHandled = TRUE;
 	LogMessage *msg = (LogMessage *)wParam;
-	WCHAR wbuffer[LOG_BUFFER_SIZE + 1];
-	int r = MultiByteToWideChar(CP_UTF8, 0, msg->buffer, msg->length, wbuffer, LOG_BUFFER_SIZE + 1);
-	if (r)
-	{
-		wbuffer[r] = 0;
-		for (int i = (int)m_clients.size() - 1; i >= 0; i--)
-		{
-			if (m_clients[i].front()->pid == msg->pid)
-			{
-				for (auto const &client : m_clients[i])
+	for (int i = (int)m_clients.size() - 1; i >= 0; i--)
+		if (m_clients[i].front()->pid == msg->pid)
+			for (auto & client : m_clients[i])
+				if (client->tid == msg->tid)
 				{
-					if (client->tid == msg->tid)
+					std::string &msgpart = client->msgpart;
+					const char *buffer = msg->buffer;
+					int length = msg->length;
+					/* For each message packet */
+					for (;;)
 					{
-						//client->logViewer.AppendText(wbuffer, TRUE, FALSE);
-						client->logViewer.AddText(wbuffer);
-						if (m_splitter.GetSplitterPane(SPLIT_PANE_RIGHT) != client->logViewer)
-							m_processTree.SetItemState(client->item, TVIS_BOLD, TVIS_BOLD);
-						return 0;
+						/* Append message size */
+						while (msgpart.size() < 4 && length > 0)
+						{
+							msgpart += *buffer++;
+							length--;
+						}
+						/* No enough data for size field for now */
+						if (msgpart.size() < 4)
+							break;
+						size_t size = *(int32_t*)msgpart.c_str();
+						/* Copy data */
+						while (msgpart.size() < size && length > 0)
+						{
+							msgpart += *buffer++;
+							length--;
+						}
+						/* No enough data for now */
+						if (msgpart.size() < size)
+							break;
+						/* We got enough data, process it */
+						ProcessClientLog(client.get(), (LogPacket *)msgpart.c_str());
+						/* Clear current message buffer */
+						msgpart.clear();
 					}
 				}
-			}
-		}
-	}
 	return 0;
 }
 
@@ -135,6 +148,19 @@ LRESULT MainWindow::OnTreeItemChange(LPNMHDR pnmh)
 		m_processTree.SetItemState(hItem, 0, TVIS_BOLD);
 	}
 	return 0;
+}
+
+void MainWindow::ProcessClientLog(Client *client, LogPacket *packet)
+{
+	WCHAR *wbuffer = (WCHAR*)alloca(sizeof(WCHAR) * (packet->packetSize + 1));
+	int len = MultiByteToWideChar(CP_UTF8, 0, packet->text, packet->len, wbuffer, packet->packetSize);
+	if (len)
+	{
+		wbuffer[len] = 0;
+		client->logViewer.AddLine(packet->type, wbuffer);
+		if (m_splitter.GetSplitterPane(SPLIT_PANE_RIGHT) != client->logViewer)
+			m_processTree.SetItemState(client->item, TVIS_BOLD, TVIS_BOLD);
+	}
 }
 
 void MainWindow::InitLogViewer(LogViewer &logViewer)

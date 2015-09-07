@@ -29,7 +29,7 @@ int logger_attached;
 static __declspec(thread) HANDLE hLoggerPipe;
 static __declspec(thread) char buffer[1024];
 
-#define PROTOCOL_VERSION	1
+#define PROTOCOL_VERSION	2
 #define PROTOCOL_MAGIC		'flog'
 struct request
 {
@@ -37,6 +37,18 @@ struct request
 	uint32_t version;
 	uint32_t pid;
 	uint32_t tid;
+};
+
+#define LOG_DEBUG		0
+#define LOG_INFO		1
+#define LOG_WARNING		2
+#define LOG_ERROR		3
+struct packet
+{
+	uint32_t packet_size;
+	uint32_t type;
+	uint32_t len;
+	char text[];
 };
 
 void log_init_thread()
@@ -86,17 +98,18 @@ void log_shutdown()
 		CloseHandle(hLoggerPipe);
 }
 
-static void log_internal(char type, const char *format, va_list ap)
+static void log_internal(int type, char typech, const char *format, va_list ap)
 {
+	struct packet *packet = (struct packet*)buffer;
+	packet->type = type;
 	SYSTEMTIME ts;
-
-	GetSystemTime(&ts);
-	int ts_size = ksprintf(buffer, "[%02u:%02u:%02u.%03u] (%c%c) ", ts.wHour,
-		ts.wMinute, ts.wSecond, ts.wMilliseconds, type, type);
-
-	int size = ts_size + kvsprintf(buffer + ts_size, format, ap);
+	GetSystemTime(&ts); /* TODO: Use GetSystemTimePreciseAsFileTime for Win8 */
+	packet->len = ksprintf(packet->text, "[%02u:%02u:%02u.%03u] (%c%c) ", ts.wHour,
+		ts.wMinute, ts.wSecond, ts.wMilliseconds, typech, typech);
+	packet->len += kvsprintf(packet->text + packet->len, format, ap);
+	packet->packet_size = sizeof(struct packet) + packet->len;
 	DWORD bytes_written;
-	if (!WriteFile(hLoggerPipe, buffer, size, &bytes_written, NULL))
+	if (!WriteFile(hLoggerPipe, buffer, packet->packet_size, &bytes_written, NULL))
 	{
 		CloseHandle(hLoggerPipe);
 		logger_attached = 0;
@@ -107,26 +120,26 @@ void log_debug_internal(const char *format, ...)
 {
 	va_list ap;
 	va_start(ap, format);
-	log_internal('D', format, ap);
+	log_internal(LOG_DEBUG, 'D', format, ap);
 }
 
 void log_info_internal(const char *format, ...)
 {
 	va_list ap;
 	va_start(ap, format);
-	log_internal('I', format, ap);
+	log_internal(LOG_INFO, 'I', format, ap);
 }
 
 void log_warning_internal(const char *format, ...)
 {
 	va_list ap;
 	va_start(ap, format);
-	log_internal('W', format, ap);
+	log_internal(LOG_WARNING, 'W', format, ap);
 }
 
 void log_error_internal(const char *format, ...)
 {
 	va_list ap;
 	va_start(ap, format);
-	log_internal('E', format, ap);
+	log_internal(LOG_ERROR, 'E', format, ap);
 }

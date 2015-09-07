@@ -43,6 +43,15 @@ public:
 	LRESULT OnTreeItemChange(LPNMHDR pnmh);
 	
 private:
+	struct Client
+	{
+		uint32_t pid;
+		uint32_t tid;
+		HTREEITEM item;
+		LogViewer logViewer;
+		std::string msgpart;
+	};
+	void ProcessClientLog(Client *client, LogPacket *packet);
 	void InitLogViewer(LogViewer &logViewer);
 	void SetCurrentLogViewer(LogViewer &logViewer);
 
@@ -51,12 +60,5 @@ private:
 	CTreeViewCtrl m_processTree;
 	CFont m_logViewerFont;
 	LogViewer m_defaultLogViewer;
-	struct Client
-	{
-		uint32_t pid;
-		uint32_t tid;
-		HTREEITEM item;
-		LogViewer logViewer;
-	};
 	std::vector<std::vector<std::unique_ptr<Client>>> m_clients;
 };
