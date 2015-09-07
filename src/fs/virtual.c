@@ -146,7 +146,7 @@ static int virtualfs_directory_getdents(struct file *f, void *dirent, size_t cou
 				case VIRTUALFS_TYPE_TEXT: type = DT_REG; break;
 				case VIRTUALFS_TYPE_PARAM: type = DT_REG; break;
 				default:
-					log_error("Invalid virtual fs file type. Corrupted internal data structure.\n");
+					log_error("Invalid virtual fs file type. Corrupted internal data structure.");
 					__debugbreak();
 					r = -L_EIO;
 					goto out;
@@ -506,12 +506,12 @@ static size_t virtualfs_param_write(struct file *f, const void *buf, size_t coun
 	}
 	case VIRTUALFS_PARAM_TYPE_INT:
 	{
-		log_error("Write to VIRTUALFS_PARAM_INT not implemented.\n");
+		log_error("Write to VIRTUALFS_PARAM_INT not implemented.");
 		break;
 	}
 	case VIRTUALFS_PARAM_TYPE_UINT:
 	{
-		log_error("Write to VIRTUALFS_PARAM_UINT not implemented.\n");
+		log_error("Write to VIRTUALFS_PARAM_UINT not implemented.");
 		break;
 	}
 	default:
@@ -666,12 +666,12 @@ do_component:;
 		}
 
 		default:
-			log_error("Invalid virtual fs file type. Corrupted internal data structure.\n");
+			log_error("Invalid virtual fs file type. Corrupted internal data structure.");
 			__debugbreak();
 			return -L_ENOENT;
 		}
 	}
-	log_warning("File not found in virtual fs.\n");
+	log_warning("File not found in virtual fs.");
 	return -L_ENOENT;
 }
 

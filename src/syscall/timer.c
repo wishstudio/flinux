@@ -30,7 +30,7 @@
 
 DEFINE_SYSCALL(time, intptr_t *, c)
 {
-	log_info("time(%p)\n", c);
+	log_info("time(%p)", c);
 	if (c && !mm_check_write(c, sizeof(int)))
 		return -L_EFAULT;
 	FILETIME systime;
@@ -43,9 +43,9 @@ DEFINE_SYSCALL(time, intptr_t *, c)
 
 DEFINE_SYSCALL(gettimeofday, struct timeval *, tv, struct timezone *, tz)
 {
-	log_info("gettimeofday(0x%p, 0x%p)\n", tv, tz);
+	log_info("gettimeofday(0x%p, 0x%p)", tv, tz);
 	if (tz)
-		log_error("warning: timezone is not NULL\n");
+		log_error("warning: timezone is not NULL");
 	if (tv)
 	{
 		/* TODO: Use GetSystemTimePreciseAsFileTime() on Windows 8 */
@@ -58,7 +58,7 @@ DEFINE_SYSCALL(gettimeofday, struct timeval *, tv, struct timezone *, tz)
 
 DEFINE_SYSCALL(nanosleep, const struct timespec *, req, struct timespec *, rem)
 {
-	log_info("nanospeep(0x%p, 0x%p)\n", req, rem);
+	log_info("nanospeep(0x%p, 0x%p)", req, rem);
 	if (!mm_check_read(req, sizeof(struct timespec)) || rem && !mm_check_write(rem, sizeof(struct timespec)))
 		return -L_EFAULT;
 	LARGE_INTEGER delay_interval;
@@ -69,7 +69,7 @@ DEFINE_SYSCALL(nanosleep, const struct timespec *, req, struct timespec *, rem)
 
 DEFINE_SYSCALL(clock_gettime, int, clk_id, struct timespec *, tp)
 {
-	log_info("sys_clock_gettime(%d, 0x%p)\n", clk_id, tp);
+	log_info("sys_clock_gettime(%d, 0x%p)", clk_id, tp);
 	if (!mm_check_write(tp, sizeof(struct timespec)))
 		return -L_EFAULT;
 	switch (clk_id)
@@ -101,7 +101,7 @@ DEFINE_SYSCALL(clock_gettime, int, clk_id, struct timespec *, tp)
 
 DEFINE_SYSCALL(clock_getres, int, clk_id, struct timespec *, res)
 {
-	log_info("clock_getres(%d, 0x%p)\n", clk_id, res);
+	log_info("clock_getres(%d, 0x%p)", clk_id, res);
 	if (!mm_check_write(res, sizeof(struct timespec)))
 		return -L_EFAULT;
 	switch (clk_id)
@@ -141,42 +141,42 @@ DEFINE_SYSCALL(clock_getres, int, clk_id, struct timespec *, res)
 
 DEFINE_SYSCALL(setitimer, int, which, const struct itimerval *, new_value, struct itimerval *, old_value)
 {
-	log_info("setitimer(%d, %p, %p)\n", which, new_value, old_value);
-	log_error("setitimer() not implemented.\n");
+	log_info("setitimer(%d, %p, %p)", which, new_value, old_value);
+	log_error("setitimer() not implemented.");
 	return 0;
 }
 
 DEFINE_SYSCALL(timer_create, clockid_t, which_clock, struct sigevent *, timer_event_spec, timer_t, created_timer_id)
 {
-	log_info("timer_create(%d, %p, %p)\n", which_clock, timer_event_spec, created_timer_id);
-	log_error("timer_create() not implemented.\n");
+	log_info("timer_create(%d, %p, %p)", which_clock, timer_event_spec, created_timer_id);
+	log_error("timer_create() not implemented.");
 	return 0;
 }
 
 DEFINE_SYSCALL(timer_settime, timer_t, timer_id, int, flags, const struct itimerspec *, new_setting, struct itimerspec *, old_setting)
 {
-	log_info("timer_settime(%d, 0x%x, %p, %p)\n", timer_id, flags, new_setting, old_setting);
-	log_error("timer_settime() not implemented.\n");
+	log_info("timer_settime(%d, 0x%x, %p, %p)", timer_id, flags, new_setting, old_setting);
+	log_error("timer_settime() not implemented.");
 	return 0;
 }
 
 DEFINE_SYSCALL(timer_gettime, timer_t, timer_id, struct itimerspec *, setting)
 {
-	log_info("timer_gettime(%d, %p)\n", timer_id, setting);
-	log_error("timer_gettime() not implemented.\n");
+	log_info("timer_gettime(%d, %p)", timer_id, setting);
+	log_error("timer_gettime() not implemented.");
 	return 0;
 }
 
 DEFINE_SYSCALL(timer_getoverrun, timer_t, timer_id)
 {
-	log_info("timer_getoverrun(%d)\n", timer_id);
-	log_error("timer_getoverrun() not implemented.\n");
+	log_info("timer_getoverrun(%d)", timer_id);
+	log_error("timer_getoverrun() not implemented.");
 	return 0;
 }
 
 DEFINE_SYSCALL(timer_delete, timer_t, timer_id)
 {
-	log_info("timer_delete(%d)\n", timer_id);
-	log_error("timer_delete() not implemented.\n");
+	log_info("timer_delete(%d)", timer_id);
+	log_error("timer_delete() not implemented.");
 	return 0;
 }

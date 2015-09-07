@@ -60,7 +60,7 @@ static size_t pipe_read(struct file *f, void *buf, size_t count)
 	ssize_t r;
 	if (!pipe->is_read)
 	{
-		log_warning("read() on pipe write end.\n");
+		log_warning("read() on pipe write end.");
 		r = -L_EBADF;
 		goto out;
 	}
@@ -69,7 +69,7 @@ static size_t pipe_read(struct file *f, void *buf, size_t count)
 	{
 		if (GetLastError() == ERROR_BROKEN_PIPE)
 		{
-			log_info("Pipe closed. Read returns 0.\n");
+			log_info("Pipe closed. Read returns 0.");
 			r = 0;
 			goto out;
 		}
@@ -89,7 +89,7 @@ static size_t pipe_write(struct file *f, const void *buf, size_t count)
 	ssize_t r;
 	if (pipe->is_read)
 	{
-		log_warning("write() on pipe read end.\n");
+		log_warning("write() on pipe read end.");
 		r = -L_EBADF;
 	}
 	size_t num_written;
@@ -97,7 +97,7 @@ static size_t pipe_write(struct file *f, const void *buf, size_t count)
 	{
 		if (GetLastError() == ERROR_BROKEN_PIPE)
 		{
-			log_info("Write failed: broken pipe.\n");
+			log_info("Write failed: broken pipe.");
 			/* TODO: Send SIGPIPE signal */
 			r = -L_EPIPE;
 			goto out;
@@ -165,7 +165,7 @@ int pipe_alloc(struct file **fread, struct file **fwrite, int flags)
 	attr.bInheritHandle = TRUE;
 	if (!CreatePipe(&read_handle, &write_handle, &attr, 0))
 	{
-		log_warning("CreatePipe() failed, error code: %d\n");
+		log_warning("CreatePipe() failed, error code: %d");
 		return -L_EMFILE; /* TODO: Find an appropriate flag */
 	}
 	*fread = pipe_create_file(read_handle, 1, flags);

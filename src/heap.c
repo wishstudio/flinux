@@ -53,7 +53,7 @@ static struct heap_data *heap;
 
 void heap_init()
 {
-	log_info("heap subsystem initializating...\n");
+	log_info("heap subsystem initializating...");
 	heap = mm_static_alloc(sizeof(struct heap_data));
 	InitializeSRWLock(&heap->rw_lock);
 	heap->pools[0].objsize = 16;		heap->pools[0].first = NULL;
@@ -67,7 +67,7 @@ void heap_init()
 	heap->pools[8].objsize = 4096;		heap->pools[8].first = NULL;
 	heap->pools[9].objsize = 8192;		heap->pools[9].first = NULL;
 	heap->pools[10].objsize = 16384;	heap->pools[10].first = NULL;
-	log_info("heap subsystem initialized.\n");
+	log_info("heap subsystem initialized.");
 }
 
 void heap_shutdown()
@@ -124,7 +124,7 @@ void *kmalloc(int size)
 		}
 	if (p == -1)
 	{
-		log_error("kmalloc(%d): size too large.\n", size);
+		log_error("kmalloc(%d): size too large.", size);
 		ReleaseSRWLockExclusive(&heap->rw_lock);
 		return NULL;
 	}
@@ -138,7 +138,7 @@ void *kmalloc(int size)
 	{
 		if (!current)
 		{
-			log_error("kmalloc(%d): out of memory\n", size);
+			log_error("kmalloc(%d): out of memory", size);
 			ReleaseSRWLockExclusive(&heap->rw_lock);
 			return NULL;
 		}
@@ -178,7 +178,7 @@ void kfree(void *mem, int size)
 		}
 	if (p == -1)
 	{
-		log_error("kfree(): Invalid size: %x\n", mem);
+		log_error("kfree(): Invalid size: %x", mem);
 		ReleaseSRWLockExclusive(&heap->rw_lock);
 		return;
 	}
@@ -211,6 +211,6 @@ void kfree(void *mem, int size)
 		ReleaseSRWLockExclusive(&heap->rw_lock);
 		return;
 	}
-	log_error("kfree(): Invalid memory pointer or size: (%x, %d)\n", mem, size);
+	log_error("kfree(): Invalid memory pointer or size: (%x, %d)", mem, size);
 	ReleaseSRWLockExclusive(&heap->rw_lock);
 }

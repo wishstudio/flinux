@@ -80,7 +80,7 @@ static bool dsp_send_buffer(HWAVEOUT waveout, struct dsp_buffer *buffer)
 	int r = waveOutWrite(waveout, &buffer->hdr, sizeof(WAVEHDR));
 	if (r != MMSYSERR_NOERROR)
 	{
-		log_error("waveOutWrite() failed, error code: %d\n", r);
+		log_error("waveOutWrite() failed, error code: %d", r);
 		return false;
 	}
 	else
@@ -126,7 +126,7 @@ static int dsp_close(struct file *f)
 static int dsp_read(struct file *f, void *buf, size_t count)
 {
 	/* TODO */
-	log_error("/dev/dsp read not supported.\n");
+	log_error("/dev/dsp read not supported.");
 	return 0;
 }
 
@@ -143,14 +143,14 @@ static int dsp_write(struct file *f, const void *buf, size_t count)
 		if (r != MMSYSERR_NOERROR)
 		{
 			dsp->waveout = NULL;
-			log_error("waveOutOpen() failed, error code: %d\n", r);
+			log_error("waveOutOpen() failed, error code: %d", r);
 			r = 0;
 			goto out;
 		}
 		/* Buffer should be capable of storing 0.125 seconds of sample */
 		dsp->buffer_size = dsp->format.nAvgBytesPerSec / 8;
 
-		log_info("DSP buffer size: %d\n", dsp->buffer_size);
+		log_info("DSP buffer size: %d", dsp->buffer_size);
 		dsp->current_buffer = 0;
 		for (int i = 0; i < DSP_BUFFER_COUNT; i++)
 		{
@@ -170,7 +170,7 @@ static int dsp_write(struct file *f, const void *buf, size_t count)
 					waveOutUnprepareHeader(dsp->waveout, &dsp->buffer[j].hdr, sizeof(WAVEHDR));
 				waveOutClose(dsp->waveout);
 				dsp->waveout = NULL;
-				log_error("waveOutPrepareHeader() failed, error code: %d\n", r);
+				log_error("waveOutPrepareHeader() failed, error code: %d", r);
 				r = 0;
 				goto out;
 			}
@@ -217,7 +217,7 @@ static int dsp_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 	{
 	case SNDCTL_DSP_RESET:
 	{
-		log_info("SNDCTL_DSP_RESET.\n");
+		log_info("SNDCTL_DSP_RESET.");
 		dsp_reset(dsp);
 		break;
 	}
@@ -229,12 +229,12 @@ static int dsp_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 			break;
 		}
 		int speed = *(int *)arg;
-		log_info("SNDCTL_DSP_SPEED: %d\n", speed);
+		log_info("SNDCTL_DSP_SPEED: %d", speed);
 		DWORD old_speed = dsp->format.nSamplesPerSec;
 		dsp->format.nSamplesPerSec = speed;
 		if (!dsp_test_format(&dsp->format))
 		{
-			log_warning("Speed not supported.\n");
+			log_warning("Speed not supported.");
 			dsp->format.nSamplesPerSec = old_speed;
 			r = -L_EINVAL;
 		}
@@ -248,14 +248,14 @@ static int dsp_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 			break;
 		}
 		int c = *(int *)arg;
-		log_info("SNDCTL_DSP_STEREO: %d\n", c);
+		log_info("SNDCTL_DSP_STEREO: %d", c);
 		if (c == 0)
 			dsp->format.nChannels = 1;
 		else if (c == 1)
 			dsp->format.nChannels = 2;
 		else
 		{
-			log_warning("Invalid argument (can only be 0 or 1).\n");
+			log_warning("Invalid argument (can only be 0 or 1).");
 			r = -L_EINVAL;
 		}
 		break;
@@ -268,14 +268,14 @@ static int dsp_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 			break;
 		}
 		int fmt = *(int *)arg;
-		log_info("SNDCTL_DSP_SETFMT: 0x%x\n", fmt);
+		log_info("SNDCTL_DSP_SETFMT: 0x%x", fmt);
 		if (fmt == AFMT_S16_LE)
 			dsp->format.wBitsPerSample = 16;
 		else if (fmt == AFMT_U8)
 			dsp->format.wBitsPerSample = 8;
 		else
 		{
-			log_warning("Invalid argument (can only be AFMT_S16_LE or AFMT_U8).\n");
+			log_warning("Invalid argument (can only be AFMT_S16_LE or AFMT_U8).");
 			r = -L_EINVAL;
 		}
 		break;
@@ -287,7 +287,7 @@ static int dsp_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 			r = -L_EFAULT;
 			break;
 		}
-		log_info("SNDCTL_DSP_GETFMTS\n");
+		log_info("SNDCTL_DSP_GETFMTS");
 		*(int *)arg = AFMT_U8 | AFMT_S16_LE;
 		break;
 	}

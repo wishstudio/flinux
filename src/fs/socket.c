@@ -50,7 +50,7 @@ static int translate_address_family(int af)
 	case LINUX_AF_INET: return AF_INET;
 	case LINUX_AF_INET6: return AF_INET6;
 	default:
-		log_error("Unknown af: %d\n", af);
+		log_error("Unknown af: %d", af);
 		return -L_EAFNOSUPPORT;
 	}
 }
@@ -98,7 +98,7 @@ static int translate_socket_error(int error)
 	case WSAENOTEMPTY: return -L_ENOTEMPTY;
 	case WSAECANCELLED: return -L_ECANCELED;
 	default:
-		log_error("Unhandled WSA error code: %d\n", error);
+		log_error("Unhandled WSA error code: %d", error);
 		return -L_EIO;
 	}
 }
@@ -127,7 +127,7 @@ static int translate_socket_addr_to_winsock(const struct sockaddr_storage *from,
 		return addrlen;
 		
 	default:
-		log_error("Unknown address family: %d\n", from->ss_family);
+		log_error("Unknown address family: %d", from->ss_family);
 		return SOCKET_ERROR;
 	}
 }
@@ -154,11 +154,11 @@ static void socket_ensure_initialized()
 		int r = WSAStartup(MAKEWORD(2, 2), &wsa_data);
 		if (r != 0)
 		{
-			log_error("WSAStartup() failed, error code: %d\n", r);
+			log_error("WSAStartup() failed, error code: %d", r);
 			process_exit(1, 0);
 		}
 		socket_inited = 1;
-		log_info("WinSock2 initialized, version: %d.%d\n", LOBYTE(wsa_data.wVersion), HIBYTE(wsa_data.wVersion));
+		log_info("WinSock2 initialized, version: %d.%d", LOBYTE(wsa_data.wVersion), HIBYTE(wsa_data.wVersion));
 	}
 }
 
@@ -254,7 +254,7 @@ static int socket_wait_event(struct socket_file *f, int event, int flags)
 static int socket_sendto(struct socket_file *f, const void *buf, size_t len, int flags, const struct sockaddr *dest_addr, int addrlen)
 {
 	if (flags & ~LINUX_MSG_DONTWAIT)
-		log_error("flags (0x%x) contains unsupported bits.\n", flags);
+		log_error("flags (0x%x) contains unsupported bits.", flags);
 	struct sockaddr_storage addr_storage;
 	if (addrlen)
 	{
@@ -273,7 +273,7 @@ static int socket_sendto(struct socket_file *f, const void *buf, size_t len, int
 		int err = WSAGetLastError();
 		if (err != WSAEWOULDBLOCK)
 		{
-			log_warning("sendto() failed, error code: %d\n", err);
+			log_warning("sendto() failed, error code: %d", err);
 			return translate_socket_error(err);
 		}
 		f->events &= ~FD_WRITE;
@@ -284,7 +284,7 @@ static int socket_sendto(struct socket_file *f, const void *buf, size_t len, int
 static int socket_sendmsg(struct socket_file *f, const struct msghdr *msg, int flags)
 {
 	if (flags & ~LINUX_MSG_DONTWAIT)
-		log_error("socket_sendmsg(): flags (0x%x) contains unsupported bits.\n", flags);
+		log_error("socket_sendmsg(): flags (0x%x) contains unsupported bits.", flags);
 	WSABUF *buffers = (WSABUF *)alloca(sizeof(struct iovec) * msg->msg_iovlen);
 	for (int i = 0; i < msg->msg_iovlen; i++)
 	{
@@ -318,7 +318,7 @@ static int socket_sendmsg(struct socket_file *f, const struct msghdr *msg, int f
 		int err = WSAGetLastError();
 		if (err != WSAEWOULDBLOCK)
 		{
-			log_warning("WSASendMsg() failed, error code: %d\n", err);
+			log_warning("WSASendMsg() failed, error code: %d", err);
 			return translate_socket_error(err);
 		}
 		f->events &= ~FD_WRITE;
@@ -329,7 +329,7 @@ static int socket_sendmsg(struct socket_file *f, const struct msghdr *msg, int f
 static int socket_recvfrom(struct socket_file *f, void *buf, size_t len, int flags, struct sockaddr *src_addr, int *addrlen)
 {
 	if (flags & ~(LINUX_MSG_PEEK | LINUX_MSG_DONTWAIT))
-		log_error("flags (0x%x) contains unsupported bits.\n", flags);
+		log_error("flags (0x%x) contains unsupported bits.", flags);
 	struct sockaddr_storage addr_storage;
 	int addr_storage_len = sizeof(struct sockaddr_storage);
 	int r;
@@ -343,7 +343,7 @@ static int socket_recvfrom(struct socket_file *f, void *buf, size_t len, int fla
 		int err = WSAGetLastError();
 		if (err != WSAEWOULDBLOCK)
 		{
-			log_warning("recvfrom() failed, error code: %d\n", err);
+			log_warning("recvfrom() failed, error code: %d", err);
 			return translate_socket_error(err);
 		}
 	}
@@ -360,7 +360,7 @@ static int socket_recvfrom(struct socket_file *f, void *buf, size_t len, int fla
 static int socket_recvmsg(struct socket_file *f, struct msghdr *msg, int flags)
 {
 	if (flags & ~LINUX_MSG_DONTWAIT)
-		log_error("socket_sendmsg(): flags (0x%x) contains unsupported bits.\n", flags);
+		log_error("socket_sendmsg(): flags (0x%x) contains unsupported bits.", flags);
 
 	if (f->type != LINUX_SOCK_DGRAM && f->type != LINUX_SOCK_RAW)
 	{
@@ -390,7 +390,7 @@ static int socket_recvmsg(struct socket_file *f, struct msghdr *msg, int flags)
 		DWORD bytes;
 		if (WSAIoctl(f->socket, SIO_GET_EXTENSION_FUNCTION_POINTER, &guid, sizeof(guid), &WSARecvMsg, sizeof(WSARecvMsg), &bytes, NULL, NULL) == SOCKET_ERROR)
 		{
-			log_error("WSAIoctl(WSARecvMsg) failed, error code: %d\n", WSAGetLastError());
+			log_error("WSAIoctl(WSARecvMsg) failed, error code: %d", WSAGetLastError());
 			return -L_EIO;
 		}
 	}
@@ -421,7 +421,7 @@ static int socket_recvmsg(struct socket_file *f, struct msghdr *msg, int flags)
 		int err = WSAGetLastError();
 		if (err != WSAEWOULDBLOCK)
 		{
-			log_warning("WSARecvMsg() failed, error code: %d\n", err);
+			log_warning("WSARecvMsg() failed, error code: %d", err);
 			return translate_socket_error(err);
 		}
 	}
@@ -479,12 +479,12 @@ static HANDLE init_socket_event(int sock)
 	HANDLE handle = CreateEventW(&attr, TRUE, FALSE, NULL);
 	if (handle == NULL)
 	{
-		log_error("CreateEventW() failed, error code: %d\n", GetLastError());
+		log_error("CreateEventW() failed, error code: %d", GetLastError());
 		return NULL;
 	}
 	if (WSAEventSelect(sock, handle, FD_READ | FD_WRITE | FD_ACCEPT | FD_CONNECT) == SOCKET_ERROR)
 	{
-		log_error("WSAEventSelect() failed, error code: %d\n", WSAGetLastError());
+		log_error("WSAEventSelect() failed, error code: %d", WSAGetLastError());
 		CloseHandle(handle);
 		return NULL;
 	}
@@ -514,7 +514,7 @@ static int mm_check_read_msghdr(const struct msghdr *msg)
 		return 0;
 	for (int i = 0; i < msg->msg_iovlen; i++)
 	{
-		log_info("iov %d: [%p, %p)\n", i, msg->msg_iov[i].iov_base, (uintptr_t)msg->msg_iov[i].iov_base + msg->msg_iov[i].iov_len);
+		log_info("iov %d: [%p, %p)", i, msg->msg_iov[i].iov_base, (uintptr_t)msg->msg_iov[i].iov_base + msg->msg_iov[i].iov_len);
 		if (!mm_check_read(msg->msg_iov[i].iov_base, msg->msg_iov[i].iov_len))
 			return 0;
 	}
@@ -533,7 +533,7 @@ static int mm_check_write_msghdr(struct msghdr *msg)
 		return 0;
 	for (int i = 0; i < msg->msg_iovlen; i++)
 	{
-		log_info("iov %d: [%p, %p)\n", i, msg->msg_iov[i].iov_base, (uintptr_t)msg->msg_iov[i].iov_base + msg->msg_iov[i].iov_len);
+		log_info("iov %d: [%p, %p)", i, msg->msg_iov[i].iov_base, (uintptr_t)msg->msg_iov[i].iov_base + msg->msg_iov[i].iov_len);
 		if (!mm_check_write(msg->msg_iov[i].iov_base, msg->msg_iov[i].iov_len))
 			return 0;
 	}
@@ -542,7 +542,7 @@ static int mm_check_write_msghdr(struct msghdr *msg)
 
 DEFINE_SYSCALL(socket, int, domain, int, type, int, protocol)
 {
-	log_info("socket(domain=%d, type=0%o, protocol=%d)\n", domain, type, protocol);
+	log_info("socket(domain=%d, type=0%o, protocol=%d)", domain, type, protocol);
 	socket_ensure_initialized();
 
 	/* Translation constants to their Windows counterparts */
@@ -559,21 +559,21 @@ DEFINE_SYSCALL(socket, int, domain, int, type, int, protocol)
 	case LINUX_SOCK_RDM: win32_type = SOCK_RDM; break;
 	case LINUX_SOCK_SEQPACKET: win32_type = SOCK_SEQPACKET; break;
 	default:
-		log_error("Unknown type: %d\n", type & LINUX_SOCK_TYPE_MASK);
+		log_error("Unknown type: %d", type & LINUX_SOCK_TYPE_MASK);
 		return -L_EPROTONOSUPPORT;
 	}
 
 	SOCKET sock = socket(win32_af, win32_type, protocol);
 	if (sock == INVALID_SOCKET)
 	{
-		log_warning("socket() failed, error code: %d\n", WSAGetLastError());
+		log_warning("socket() failed, error code: %d", WSAGetLastError());
 		return translate_socket_error(WSAGetLastError());
 	}
 	HANDLE event_handle = init_socket_event(sock);
 	if (!event_handle)
 	{
 		closesocket(sock);
-		log_error("init_socket_event() failed.\n");
+		log_error("init_socket_event() failed.");
 		return -L_ENFILE;
 	}
 
@@ -591,13 +591,13 @@ DEFINE_SYSCALL(socket, int, domain, int, type, int, protocol)
 	int fd = vfs_store_file((struct file *)f, (type & O_CLOEXEC) > 0);
 	if (fd < 0)
 		vfs_release((struct file *)f);
-	log_info("socket fd: %d\n", fd);
+	log_info("socket fd: %d", fd);
 	return fd;
 }
 
 DEFINE_SYSCALL(connect, int, sockfd, const struct sockaddr *, addr, size_t, addrlen)
 {
-	log_info("connect(%d, %p, %d)\n", sockfd, addr, addrlen);
+	log_info("connect(%d, %p, %d)", sockfd, addr, addrlen);
 	if (!mm_check_read(addr, sizeof(struct sockaddr)))
 		return -L_EFAULT;
 	struct socket_file *f;
@@ -614,12 +614,12 @@ DEFINE_SYSCALL(connect, int, sockfd, const struct sockaddr *, addr, size_t, addr
 		int err = WSAGetLastError();
 		if (err != WSAEWOULDBLOCK)
 		{
-			log_warning("connect() failed, error code: %d\n", err);
+			log_warning("connect() failed, error code: %d", err);
 			r = translate_socket_error(err);
 		}
 		else if ((f->base_file.flags & O_NONBLOCK) > 0)
 		{
-			log_info("connect() returned EINPROGRESS.\n");
+			log_info("connect() returned EINPROGRESS.");
 			r = -L_EINPROGRESS;
 		}
 		else
@@ -635,7 +635,7 @@ DEFINE_SYSCALL(connect, int, sockfd, const struct sockaddr *, addr, size_t, addr
 
 DEFINE_SYSCALL(getsockname, int, sockfd, struct sockaddr *, addr, int *, addrlen)
 {
-	log_info("getsockname(%d, %p, %p)\n", sockfd, addr, addrlen);
+	log_info("getsockname(%d, %p, %p)", sockfd, addr, addrlen);
 	if (!mm_check_write(addrlen, sizeof(*addrlen)))
 		return -L_EFAULT;
 	if (!mm_check_write(addr, *addrlen))
@@ -681,7 +681,7 @@ DEFINE_SYSCALL(getsockname, int, sockfd, struct sockaddr *, addr, int *, addrlen
 		}
 		else
 		{
-			log_warning("getsockname() failed, error code: %d\n", WSAGetLastError());
+			log_warning("getsockname() failed, error code: %d", WSAGetLastError());
 			r = translate_socket_error(WSAGetLastError());
 			goto out;
 		}
@@ -697,7 +697,7 @@ out:
 
 DEFINE_SYSCALL(getpeername, int, sockfd, struct sockaddr *, addr, int *, addrlen)
 {
-	log_info("getpeername(%d, %p, %p)\n", sockfd, addr, addrlen);
+	log_info("getpeername(%d, %p, %p)", sockfd, addr, addrlen);
 	if (!mm_check_write(addrlen, sizeof(*addrlen)))
 		return -L_EFAULT;
 	if (!mm_check_write(addr, *addrlen))
@@ -711,7 +711,7 @@ DEFINE_SYSCALL(getpeername, int, sockfd, struct sockaddr *, addr, int *, addrlen
 	int addr_storage_len = sizeof(struct sockaddr_storage);
 	if (getpeername(f->socket, (struct sockaddr *)&addr_storage, &addr_storage_len) == SOCKET_ERROR)
 	{
-		log_warning("getsockname() failed, error code: %d\n", WSAGetLastError());
+		log_warning("getsockname() failed, error code: %d", WSAGetLastError());
 		r = translate_socket_error(WSAGetLastError());
 		goto out;
 	}
@@ -727,7 +727,7 @@ out:
 
 DEFINE_SYSCALL(send, int, sockfd, const void *, buf, size_t, len, int, flags)
 {
-	log_info("send(%d, %p, %d, %x)\n", sockfd, buf, len, flags);
+	log_info("send(%d, %p, %d, %x)", sockfd, buf, len, flags);
 	if (!mm_check_read(buf, len))
 		return -L_EFAULT;
 	struct socket_file *f;
@@ -743,7 +743,7 @@ DEFINE_SYSCALL(send, int, sockfd, const void *, buf, size_t, len, int, flags)
 
 DEFINE_SYSCALL(recv, int, sockfd, void *, buf, size_t, len, int, flags)
 {
-	log_info("recv(%d, %p, %d, %x)\n", sockfd, buf, len, flags);
+	log_info("recv(%d, %p, %d, %x)", sockfd, buf, len, flags);
 	if (!mm_check_write(buf, len))
 		return -L_EFAULT;
 	struct socket_file *f;
@@ -759,7 +759,7 @@ DEFINE_SYSCALL(recv, int, sockfd, void *, buf, size_t, len, int, flags)
 
 DEFINE_SYSCALL(sendto, int, sockfd, const void *, buf, size_t, len, int, flags, const struct sockaddr *, dest_addr, int, addrlen)
 {
-	log_info("sendto(%d, %p, %d, %x, %p, %d)\n", sockfd, buf, len, flags, dest_addr, addrlen);
+	log_info("sendto(%d, %p, %d, %x, %p, %d)", sockfd, buf, len, flags, dest_addr, addrlen);
 	if (!mm_check_read(buf, len))
 		return -L_EFAULT;
 	if (dest_addr && !mm_check_read(dest_addr, addrlen))
@@ -777,7 +777,7 @@ DEFINE_SYSCALL(sendto, int, sockfd, const void *, buf, size_t, len, int, flags, 
 
 DEFINE_SYSCALL(recvfrom, int, sockfd, void *, buf, size_t, len, int, flags, struct sockaddr *, src_addr, int *, addrlen)
 {
-	log_info("recvfrom(%d, %p, %d, %x, %p, %p)\n", sockfd, buf, len, flags, src_addr, addrlen);
+	log_info("recvfrom(%d, %p, %d, %x, %p, %p)", sockfd, buf, len, flags, src_addr, addrlen);
 	if (!mm_check_write(buf, len))
 		return -L_EFAULT;
 	if (src_addr)
@@ -800,7 +800,7 @@ DEFINE_SYSCALL(recvfrom, int, sockfd, void *, buf, size_t, len, int, flags, stru
 
 DEFINE_SYSCALL(shutdown, int, sockfd, int, how)
 {
-	log_info("shutdown(%d, %d)\n", sockfd, how);
+	log_info("shutdown(%d, %d)", sockfd, how);
 	struct socket_file *f;
 	int r = get_sockfd(sockfd, &f);
 	if (r)
@@ -820,7 +820,7 @@ DEFINE_SYSCALL(shutdown, int, sockfd, int, how)
 	}
 	if (shutdown(f->socket, win32_how) == SOCKET_ERROR)
 	{
-		log_warning("shutdown() failed, error code: %d\n", WSAGetLastError());
+		log_warning("shutdown() failed, error code: %d", WSAGetLastError());
 		r = translate_socket_error(WSAGetLastError());
 	}
 out:
@@ -848,7 +848,7 @@ static int socket_get_set_sockopt(int call, struct socket_file *f, int level, in
 		switch (optname)
 		{
 		case LINUX_SO_REUSEADDR: optname = SO_REUSEADDR;
-			log_warning("SO_REUSEADDR: Current semantic is not exactly correct.\n");
+			log_warning("SO_REUSEADDR: Current semantic is not exactly correct.");
 			goto get_set_sockopt;
 		case LINUX_SO_ERROR: optname = SO_ERROR; goto get_set_sockopt;
 		case LINUX_SO_BROADCAST: optname = SO_BROADCAST; goto get_set_sockopt;
@@ -865,7 +865,7 @@ static int socket_get_set_sockopt(int call, struct socket_file *f, int level, in
 				win32_linger.l_linger = linger->l_linger;
 				if (setsockopt(f->socket, SOL_SOCKET, SO_LINGER, (const char *)&win32_linger, sizeof(win32_linger)) == SOCKET_ERROR)
 				{
-					log_warning("setsockopt() failed, error code: %d\n", WSAGetLastError());
+					log_warning("setsockopt() failed, error code: %d", WSAGetLastError());
 					return translate_socket_error(WSAGetLastError());
 				}
 			}
@@ -874,7 +874,7 @@ static int socket_get_set_sockopt(int call, struct socket_file *f, int level, in
 				int optlen;
 				if (getsockopt(f->socket, SOL_SOCKET, SO_LINGER, (char *)&win32_linger, &optlen) == SOCKET_ERROR)
 				{
-					log_warning("getsockopt() failed, error code: %d\n", WSAGetLastError());
+					log_warning("getsockopt() failed, error code: %d", WSAGetLastError());
 					return translate_socket_error(WSAGetLastError());
 				}
 				struct linux_linger *linger = (struct linux_linger *)get_optval;
@@ -895,7 +895,7 @@ static int socket_get_set_sockopt(int call, struct socket_file *f, int level, in
 		}
 	}
 	}
-	log_error("Unhandled sockopt level %d, optname %d\n", in_level, in_optname);
+	log_error("Unhandled sockopt level %d, optname %d", in_level, in_optname);
 	return -L_EINVAL;
 
 get_set_sockopt:
@@ -904,7 +904,7 @@ get_set_sockopt:
 	{
 		if (setsockopt(f->socket, level, optname, set_optval, set_optlen) == SOCKET_ERROR)
 		{
-			log_warning("setsockopt() failed, error code: %d\n", WSAGetLastError());
+			log_warning("setsockopt() failed, error code: %d", WSAGetLastError());
 			return translate_socket_error(WSAGetLastError());
 		}
 		return 0;
@@ -913,7 +913,7 @@ get_set_sockopt:
 	{
 		if (getsockopt(f->socket, level, optname, get_optval, get_optlen) == SOCKET_ERROR)
 		{
-			log_warning("getsockopt() failed, error code: %d\n", WSAGetLastError());
+			log_warning("getsockopt() failed, error code: %d", WSAGetLastError());
 			return translate_socket_error(WSAGetLastError());
 		}
 		return 0;
@@ -922,7 +922,7 @@ get_set_sockopt:
 
 DEFINE_SYSCALL(setsockopt, int, sockfd, int, level, int, optname, const void *, optval, int, optlen)
 {
-	log_info("setsockopt(%d, %d, %d, %p, %d)\n", sockfd, level, optname, optval, optlen);
+	log_info("setsockopt(%d, %d, %d, %p, %d)", sockfd, level, optname, optval, optlen);
 	if (optval && !mm_check_read(optval, optlen))
 		return -L_EFAULT;
 	struct socket_file *f;
@@ -938,7 +938,7 @@ DEFINE_SYSCALL(setsockopt, int, sockfd, int, level, int, optname, const void *, 
 
 DEFINE_SYSCALL(getsockopt, int, sockfd, int, level, int, optname, void *, optval, int *, optlen)
 {
-	log_info("getsockopt(%d, %d, %d, %p, %p)\n", sockfd, level, optname, optval, optlen);
+	log_info("getsockopt(%d, %d, %d, %p, %p)", sockfd, level, optname, optval, optlen);
 	if (optlen && !mm_check_write(optlen, sizeof(*optlen)))
 		return -L_EFAULT;
 	if (optlen && !mm_check_write(optval, *optlen))
@@ -956,7 +956,7 @@ DEFINE_SYSCALL(getsockopt, int, sockfd, int, level, int, optname, void *, optval
 
 DEFINE_SYSCALL(sendmsg, int, sockfd, const struct msghdr *, msg, int, flags)
 {
-	log_info("sendmsg(%d, %p, %x)\n", sockfd, msg, flags);
+	log_info("sendmsg(%d, %p, %x)", sockfd, msg, flags);
 	if (!mm_check_read_msghdr(msg))
 		return -L_EFAULT;
 	struct socket_file *f;
@@ -972,7 +972,7 @@ DEFINE_SYSCALL(sendmsg, int, sockfd, const struct msghdr *, msg, int, flags)
 
 DEFINE_SYSCALL(recvmsg, int, sockfd, struct msghdr *, msg, int, flags)
 {
-	log_info("recvmsg(%d, %p, %x)\n", sockfd, msg, flags);
+	log_info("recvmsg(%d, %p, %x)", sockfd, msg, flags);
 	if (!mm_check_write_msghdr(msg))
 		return -L_EFAULT;
 	struct socket_file *f;
@@ -988,12 +988,12 @@ DEFINE_SYSCALL(recvmsg, int, sockfd, struct msghdr *, msg, int, flags)
 
 DEFINE_SYSCALL(sendmmsg, int, sockfd, struct mmsghdr *, msgvec, unsigned int, vlen, unsigned int, flags)
 {
-	log_info("sendmmsg(sockfd=%d, msgvec=%p, vlen=%d, flags=%d)\n", sockfd, msgvec, vlen, flags);
+	log_info("sendmmsg(sockfd=%d, msgvec=%p, vlen=%d, flags=%d)", sockfd, msgvec, vlen, flags);
 	if (!mm_check_write(msgvec, sizeof(struct mmsghdr) * vlen))
 		return -L_EFAULT;
 	for (int i = 0; i < vlen; i++)
 	{
-		log_info("msgvec %d:\n", i);
+		log_info("msgvec %d:", i);
 		if (!mm_check_read_msghdr(&msgvec[i].msg_hdr))
 			return -L_EFAULT;
 	}
@@ -1099,7 +1099,7 @@ DEFINE_SYSCALL(socketcall, int, call, uintptr_t *, args)
 
 	default:
 	{
-		log_error("Unimplemented socketcall: %d\n", call);
+		log_error("Unimplemented socketcall: %d", call);
 		return -L_EINVAL;
 	}
 	}

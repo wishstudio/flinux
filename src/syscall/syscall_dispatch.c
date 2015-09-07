@@ -62,7 +62,7 @@ syscall_fn* syscall_table[SYSCALL_COUNT] =
 
 void sys_unimplemented_imp(intptr_t id)
 {
-	log_error("FATAL: Unimplemented syscall: %d\n", id);
+	log_error("FATAL: Unimplemented syscall: %d", id);
 	__debugbreak();
 	process_exit(1, 0);
 }

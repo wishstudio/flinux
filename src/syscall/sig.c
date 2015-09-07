@@ -191,7 +191,7 @@ static void signal_thread_handle_child_terminated(struct child_process *proc)
 static DWORD WINAPI signal_thread(LPVOID parameter)
 {
 	log_init_thread();
-	log_info("Signal thread started.\n");
+	log_info("Signal thread started.");
 	OVERLAPPED packet_overlapped;
 	memset(&packet_overlapped, 0, sizeof(OVERLAPPED));
 	char buf[1];
@@ -406,7 +406,7 @@ DEFINE_SYSCALL(rt_sigreturn, uintptr_t, bx, uintptr_t, cx, uintptr_t, dx, uintpt
 	struct rt_sigframe *frame = (struct rt_sigframe *)(sp - sizeof(uintptr_t));
 	if (!mm_check_read(frame, sizeof(*frame)))
 	{
-		log_error("sigreturn: Invalid frame.\n");
+		log_error("sigreturn: Invalid frame.");
 		return -L_EFAULT;
 	}
 	/* TODO: Check validity of fpstate */
@@ -424,7 +424,7 @@ static void signal_init_private()
 	/* Initialize private structures and handles */
 	if (!create_pipe(&signal->sigread, &signal->sigwrite, true))
 	{
-		log_error("Signal pipe creation failed, error code: %d\n", GetLastError());
+		log_error("Signal pipe creation failed, error code: %d", GetLastError());
 		return;
 	}
 	signal->process_wait_semaphore = CreateSemaphoreW(NULL, 0, LONG_MAX, NULL);
@@ -436,7 +436,7 @@ static void signal_init_private()
 	InitializeCriticalSection(&signal->mutex);
 	signal->thread = CreateThread(NULL, 0, signal_thread, NULL, 0, NULL);
 	if (!signal->thread)
-		log_error("Signal thread creation failed, error code: %d.\n", GetLastError());
+		log_error("Signal thread creation failed, error code: %d.", GetLastError());
 }
 
 void signal_init()
@@ -502,7 +502,7 @@ int signal_kill(pid_t pid, siginfo_t *info)
 	}
 	else
 	{
-		log_error("signal_kill: Killing other processes are not supported.\n");
+		log_error("signal_kill: Killing other processes are not supported.");
 		return -L_ESRCH;
 	}
 }
@@ -585,28 +585,28 @@ int signal_query(DWORD win_pid, HANDLE sigwrite, HANDLE query_mutex, int query_t
 
 DEFINE_SYSCALL(alarm, unsigned int, seconds)
 {
-	log_info("alarm(%d)\n", seconds);
-	log_error("alarm() not implemented.\n");
+	log_info("alarm(%d)", seconds);
+	log_error("alarm() not implemented.");
 	return 0;
 }
 
 DEFINE_SYSCALL(kill, pid_t, pid, int, sig)
 {
-	log_info("kill(%d, %d)\n", pid, sig);
-	log_error("kill() not implemented.\n");
+	log_info("kill(%d, %d)", pid, sig);
+	log_error("kill() not implemented.");
 	return 0;
 }
 
 DEFINE_SYSCALL(tgkill, pid_t, tgid, pid_t, pid, int, sig)
 {
-	log_info("tgkill(%d, %d, %d)\n", tgid, pid, sig);
-	log_error("tgkill() not implemented.\n");
+	log_info("tgkill(%d, %d, %d)", tgid, pid, sig);
+	log_error("tgkill() not implemented.");
 	return 0;
 }
 
 DEFINE_SYSCALL(personality, unsigned long, persona)
 {
-	log_info("personality(%d)\n", persona);
+	log_info("personality(%d)", persona);
 	if (persona != 0 && persona != 0xFFFFFFFFU)
 	{
 		log_error("ERROR: persona != 0");
@@ -617,7 +617,7 @@ DEFINE_SYSCALL(personality, unsigned long, persona)
 
 DEFINE_SYSCALL(rt_sigaction, int, signum, const struct sigaction *, act, struct sigaction *, oldact, size_t, sigsetsize)
 {
-	log_info("rt_sigaction(%d, %p, %p)\n", signum, act, oldact);
+	log_info("rt_sigaction(%d, %p, %p)", signum, act, oldact);
 	if (sigsetsize != sizeof(sigset_t))
 		return -L_EINVAL;
 	if (signum < 0 || signum >= _NSIG || signum == SIGKILL || signum == SIGSTOP)
@@ -637,7 +637,7 @@ DEFINE_SYSCALL(rt_sigaction, int, signum, const struct sigaction *, act, struct 
 
 DEFINE_SYSCALL(rt_sigprocmask, int, how, const sigset_t *, set, sigset_t *, oldset, size_t, sigsetsize)
 {
-	log_info("rt_sigprocmask(%d, 0x%p, 0x%p)\n", how, set, oldset);
+	log_info("rt_sigprocmask(%d, 0x%p, 0x%p)", how, set, oldset);
 	if (sigsetsize != sizeof(sigset_t))
 		return -L_EINVAL;
 	if (how != SIG_BLOCK && how != SIG_UNBLOCK && how != SIG_SETMASK)
@@ -673,7 +673,7 @@ DEFINE_SYSCALL(rt_sigprocmask, int, how, const sigset_t *, set, sigset_t *, olds
 
 DEFINE_SYSCALL(rt_sigsuspend, const sigset_t *, mask)
 {
-	log_info("rt_sigsuspend(%p)\n", mask);
+	log_info("rt_sigsuspend(%p)", mask);
 	if (!mm_check_read(mask, sizeof(*mask)))
 		return -L_EFAULT;
 	sigset_t oldmask;
@@ -691,7 +691,7 @@ DEFINE_SYSCALL(rt_sigsuspend, const sigset_t *, mask)
 
 DEFINE_SYSCALL(sigaltstack, const stack_t *, ss, stack_t *, oss)
 {
-	log_info("sigaltstack(ss=%p, oss=%p)\n", ss, oss);
-	log_error("sigaltstack() not implemented.\n");
+	log_info("sigaltstack(ss=%p, oss=%p)", ss, oss);
+	log_error("sigaltstack() not implemented.");
 	return -L_ENOSYS;
 }

@@ -98,7 +98,7 @@ static struct thread *thread_alloc()
 		InterlockedIncrement(&process->thread_count);
 		return list_entry(node, struct thread, list);
 	}
-	log_error("Too many threads for current process.\n");
+	log_error("Too many threads for current process.");
 	__debugbreak();
 	return NULL;
 }
@@ -126,7 +126,7 @@ static pid_t process_shared_alloc()
 			return cur;
 		}
 	}
-	log_error("Process table exhausted.\n");
+	log_error("Process table exhausted.");
 	__debugbreak();
 	return 0;
 }
@@ -170,7 +170,7 @@ void process_init()
 	signal_init_thread(thread);
 	current_thread = thread;
 	current_thread->stack_base = VirtualAlloc(NULL, STACK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
-	log_info("PID: %d\n", pid);
+	log_info("PID: %d", pid);
 }
 
 void process_afterfork_child(void *stack_base, pid_t pid)
@@ -188,7 +188,7 @@ void process_afterfork_child(void *stack_base, pid_t pid)
 	signal_init_thread(thread);
 	current_thread = thread;
 	current_thread->stack_base = stack_base;
-	log_info("PID: %d\n", pid);
+	log_info("PID: %d", pid);
 }
 
 int process_fork(HANDLE hProcess)
@@ -210,7 +210,7 @@ void process_thread_entry(pid_t tid)
 	signal_init_thread(thread);
 	current_thread = thread;
 	/* TODO: stack_base */
-	log_info("PID: %d\n", tid);
+	log_info("PID: %d", tid);
 }
 
 void *process_get_stack_base()
@@ -223,7 +223,7 @@ pid_t process_init_child(DWORD win_pid, DWORD win_tid, HANDLE process_handle)
 	AcquireSRWLockExclusive(&process->rw_lock);
 	if (slist_empty(&process->child_freelist))
 	{
-		log_error("process: Maximum number of process exceeded.\n");
+		log_error("process: Maximum number of process exceeded.");
 		__debugbreak();
 	}
 	/* Allocate a new process table entry */
@@ -278,11 +278,11 @@ pid_t process_init_thread(DWORD win_tid)
 static pid_t process_wait(pid_t pid, int *status, int options, struct rusage *rusage)
 {
 	if (options & WUNTRACED)
-		log_error("Unhandled option WUNTRACED\n");
+		log_error("Unhandled option WUNTRACED");
 	if (options & WCONTINUED)
-		log_error("Unhandled option WCONTINUED\n");
+		log_error("Unhandled option WCONTINUED");
 	if (rusage)
-		log_error("rusage not supported.\n");
+		log_error("rusage not supported.");
 	struct child_process *proc = NULL;
 	if (pid > 0)
 	{
@@ -314,7 +314,7 @@ static pid_t process_wait(pid_t pid, int *status, int options, struct rusage *ru
 		}
 		if (proc == NULL)
 		{
-			log_warning("pid %d is not a child.\n", pid);
+			log_warning("pid %d is not a child.", pid);
 			return -L_ECHILD;
 		}
 	}
@@ -322,7 +322,7 @@ static pid_t process_wait(pid_t pid, int *status, int options, struct rusage *ru
 	{
 		if (process->child_count == 0)
 		{
-			log_warning("No children.\n");
+			log_warning("No children.");
 			return -L_ECHILD;
 		}
 		if (!(options & WNOHANG))
@@ -356,7 +356,7 @@ static pid_t process_wait(pid_t pid, int *status, int options, struct rusage *ru
 	}
 	else
 	{
-		log_error("pid unhandled.\n");
+		log_error("pid unhandled.");
 		return -L_EINVAL;
 	}
 	pid = proc->pid;
@@ -378,12 +378,12 @@ static pid_t process_wait(pid_t pid, int *status, int options, struct rusage *ru
 	}
 	else
 	{
-		log_error("Invalid process status: %d (pid: %d)\n", process_shared->processes[pid].status, pid);
+		log_error("Invalid process status: %d (pid: %d)", process_shared->processes[pid].status, pid);
 		process_exit(1, 0);
 	}
 	process_shared->processes[pid].status = PROCESS_NOTEXIST;
 	process_unlock_shared();
-	log_info("pid: %d exit code: %d exit signal: %d\n", pid, exit_code, exit_signal);
+	log_info("pid: %d exit code: %d exit signal: %d", pid, exit_code, exit_signal);
 	if (status)
 	{
 		if (exit_signal)
@@ -397,7 +397,7 @@ static pid_t process_wait(pid_t pid, int *status, int options, struct rusage *ru
 
 DEFINE_SYSCALL(waitpid, pid_t, pid, int *, status, int, options)
 {
-	log_info("sys_waitpid(%d, %p, %d)\n", pid, status, options);
+	log_info("sys_waitpid(%d, %p, %d)", pid, status, options);
 	AcquireSRWLockShared(&process->rw_lock);
 	intptr_t r = process_wait(pid, status, options, NULL);
 	ReleaseSRWLockShared(&process->rw_lock);
@@ -406,9 +406,9 @@ DEFINE_SYSCALL(waitpid, pid_t, pid, int *, status, int, options)
 
 DEFINE_SYSCALL(wait4, pid_t, pid, int *, status, int, options, struct rusage *, rusage)
 {
-	log_info("sys_wait4(%d, %p, %d, %p)\n", pid, status, options, rusage);
+	log_info("sys_wait4(%d, %p, %d, %p)", pid, status, options, rusage);
 	if (rusage)
-		log_error("rusage != NULL\n");
+		log_error("rusage != NULL");
 	AcquireSRWLockShared(&process->rw_lock);
 	intptr_t r = process_wait(pid, status, options, rusage);
 	ReleaseSRWLockShared(&process->rw_lock);
@@ -441,7 +441,7 @@ pid_t process_get_pid()
 
 DEFINE_SYSCALL(getpid)
 {
-	log_info("getpid(): %d\n", process->pid);
+	log_info("getpid(): %d", process->pid);
 	return process->pid;
 }
 
@@ -453,13 +453,13 @@ pid_t process_get_ppid(pid_t pid)
 DEFINE_SYSCALL(getppid)
 {
 	pid_t ppid = process_shared->processes[process->pid].ppid;
-	log_info("getppid(): %d\n", ppid);
+	log_info("getppid(): %d", ppid);
 	return ppid;
 }
 
 DEFINE_SYSCALL(setpgid, pid_t, pid, pid_t, pgid)
 {
-	log_info("setpgid(%d, %d)\n", pid, pgid);
+	log_info("setpgid(%d, %d)", pid, pgid);
 	return 0;
 }
 
@@ -498,19 +498,19 @@ pid_t process_get_pgid(pid_t pid)
 DEFINE_SYSCALL(getpgid, pid_t, pid)
 {
 	pid_t pgid = process_get_pgid(pid);
-	log_info("getpgid(%d): %d\n", pid, pgid);
+	log_info("getpgid(%d): %d", pid, pgid);
 	return pgid;
 }
 
 DEFINE_SYSCALL(getpgrp)
 {
-	log_info("getpgrp()\n");
+	log_info("getpgrp()");
 	return sys_getpgid(process->pid);
 }
 
 DEFINE_SYSCALL(gettid)
 {
-	log_info("gettid(): %d\n", process->pid);
+	log_info("gettid(): %d", process->pid);
 	return process->pid;
 }
 
@@ -522,7 +522,7 @@ pid_t process_get_sid()
 DEFINE_SYSCALL(getsid)
 {
 	pid_t sid = process_shared->processes[process->pid].sid;
-	log_info("getsid(): %d\n", sid);
+	log_info("getsid(): %d", sid);
 	return sid;
 }
 
@@ -673,55 +673,55 @@ int process_query_pid(int pid, int query_type, char *buf)
 
 DEFINE_SYSCALL(setsid)
 {
-	log_info("setsid().\n");
-	log_error("setsid() not implemented.\n");
+	log_info("setsid().");
+	log_error("setsid() not implemented.");
 	return 0;
 }
 
 DEFINE_SYSCALL(getuid)
 {
-	log_info("getuid(): %d\n", 0);
+	log_info("getuid(): %d", 0);
 	return 0;
 }
 
 DEFINE_SYSCALL(setgid, gid_t, gid)
 {
-	log_info("setgid(%d)\n", gid);
+	log_info("setgid(%d)", gid);
 	return 0;
 }
 
 DEFINE_SYSCALL(getgid)
 {
-	log_info("getgid(): %d\n", 0);
+	log_info("getgid(): %d", 0);
 	return 0;
 }
 
 DEFINE_SYSCALL(geteuid)
 {
-	log_info("geteuid(): %d\n", 0);
+	log_info("geteuid(): %d", 0);
 	return 0;
 }
 
 DEFINE_SYSCALL(getegid)
 {
-	log_info("getegid(): %d\n", 0);
+	log_info("getegid(): %d", 0);
 	return 0;
 }
 
 DEFINE_SYSCALL(setuid, uid_t, uid)
 {
-	log_info("setuid(%d)\n", uid);
+	log_info("setuid(%d)", uid);
 	return 0;
 }
 
 DEFINE_SYSCALL(setresuid, uid_t, ruid, uid_t, euid, uid_t, suid)
 {
-	log_info("setresuid(%d, %d, %d)\n", ruid, euid, suid);
+	log_info("setresuid(%d, %d, %d)", ruid, euid, suid);
 	return 0;
 }
 DEFINE_SYSCALL(getresuid, uid_t *, ruid, uid_t *, euid, uid_t *, suid)
 {
-	log_info("getresuid(%d, %d, %d)\n", ruid, euid, suid);
+	log_info("getresuid(%d, %d, %d)", ruid, euid, suid);
 	if (!mm_check_write(ruid, sizeof(*ruid)) || !mm_check_write(euid, sizeof(*euid)) || !mm_check_write(suid, sizeof(*suid)))
 		return -L_EFAULT;
 	*ruid = 0;
@@ -732,12 +732,12 @@ DEFINE_SYSCALL(getresuid, uid_t *, ruid, uid_t *, euid, uid_t *, suid)
 
 DEFINE_SYSCALL(setresgid, gid_t, rgid, gid_t, egid, gid_t, sgid)
 {
-	log_info("setresgid(%d, %d, %d)\n", rgid, egid, sgid);
+	log_info("setresgid(%d, %d, %d)", rgid, egid, sgid);
 	return 0;
 }
 DEFINE_SYSCALL(getresgid, uid_t *, rgid, gid_t *, egid, gid_t *, sgid)
 {
-	log_info("getresgid(%d, %d, %d)\n", rgid, egid, sgid);
+	log_info("getresgid(%d, %d, %d)", rgid, egid, sgid);
 	if (!mm_check_write(rgid, sizeof(*rgid)) || !mm_check_write(egid, sizeof(*egid)) || !mm_check_write(sgid, sizeof(*sgid)))
 		return -L_EFAULT;
 	*rgid = 0;
@@ -747,13 +747,13 @@ DEFINE_SYSCALL(getresgid, uid_t *, rgid, gid_t *, egid, gid_t *, sgid)
 }
 DEFINE_SYSCALL(getgroups, int, size, gid_t *, list)
 {
-	log_info("getgroups()\n");
+	log_info("getgroups()");
 	return 0;
 }
 
 DEFINE_SYSCALL(exit, int, status)
 {
-	log_info("exit(%d)\n", status);
+	log_info("exit(%d)", status);
 	log_shutdown();
 	process_lock_shared();
 	process_shared->processes[current_thread->pid].status = PROCESS_NOTEXIST;
@@ -768,14 +768,14 @@ DEFINE_SYSCALL(exit, int, status)
 
 DEFINE_SYSCALL(exit_group, int, status)
 {
-	log_info("exit_group(%d)\n", status);
+	log_info("exit_group(%d)", status);
 	log_shutdown();
 	process_exit(status, 0);
 }
 
 DEFINE_SYSCALL(uname, struct utsname *, buf)
 {
-	log_info("sys_uname(%p)\n", buf);
+	log_info("sys_uname(%p)", buf);
 	if (!mm_check_write(buf, sizeof(struct utsname)))
 		return -L_EFAULT;
 	/* Just mimic a reasonable Linux uname */
@@ -822,7 +822,7 @@ DEFINE_SYSCALL(oldolduname, struct oldold_utsname *, buf)
 
 DEFINE_SYSCALL(sysinfo, struct sysinfo *, info)
 {
-	log_info("sysinfo(%p)\n", info);
+	log_info("sysinfo(%p)", info);
 	if (!mm_check_write(info, sizeof(*info)))
 		return -L_EFAULT;
 	MEMORYSTATUSEX memory;
@@ -847,7 +847,7 @@ DEFINE_SYSCALL(sysinfo, struct sysinfo *, info)
 
 DEFINE_SYSCALL(getrlimit, int, resource, struct rlimit *, rlim)
 {
-	log_info("getrlimit(%d, %p)\n", resource, rlim);
+	log_info("getrlimit(%d, %p)", resource, rlim);
 	if (!mm_check_write(rlim, sizeof(struct rlimit)))
 		return -L_EFAULT;
 	switch (resource)
@@ -858,7 +858,7 @@ DEFINE_SYSCALL(getrlimit, int, resource, struct rlimit *, rlim)
 		break;
 
 	case RLIMIT_NPROC:
-		log_info("RLIMIT_NPROC: return fake result.\n");
+		log_info("RLIMIT_NPROC: return fake result.");
 		rlim->rlim_cur = 65536;
 		rlim->rlim_max = 65536;
 		break;
@@ -869,7 +869,7 @@ DEFINE_SYSCALL(getrlimit, int, resource, struct rlimit *, rlim)
 		break;
 
 	default:
-		log_error("Unsupported resource: %d\n", resource);
+		log_error("Unsupported resource: %d", resource);
 		return -L_EINVAL;
 	}
 	return 0;
@@ -877,76 +877,76 @@ DEFINE_SYSCALL(getrlimit, int, resource, struct rlimit *, rlim)
 
 DEFINE_SYSCALL(setrlimit, int, resource, const struct rlimit *, rlim)
 {
-	log_info("setrlimit(%d, %p)\n", resource, rlim);
+	log_info("setrlimit(%d, %p)", resource, rlim);
 	if (!mm_check_read(rlim, sizeof(struct rlimit)))
 		return -L_EFAULT;
 	switch (resource)
 	{
 	default:
-		log_error("Unsupported resource: %d\n", resource);
+		log_error("Unsupported resource: %d", resource);
 		return -L_EINVAL;
 	}
 }
 
 DEFINE_SYSCALL(getrusage, int, who, struct rusage *, usage)
 {
-	log_info("getrusage(%d, %p)\n", who, usage);
+	log_info("getrusage(%d, %p)", who, usage);
 	if (!mm_check_write(usage, sizeof(struct rusage)))
 		return -L_EFAULT;
 	ZeroMemory(usage, sizeof(struct rusage));
 	switch (who)
 	{
 	default:
-		log_error("Unhandled who: %d.\n", who);
+		log_error("Unhandled who: %d.", who);
 		return -L_EINVAL;
 	}
 }
 
 DEFINE_SYSCALL(getpriority, int, which, int, who)
 {
-	log_info("getpriority(which=%d, who=%d)\n", which, who);
-	log_error("getpriority() not implemented. Fake returning 0.\n");
+	log_info("getpriority(which=%d, who=%d)", which, who);
+	log_error("getpriority() not implemented. Fake returning 0.");
 	return 0;
 }
 
 DEFINE_SYSCALL(setpriority, int, which, int, who, int, prio)
 {
-	log_info("setpriority(which=%d, who=%d, prio=%d)\n", which, who, prio);
-	log_error("setpriority() not implemented. Fake returning 0.\n");
+	log_info("setpriority(which=%d, who=%d, prio=%d)", which, who, prio);
+	log_error("setpriority() not implemented. Fake returning 0.");
 	return 0;
 }
 
 DEFINE_SYSCALL(prctl, int, option, uintptr_t, arg2, uintptr_t, arg3, uintptr_t, arg4, uintptr_t, arg5)
 {
-	log_info("prctl(%d)\n", option);
-	log_error("prctl() not implemented.\n");
+	log_info("prctl(%d)", option);
+	log_error("prctl() not implemented.");
 	return 0;
 }
 
 DEFINE_SYSCALL(capget, void *, header, void *, data)
 {
-	log_info("capget(%p, %p)\n", header, data);
-	log_error("capget() not implemented.\n");
+	log_info("capget(%p, %p)", header, data);
+	log_error("capget() not implemented.");
 	return 0;
 }
 
 DEFINE_SYSCALL(capset, void *, header, const void *, data)
 {
-	log_info("capset(%p, %p)\n", header, data);
-	log_error("capset() not implemented.\n");
+	log_info("capset(%p, %p)", header, data);
+	log_error("capset() not implemented.");
 	return 0;
 }
 
 DEFINE_SYSCALL(prlimit64, pid_t, pid, int, resource, const struct rlimit64 *, new_limit, struct rlimit64 *, old_limit)
 {
-	log_info("prlimit64(pid=%d, resource=%d, new_limit=%p, old_limit=%p)\n", pid, resource, new_limit, old_limit);
-	log_error("prlimit64() not implemented.\n");
+	log_info("prlimit64(pid=%d, resource=%d, new_limit=%p, old_limit=%p)", pid, resource, new_limit, old_limit);
+	log_error("prlimit64() not implemented.");
 	return 0;
 }
 
 DEFINE_SYSCALL(getcpu, unsigned int *, cpu, unsigned int *, node, void *, tcache)
 {
-	log_info("getcpu(%p, %p, %p)\n", cpu, node, tcache);
+	log_info("getcpu(%p, %p, %p)", cpu, node, tcache);
 	if (cpu)
 		*cpu = 0;
 	if (node)
@@ -956,17 +956,17 @@ DEFINE_SYSCALL(getcpu, unsigned int *, cpu, unsigned int *, node, void *, tcache
 
 DEFINE_SYSCALL(sched_yield)
 {
-	log_info("sched_yield()\n");
+	log_info("sched_yield()");
 	SwitchToThread();
 	return 0;
 }
 
 DEFINE_SYSCALL(sched_getaffinity, pid_t, pid, size_t, cpusetsize, uint8_t *, mask)
 {
-	log_info("sched_getaffinity(%d, %d, %p)\n", pid, cpusetsize, mask);
+	log_info("sched_getaffinity(%d, %d, %p)", pid, cpusetsize, mask);
 	if (pid != 0)
 	{
-		log_error("pid != 0.\n");
+		log_error("pid != 0.");
 		return -L_ESRCH;
 	}
 	int bytes = (cpusetsize + 7) & ~7;
@@ -993,15 +993,15 @@ DEFINE_SYSCALL(sched_getaffinity, pid_t, pid, size_t, cpusetsize, uint8_t *, mas
 
 DEFINE_SYSCALL(set_tid_address, int *, tidptr)
 {
-	log_info("set_tid_address(tidptr=%p)\n", tidptr);
-	log_error("clear_child_tid not supported.\n");
+	log_info("set_tid_address(tidptr=%p)", tidptr);
+	log_error("clear_child_tid not supported.");
 	return GetCurrentThreadId();
 }
 
 #pragma comment(lib, "synchronization.lib")
 DEFINE_SYSCALL(futex, int *, uaddr, int, op, int, val, const struct timespec *, timeout, int *, uaddr2, int, val3)
 {
-	log_info("futex(%p, %d, %d, %p, %p, %d)\n", uaddr, op, val, timeout, uaddr2, val3);
+	log_info("futex(%p, %d, %d, %p, %p, %d)", uaddr, op, val, timeout, uaddr2, val3);
 	if (!mm_check_write(uaddr, sizeof(int)))
 		return -L_EACCES;
 	switch (op & FUTEX_CMD_MASK)
@@ -1026,16 +1026,16 @@ DEFINE_SYSCALL(futex, int *, uaddr, int, op, int, val, const struct timespec *, 
 		return val;
 
 	default:
-		log_error("Unsupported futex operation, returning -ENOSYS\n");
+		log_error("Unsupported futex operation, returning -ENOSYS");
 		return -L_ENOSYS;
 	}
 }
 
 DEFINE_SYSCALL(set_robust_list, struct robust_list_head *, head, int, len)
 {
-	log_info("set_robust_list(head=%p, len=%d)\n", head, len);
+	log_info("set_robust_list(head=%p, len=%d)", head, len);
 	if (len != sizeof(struct robust_list_head))
-		log_error("len (%d) != sizeof(struct robust_list_head)\n", len);
-	log_error("set_robust_list() not supported.\n");
+		log_error("len (%d) != sizeof(struct robust_list_head)", len);
+	log_error("set_robust_list() not supported.");
 	return 0;
 }

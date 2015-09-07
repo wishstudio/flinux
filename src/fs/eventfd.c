@@ -52,7 +52,7 @@ int eventfd_alloc(struct file **eventfdfile, uint64_t count, int flags)
 {
 	if (flags & (EFD_SEMAPHORE))
 	{
-		log_error("eventfd: EFD_SEMAPHORE is unsupported!\n");
+		log_error("eventfd: EFD_SEMAPHORE is unsupported!");
 		return -L_EINVAL;
 	}
 
@@ -67,14 +67,14 @@ int eventfd_alloc(struct file **eventfdfile, uint64_t count, int flags)
 	efd->efd_handle = CreateFileMapping(NULL, &attrs, PAGE_READWRITE, 0, 8, NULL);
 	if (efd->efd_handle == NULL)
 	{
-		log_error("eventfd: Can't create handle: %u\n", GetLastError());
+		log_error("eventfd: Can't create handle: %u", GetLastError());
 		return -L_ENOMEM;
 	}
 
 	efd->efd_value = MapViewOfFile(efd->efd_handle, FILE_MAP_ALL_ACCESS, 0, 0, 8);
 	if (efd->efd_value == NULL)
 	{
-		log_error("eventfd: Can't map handle: %u\n", GetLastError());
+		log_error("eventfd: Can't map handle: %u", GetLastError());
 		return -L_ENOMEM;
 	}
 
@@ -94,18 +94,18 @@ static int eventfd_close(struct file *f)
 {
 	struct eventfd_file *efd = (struct eventfd_file *)f;
 
-	log_info("eventfd: close(%p)\n", f);
+	log_info("eventfd: close(%p)", f);
 
 	BOOL rv = UnmapViewOfFile(efd->efd_value);
 	if (rv)
 	{
-		log_error("eventfd: can't unmap handle during close\n");
+		log_error("eventfd: can't unmap handle during close");
 	}
 
 	rv = CloseHandle(efd->efd_handle);
 	if (rv)
 	{
-		log_error("eventfd: can't close handle during close\n");
+		log_error("eventfd: can't close handle during close");
 	}
 
 	CloseHandle(efd->efd_mutex);
@@ -138,7 +138,7 @@ static void eventfd_after_fork(struct file *f)
 {
 	struct eventfd_file *efd = (struct eventfd_file *)f;
 
-	log_info("eventfd: after_fork\n");
+	log_info("eventfd: after_fork");
 
 	efd->efd_value = MapViewOfFile(efd->efd_handle, FILE_MAP_ALL_ACCESS, 0, 0, 8);
 }
@@ -147,7 +147,7 @@ static size_t eventfd_read(struct file *f, void *buf, size_t count)
 {
 	struct eventfd_file *efd = (struct eventfd_file *)f;
 
-	log_info("eventfd: read(%p, %p, %u)\n", f, buf, count);
+	log_info("eventfd: read(%p, %p, %u)", f, buf, count);
 
 	if (count < 8)
 	{
@@ -187,7 +187,7 @@ static size_t eventfd_write(struct file *f, const void *buf, size_t count)
 {
 	struct eventfd_file *efd = (struct eventfd_file *)f;
 
-	log_info("eventfd: write(%p, %p, %u)\n", f, buf, count);
+	log_info("eventfd: write(%p, %p, %u)", f, buf, count);
 
 	if (count < 8)
 	{

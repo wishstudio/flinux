@@ -337,7 +337,7 @@ static void map_global_shared_section()
 		FILE_MAP_ALL_ACCESS, 0, 0, MM_GLOBAL_SHARED_ALLOC_SIZE);
 	if (mm->global_shared_alloc_begin == NULL)
 	{
-		log_error("mm: Map global shared area failed, error code: %d.\n", GetLastError());
+		log_error("mm: Map global shared area failed, error code: %d.", GetLastError());
 		process_exit(1, 0);
 	}
 	mm->global_shared_alloc_end = (char*)mm->global_shared_alloc_begin + MM_GLOBAL_SHARED_ALLOC_SIZE;
@@ -375,7 +375,7 @@ void mm_init()
 		size.HighPart, size.LowPart, section_name);
 	if (mm->global_shared_section == NULL)
 	{
-		log_error("mm: Create global shared area failed, error code: %d.\n", GetLastError());
+		log_error("mm: Create global shared area failed, error code: %d.", GetLastError());
 		process_exit(1, 0);
 	}
 	map_global_shared_section();
@@ -439,9 +439,9 @@ void *mm_static_alloc(size_t size)
 {
 	if ((uint8_t*)mm->static_alloc_begin + size > mm->static_alloc_end)
 	{
-		log_error("mm_static_alloc(): Overlarge static block size, remain: %p, requested: %p\n",
+		log_error("mm_static_alloc(): Overlarge static block size, remain: %p, requested: %p",
 			(uint8_t*)mm->static_alloc_end - (uint8_t*)mm->static_alloc_begin, size);
-		log_error("Please enlarge MM_STATIC_ALLOC_SIZE manually.\n");
+		log_error("Please enlarge MM_STATIC_ALLOC_SIZE manually.");
 		__debugbreak();
 	}
 	void *ret = mm->static_alloc_begin;
@@ -453,9 +453,9 @@ void *mm_global_shared_alloc(size_t size)
 {
 	if ((uint8_t*)mm->global_shared_alloc_begin + size > mm->global_shared_alloc_end)
 	{
-		log_error("mm_global_shared_alloc(): Overlarge static block size, remain: %p, requested: %p\n",
+		log_error("mm_global_shared_alloc(): Overlarge static block size, remain: %p, requested: %p",
 			(uint8_t*)mm->global_shared_alloc_end - (uint8_t*)mm->global_shared_alloc_begin, size);
-		log_error("Please enlarge MM_GLOBAL_SHARED_ALLOC_SIZE manually.\n");
+		log_error("Please enlarge MM_GLOBAL_SHARED_ALLOC_SIZE manually.");
 		__debugbreak();
 	}
 	void *ret = mm->global_shared_alloc_begin;
@@ -549,7 +549,7 @@ static DWORD prot_linux2win(int prot)
 
 void mm_dump_windows_memory_mappings(HANDLE process)
 {
-	log_info("Windows memory mappings...\n");
+	log_info("Windows memory mappings...");
 	char *addr = 0;
 	do
 	{
@@ -576,9 +576,9 @@ void mm_dump_windows_memory_mappings(HANDLE process)
 					access = "???";
 			}
 			if (GetMappedFileNameA(process, addr, filename, sizeof(filename)))
-				log_info("0x%p - 0x%p [%s] <--- %s\n", info.BaseAddress, (size_t)info.BaseAddress + info.RegionSize, access, filename);
+				log_info("0x%p - 0x%p [%s] <--- %s", info.BaseAddress, (size_t)info.BaseAddress + info.RegionSize, access, filename);
 			else
-				log_info("0x%p - 0x%p [%s]\n", info.BaseAddress, (size_t)info.BaseAddress + info.RegionSize, access);
+				log_info("0x%p - 0x%p [%s]", info.BaseAddress, (size_t)info.BaseAddress + info.RegionSize, access);
 		}
 		addr += info.RegionSize;
 #ifdef _WIN64
@@ -591,11 +591,11 @@ void mm_dump_windows_memory_mappings(HANDLE process)
 void mm_dump_memory_mappings()
 {
 	AcquireSRWLockShared(&mm->rw_lock);
-	log_info("Current memory mappings...\n");
+	log_info("Current memory mappings...");
 	for (struct rb_node *cur = rb_first(&mm->entry_tree); cur; cur = rb_next(cur))
 	{
 		struct map_entry *e = rb_entry(cur, struct map_entry, tree);
-		log_info("0x%p - 0x%p: PROT: %d\n", GET_PAGE_ADDRESS(e->start_page), GET_PAGE_ADDRESS(e->end_page), e->prot);
+		log_info("0x%p - 0x%p: PROT: %d", GET_PAGE_ADDRESS(e->start_page), GET_PAGE_ADDRESS(e->end_page), e->prot);
 	}
 	ReleaseSRWLockShared(&mm->rw_lock);
 }
@@ -632,7 +632,7 @@ static int mm_change_protection(HANDLE process, size_t start_page, size_t end_pa
 			DWORD oldProtect;
 			if (!VirtualProtectEx(process, GET_PAGE_ADDRESS(range_start), PAGE_SIZE * (range_end - range_start + 1), protection, &oldProtect))
 			{
-				log_error("VirtualProtect(0x%p, 0x%p) failed, error code: %d\n", GET_PAGE_ADDRESS(range_start),
+				log_error("VirtualProtect(0x%p, 0x%p) failed, error code: %d", GET_PAGE_ADDRESS(range_start),
 					PAGE_SIZE * (range_end - range_start + 1), GetLastError());
 				mm_dump_windows_memory_mappings(process);
 				return 0;
@@ -644,13 +644,13 @@ static int mm_change_protection(HANDLE process, size_t start_page, size_t end_pa
 
 void mm_dump_stack_trace(PCONTEXT context)
 {
-	log_info("Stack trace:\n");
+	log_info("Stack trace:");
 #ifdef _WIN64
 	size_t sp = context->Rsp;
-	log_info("RSP: 0x%p\n", sp);
+	log_info("RSP: 0x%p", sp);
 #else
 	size_t sp = context->Esp;
-	log_info("ESP: 0x%p\n", sp);
+	log_info("ESP: 0x%p", sp);
 #endif
 	for (size_t i = sp & ~15; i < ((sp + 256) & ~15); i += 16)
 	{
@@ -658,7 +658,7 @@ void mm_dump_stack_trace(PCONTEXT context)
 		int t = ksprintf(buf, "%p ", i);
 		for (size_t j = i; j < i + 16 && j < ((sp + 256) & ~15); j++)
 			t += ksprintf(buf + t, "%02x ", *(unsigned char *)j);
-		log_info("%s\n", buf);
+		log_info("%s", buf);
 	}
 }
 
@@ -680,7 +680,7 @@ static int allocate_block(size_t i)
 	status = NtCreateSection(&handle, SECTION_MAP_READ | SECTION_MAP_WRITE | SECTION_MAP_EXECUTE, &attr, &max_size, PAGE_EXECUTE_READWRITE, SEC_COMMIT, NULL);
 	if (!NT_SUCCESS(status))
 	{
-		log_error("NtCreateSection() failed. Status: %x\n", status);
+		log_error("NtCreateSection() failed. Status: %x", status);
 		return 0;
 	}
 
@@ -690,7 +690,7 @@ static int allocate_block(size_t i)
 	status = NtMapViewOfSection(handle, NtCurrentProcess(), &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, PAGE_EXECUTE_READWRITE);
 	if (!NT_SUCCESS(status))
 	{
-		log_error("NtMapViewOfSection() failed. Address: %p, Status: %x\n", base_addr, status);
+		log_error("NtMapViewOfSection() failed. Address: %p, Status: %x", base_addr, status);
 		NtClose(handle);
 		mm_dump_windows_memory_mappings(NtCurrentProcess());
 		return 0;
@@ -718,28 +718,28 @@ static HANDLE duplicate_section(HANDLE source, void *source_addr)
 	status = NtCreateSection(&dest, SECTION_MAP_READ | SECTION_MAP_WRITE | SECTION_MAP_EXECUTE, &attr, &max_size, PAGE_EXECUTE_READWRITE, SEC_COMMIT, NULL);
 	if (!NT_SUCCESS(status))
 	{
-		log_error("NtCreateSection() failed, status: %x\n", status);
+		log_error("NtCreateSection() failed, status: %x", status);
 		return NULL;
 	}
 
 	status = NtMapViewOfSection(dest, NtCurrentProcess(), &dest_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, PAGE_READWRITE);
 	if (!NT_SUCCESS(status))
 	{
-		log_error("NtMapViewOfSection() failed, status: %x\n", status);
+		log_error("NtMapViewOfSection() failed, status: %x", status);
 		return NULL;
 	}
 	/* Mark source block entirely readable. TODO: Find a better way */
 	DWORD oldProtect;
 	if (!VirtualProtect(source_addr, BLOCK_SIZE, PAGE_EXECUTE_READ, &oldProtect))
 	{
-		log_error("VirtualProtect(0x%p) failed, error code: %d\n", source_addr, GetLastError());
+		log_error("VirtualProtect(0x%p) failed, error code: %d", source_addr, GetLastError());
 		return NULL;
 	}
 	CopyMemory(dest_addr, source_addr, BLOCK_SIZE);
 	status = NtUnmapViewOfSection(NtCurrentProcess(), dest_addr);
 	if (!NT_SUCCESS(status))
 	{
-		log_error("NtUnmapViewOfSection() failed, status: %x\n", status);
+		log_error("NtUnmapViewOfSection() failed, status: %x", status);
 		return NULL;
 	}
 	return dest;
@@ -750,7 +750,7 @@ static int take_block_ownership(size_t block)
 	HANDLE handle = get_section_handle(block);
 	if (!handle)
 	{
-		log_error("Block %p not mapped.\n", block);
+		log_error("Block %p not mapped.", block);
 		return 0;
 	}
 	/* Query information about the section object which the page within */
@@ -759,34 +759,34 @@ static int take_block_ownership(size_t block)
 	status = NtQueryObject(handle, ObjectBasicInformation, &info, sizeof(OBJECT_BASIC_INFORMATION), NULL);
 	if (!NT_SUCCESS(status))
 	{
-		log_error("NtQueryObject() on block %p failed, status: 0x%x.\n", block, status);
+		log_error("NtQueryObject() on block %p failed, status: 0x%x.", block, status);
 		return 0;
 	}
 	if (info.HandleCount == 1)
 	{
-		log_info("We're the only owner.\n");
+		log_info("We're the only owner.");
 		return 1;
 	}
 
 	/* We are not the only one holding the section, duplicate it */
-	log_info("Duplicating section %p...\n", block);
+	log_info("Duplicating section %p...", block);
 	HANDLE new_section;
 	if (!(new_section = duplicate_section(handle, GET_BLOCK_ADDRESS(block))))
 	{
-		log_error("Duplicating section failed.\n");
+		log_error("Duplicating section failed.");
 		return 0;
 	}
-	log_info("Duplicating section succeeded. Remapping...\n");
+	log_info("Duplicating section succeeded. Remapping...");
 	status = NtUnmapViewOfSection(NtCurrentProcess(), GET_BLOCK_ADDRESS(block));
 	if (!NT_SUCCESS(status))
 	{
-		log_error("Unmapping failed, status: %x\n", status);
+		log_error("Unmapping failed, status: %x", status);
 		return 0;
 	}
 	status = NtClose(handle);
 	if (!NT_SUCCESS(status))
 	{
-		log_error("NtClose() failed, status: %x\n", status);
+		log_error("NtClose() failed, status: %x", status);
 		return 0;
 	}
 	PVOID base_addr = GET_BLOCK_ADDRESS(block);
@@ -794,7 +794,7 @@ static int take_block_ownership(size_t block)
 	status = NtMapViewOfSection(new_section, NtCurrentProcess(), &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, PAGE_EXECUTE_READWRITE);
 	if (!NT_SUCCESS(status))
 	{
-		log_error("Remapping failed, status: %x\n", status);
+		log_error("Remapping failed, status: %x", status);
 		return 0;
 	}
 	replace_section_handle(block, new_section);
@@ -806,12 +806,12 @@ static int handle_cow_page_fault(void *addr)
 	struct map_entry *entry = find_map_entry(addr);
 	if (entry == NULL)
 	{
-		log_warning("No corresponding map entry found.\n");
+		log_warning("No corresponding map entry found.");
 		return 0;
 	}
 	if ((entry->prot & PROT_WRITE) == 0)
 	{
-		log_warning("Address %p (page %p) not writable.\n", addr, GET_PAGE(addr));
+		log_warning("Address %p (page %p) not writable.", addr, GET_PAGE(addr));
 		return 0;
 	}
 	size_t block = GET_BLOCK(addr);
@@ -836,13 +836,13 @@ static int handle_cow_page_fault(void *addr)
 			DWORD oldProtect;
 			if (!VirtualProtect(GET_PAGE_ADDRESS(range_start), PAGE_SIZE * (range_end - range_start + 1), prot_linux2win(e->prot), &oldProtect))
 			{
-				log_error("VirtualProtect(0x%p, 0x%p) failed, error code: %d.\n", GET_PAGE_ADDRESS(range_start),
+				log_error("VirtualProtect(0x%p, 0x%p) failed, error code: %d.", GET_PAGE_ADDRESS(range_start),
 					PAGE_SIZE * (range_end - range_start + 1), GetLastError());
 				return 0;
 			}
 		}
 	}
-	log_info("CoW section %p successfully duplicated.\n", block);
+	log_info("CoW section %p successfully duplicated.", block);
 	return 1;
 }
 
@@ -879,18 +879,18 @@ static int handle_on_demand_page_fault(void *addr)
 	}
 	/* TODO: Mark unmapped pages as PAGE_NOACCESS */
 	if (!found)
-		log_error("Block 0x%p not mapped.\n", GET_BLOCK(addr));
+		log_error("Block 0x%p not mapped.", GET_BLOCK(addr));
 	else
-		log_info("On demand block 0x%p loaded.\n", GET_BLOCK(addr));
+		log_info("On demand block 0x%p loaded.", GET_BLOCK(addr));
 	return found;
 }
 
 int mm_handle_page_fault(void *addr)
 {
-	log_info("Handling page fault at address %p (page %p)\n", addr, GET_PAGE(addr));
+	log_info("Handling page fault at address %p (page %p)", addr, GET_PAGE(addr));
 	if ((size_t)addr < ADDRESS_SPACE_LOW || (size_t)addr >= ADDRESS_SPACE_HIGH)
 	{
-		log_warning("Address %p outside of valid usermode address space.\n", addr);
+		log_warning("Address %p outside of valid usermode address space.", addr);
 		return 0;
 	}
 	AcquireSRWLockExclusive(&mm->rw_lock);
@@ -909,7 +909,7 @@ int mm_fork(HANDLE process)
 	/* Copy mm_data struct */
 	if (!WriteProcessMemory(process, mm, mm, sizeof(struct mm_data), NULL))
 	{
-		log_error("mm_fork(): Write mm_data structure failed, error code: %d\n", GetLastError());
+		log_error("mm_fork(): Write mm_data structure failed, error code: %d", GetLastError());
 		return 0;
 	}
 	/* Copy section handle tables */
@@ -921,19 +921,19 @@ int mm_fork(HANDLE process)
 			size_t j = i * SECTION_HANDLE_PER_TABLE;
 			if (!VirtualAllocEx(process, &forked_section_handle[j], BLOCK_SIZE, MEM_COMMIT, PAGE_READWRITE))
 			{
-				log_error("mm_fork(): Allocate section table 0x%p failed, error code: %d\n", i, GetLastError());
+				log_error("mm_fork(): Allocate section table 0x%p failed, error code: %d", i, GetLastError());
 				return 0;
 			}
 			if (!WriteProcessMemory(process, &forked_section_handle[j], &mm_section_handle[j], BLOCK_SIZE, NULL))
 			{
-				log_error("mm_fork(): Write section table 0x%p failed, error code: %d\n", i, GetLastError());
+				log_error("mm_fork(): Write section table 0x%p failed, error code: %d", i, GetLastError());
 				return 0;
 			}
 		}
 	size_t last_block = 0;
 	size_t mapped_section_count = 0;
 	size_t copied_section_count = 0;
-	log_info("Mapping and changing memory protection...\n");
+	log_info("Mapping and changing memory protection...");
 	for (struct rb_node *cur = rb_first(&mm->entry_tree); cur; cur = rb_next(cur))
 	{
 		struct map_entry *e = rb_entry(cur, struct map_entry, tree);
@@ -947,7 +947,7 @@ int mm_fork(HANDLE process)
 			/* Memory region allocated via VirtualAlloc() */
 			if (!VirtualAllocEx(process, GET_BLOCK_ADDRESS(start_block), (end_block - start_block + 1) * BLOCK_SIZE, MEM_RESERVE | MEM_COMMIT, prot_linux2win(e->prot)))
 			{
-				log_error("VirtualAllocEx() failed, error code: %d\n", GetLastError());
+				log_error("VirtualAllocEx() failed, error code: %d", GetLastError());
 				mm_dump_windows_memory_mappings(process);
 				return 0;
 			}
@@ -962,7 +962,7 @@ int mm_fork(HANDLE process)
 				MEMORY_BASIC_INFORMATION info;
 				if (!VirtualQuery(GET_PAGE_ADDRESS(current), &info, sizeof(info)))
 				{
-					log_error("VirtualQuery(%p) failed, error code: %d\n", current, GetLastError());
+					log_error("VirtualQuery(%p) failed, error code: %d", current, GetLastError());
 					mm_dump_memory_mappings();
 					mm_dump_windows_memory_mappings(GetCurrentProcess());
 					return 0;
@@ -973,7 +973,7 @@ int mm_fork(HANDLE process)
 				if (info.Protect == PAGE_NOACCESS || info.Protect == 0)
 				{
 					// FIXME: How to handle this case?
-					log_warning("FIXME: PAGE_NOACCESS page ignored for copying. Range: [%p, %p)\n",
+					log_warning("FIXME: PAGE_NOACCESS page ignored for copying. Range: [%p, %p)",
 						GET_PAGE_ADDRESS(start_page), GET_PAGE_ADDRESS(end_page + 1));
 				}
 				else
@@ -983,7 +983,7 @@ int mm_fork(HANDLE process)
 					if (!WriteProcessMemory(process, GET_PAGE_ADDRESS(e->start_page), GET_PAGE_ADDRESS(e->start_page),
 						(e->end_page - e->start_page + 1) * PAGE_SIZE, &written))
 					{
-						log_error("WriteProcessMemory() failed, error code: %d\n", GetLastError());
+						log_error("WriteProcessMemory() failed, error code: %d", GetLastError());
 						mm_dump_windows_memory_mappings(process);
 						return 0;
 					}
@@ -993,7 +993,7 @@ int mm_fork(HANDLE process)
 				if (!VirtualProtectEx(process, GET_PAGE_ADDRESS(start_page), (end_page - start_page + 1) * PAGE_SIZE,
 					info.Protect, &old))
 				{
-					log_error("VirtualProtectEx() failed, error code: %d\n", GetLastError());
+					log_error("VirtualProtectEx() failed, error code: %d", GetLastError());
 					mm_dump_windows_memory_mappings(process);
 					return 0;
 				}
@@ -1015,7 +1015,7 @@ int mm_fork(HANDLE process)
 					HANDLE dummy;
 					if (!DuplicateHandle(process, handle, GetCurrentProcess(), &dummy, 0, FALSE, DUPLICATE_CLOSE_SOURCE | DUPLICATE_SAME_ACCESS))
 					{
-						log_error("DuplicateHandle() failed, error code: %d\n", GetLastError());
+						log_error("DuplicateHandle() failed, error code: %d", GetLastError());
 						mm_dump_windows_memory_mappings(process);
 						return 0;
 					}
@@ -1027,7 +1027,7 @@ int mm_fork(HANDLE process)
 					status = NtMapViewOfSection(duplicated_section, process, &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, PAGE_EXECUTE_READWRITE);
 					if (!NT_SUCCESS(status))
 					{
-						log_error("mm_fork(): Map failed: %p, status code: %x\n", base_addr, status);
+						log_error("mm_fork(): Map failed: %p, status code: %x", base_addr, status);
 						mm_dump_windows_memory_mappings(process);
 						return 0;
 					}
@@ -1035,7 +1035,7 @@ int mm_fork(HANDLE process)
 					HANDLE child_handle;
 					if (!DuplicateHandle(GetCurrentProcess(), handle, process, &child_handle, 0, TRUE, DUPLICATE_CLOSE_SOURCE | DUPLICATE_SAME_ACCESS))
 					{
-						log_error("DuplicateHandle() to child failed, error code: %d\n", GetLastError());
+						log_error("DuplicateHandle() to child failed, error code: %d", GetLastError());
 						mm_dump_windows_memory_mappings(process);
 						return 0;
 					}
@@ -1048,7 +1048,7 @@ int mm_fork(HANDLE process)
 					status = NtMapViewOfSection(handle, process, &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, PAGE_EXECUTE_READWRITE);
 					if (!NT_SUCCESS(status))
 					{
-						log_error("mm_fork(): Map failed: %p, status code: %x\n", base_addr, status);
+						log_error("mm_fork(): Map failed: %p, status code: %x", base_addr, status);
 						mm_dump_windows_memory_mappings(process);
 						return 0;
 					}
@@ -1071,7 +1071,7 @@ int mm_fork(HANDLE process)
 				return 0;
 		}
 	}
-	log_info("Section object statistics: %d mapped CoW, %d copied.\n", mapped_section_count, copied_section_count);
+	log_info("Section object statistics: %d mapped CoW, %d copied.", mapped_section_count, copied_section_count);
 	return 1;
 }
 
@@ -1100,18 +1100,18 @@ static void *mmap_internal(void *addr, size_t length, int prot, int flags, int i
 		return (void*)-L_EINVAL;
 	if ((flags & MAP_ANONYMOUS) && f != NULL)
 	{
-		log_error("MAP_ANONYMOUS with file descriptor.\n");
+		log_error("MAP_ANONYMOUS with file descriptor.");
 		return (void*)-L_EINVAL;
 	}
 	if (!(flags & MAP_ANONYMOUS) && f == NULL)
 	{
-		log_error("MAP_FILE with bad file descriptor.\n");
+		log_error("MAP_FILE with bad file descriptor.");
 		return (void*)-L_EBADF;
 	}
 	if ((internal_flags & INTERNAL_MAP_VIRTUALALLOC) &&
 		(!IS_ALIGNED(addr, BLOCK_SIZE) || !IS_ALIGNED(length, BLOCK_SIZE)))
 	{
-		log_error("INTERNAL_MAP_VIRTUALALLOC memory regions must be aligned on entire blocks.\n");
+		log_error("INTERNAL_MAP_VIRTUALALLOC memory regions must be aligned on entire blocks.");
 		return (void*)-L_EINVAL;
 	}
 	if ((flags & MAP_SHARED))
@@ -1134,12 +1134,12 @@ static void *mmap_internal(void *addr, size_t length, int prot, int flags, int i
 	{
 		if (block_align && !IS_ALIGNED(addr, BLOCK_SIZE))
 		{
-			log_error("Non-64kB aligned MAP_FIXED address with the suppied flag is unsupported.\n");
+			log_error("Non-64kB aligned MAP_FIXED address with the suppied flag is unsupported.");
 			return (void*)-L_ENOMEM;
 		}
 		if (!IS_ALIGNED(addr, PAGE_SIZE))
 		{
-			log_warning("Not page-aligned addr with MAP_FIXED.\n");
+			log_warning("Not page-aligned addr with MAP_FIXED.");
 			return (void*)-L_EINVAL;
 		}
 		if (!IS_ALIGNED(addr, BLOCK_SIZE))
@@ -1152,7 +1152,7 @@ static void *mmap_internal(void *addr, size_t length, int prot, int flags, int i
 				struct map_entry *prev_entry = rb_entry(prev_node, struct map_entry, tree);
 				if (BLOCK_ALIGNED(prev_entry->flags) && GET_BLOCK_OF_PAGE(prev_entry->end_page) == GET_BLOCK(addr))
 				{
-					log_error("MAP_FIXED addr collides with an existing MAP_SHARED memory region.\n");
+					log_error("MAP_FIXED addr collides with an existing MAP_SHARED memory region.");
 					return (void*)-L_ENOMEM;
 				}
 			}
@@ -1167,7 +1167,7 @@ static void *mmap_internal(void *addr, size_t length, int prot, int flags, int i
 			alloc_page = find_free_pages(GET_PAGE(ALIGN_TO_PAGE(length)), block_align);
 		if (!alloc_page)
 		{
-			log_error("Cannot find free pages.\n");
+			log_error("Cannot find free pages.");
 			return (void*)-L_ENOMEM;
 		}
 
@@ -1230,7 +1230,7 @@ static void *mmap_internal(void *addr, size_t length, int prot, int flags, int i
 		/* Allocate the memory now */
 		if (!VirtualAlloc(GET_PAGE_ADDRESS(start_page), (end_page - start_page + 1) * PAGE_SIZE, MEM_RESERVE | MEM_COMMIT, prot_linux2win(prot)))
 		{
-			log_error("VirtualAlloc(%p, %p) failed, error code: %d\n", GET_PAGE_ADDRESS(start_page),
+			log_error("VirtualAlloc(%p, %p) failed, error code: %d", GET_PAGE_ADDRESS(start_page),
 				(end_page - start_page + 1) * PAGE_SIZE, GetLastError());
 			mm_dump_windows_memory_mappings(GetCurrentProcess());
 			return (void*)-L_ENOMEM;
@@ -1243,7 +1243,7 @@ static void *mmap_internal(void *addr, size_t length, int prot, int flags, int i
 	{
 		if (!take_block_ownership(start_block))
 		{
-			log_error("Taking ownership of block %p failed.\n", start_block);
+			log_error("Taking ownership of block %p failed.", start_block);
 			return (void*)-L_ENOMEM;
 		}
 		size_t last_page = GET_LAST_PAGE_OF_BLOCK(start_block);
@@ -1259,7 +1259,7 @@ static void *mmap_internal(void *addr, size_t length, int prot, int flags, int i
 	{
 		if (!take_block_ownership(end_block))
 		{
-			log_error("Taking ownership of block %p failed.\n", start_block);
+			log_error("Taking ownership of block %p failed.", start_block);
 			return (void*)-L_ENOMEM;
 		}
 		size_t first_page = GET_FIRST_PAGE_OF_BLOCK(end_block);
@@ -1277,7 +1277,7 @@ static void *mmap_internal(void *addr, size_t length, int prot, int flags, int i
 		map_entry_range(entry, GET_FIRST_PAGE_OF_BLOCK(start_block), GET_LAST_PAGE_OF_BLOCK(end_block));
 		mm_change_protection(GetCurrentProcess(), GET_FIRST_PAGE_OF_BLOCK(start_block), GET_LAST_PAGE_OF_BLOCK(end_block), prot);
 	}
-	log_info("Allocated memory: [%p, %p)\n", addr, (size_t)addr + length);
+	log_info("Allocated memory: [%p, %p)", addr, (size_t)addr + length);
 	return addr;
 }
 
@@ -1398,7 +1398,7 @@ int mm_munmap(void *addr, size_t length)
 DEFINE_SYSCALL(mmap, void *, addr, size_t, length, int, prot, int, flags, int, fd, off_t, offset)
 {
 	/* TODO: We should mark NOACCESS for VirtualAlloc()-ed but currently unused pages */
-	log_info("mmap(%p, %p, %x, %x, %d, %p)\n", addr, length, prot, flags, fd, offset);
+	log_info("mmap(%p, %p, %x, %x, %d, %p)", addr, length, prot, flags, fd, offset);
 	/* TODO: Initialize mapped area to zero */
 	if (!IS_ALIGNED(offset, PAGE_SIZE))
 		return -L_EINVAL;
@@ -1411,7 +1411,7 @@ DEFINE_SYSCALL(mmap, void *, addr, size_t, length, int, prot, int, flags, int, f
 
 DEFINE_SYSCALL(oldmmap, void *, _args)
 {
-	log_info("oldmmap(%p)\n", _args);
+	log_info("oldmmap(%p)", _args);
 	struct oldmmap_args_t
 	{
 		void *addr;
@@ -1427,7 +1427,7 @@ DEFINE_SYSCALL(oldmmap, void *, _args)
 
 DEFINE_SYSCALL(mmap2, void *, addr, size_t, length, int, prot, int, flags, int, fd, off_t, offset)
 {
-	log_info("mmap2(%p, %p, %x, %x, %d, %p)\n", addr, length, prot, flags, fd, offset);
+	log_info("mmap2(%p, %p, %x, %x, %d, %p)", addr, length, prot, flags, fd, offset);
 	struct file *f = vfs_get(fd);
 	intptr_t r = (intptr_t)mm_mmap(addr, length, prot, flags, 0, f, offset);
 	if (f)
@@ -1437,13 +1437,13 @@ DEFINE_SYSCALL(mmap2, void *, addr, size_t, length, int, prot, int, flags, int, 
 
 DEFINE_SYSCALL(munmap, void *, addr, size_t, length)
 {
-	log_info("munmap(%p, %p)\n", addr, length);
+	log_info("munmap(%p, %p)", addr, length);
 	return mm_munmap(addr, length);
 }
 
 DEFINE_SYSCALL(mprotect, void *, addr, size_t, length, int, prot)
 {
-	log_info("mprotect(%p, %p, %x)\n", addr, length, prot);
+	log_info("mprotect(%p, %p, %x)", addr, length, prot);
 	int r = 0;
 	AcquireSRWLockExclusive(&mm->rw_lock);
 	if (!IS_ALIGNED(addr, PAGE_SIZE))
@@ -1532,8 +1532,8 @@ out:
 
 DEFINE_SYSCALL(msync, void *, addr, size_t, len, int, flags)
 {
-	log_info("msync(0x%p, 0x%p, %d)\n", addr, len, flags);
-	log_error("msync() not implemented.\n");
+	log_info("msync(0x%p, 0x%p, %d)", addr, len, flags);
+	log_error("msync() not implemented.");
 	return -L_ENOSYS;
 }
 
@@ -1576,7 +1576,7 @@ static int mm_populate_internal(const void *addr, size_t len)
 				}
 		}
 	}
-	log_info("Populated memory blocks: %d\n", num_blocks);
+	log_info("Populated memory blocks: %d", num_blocks);
 	/* TODO: Mark unused pages as NOACCESS */
 	return 0;
 }
@@ -1594,7 +1594,7 @@ void mm_populate(void *addr)
 
 DEFINE_SYSCALL(mlock, const void *, addr, size_t, len)
 {
-	log_info("mlock(0x%p, 0x%p)\n", addr, len);
+	log_info("mlock(0x%p, 0x%p)", addr, len);
 	int r = 0;
 	AcquireSRWLockExclusive(&mm->rw_lock);
 	if (!IS_ALIGNED(addr, PAGE_SIZE))
@@ -1612,7 +1612,7 @@ DEFINE_SYSCALL(mlock, const void *, addr, size_t, len)
 	/* TODO: Automatically enlarge working set size for arbitrary sized mlock() call */
 	if (!VirtualLock((LPVOID)addr, len))
 	{
-		log_warning("VirtualLock() failed, error code: %d\n", GetLastError());
+		log_warning("VirtualLock() failed, error code: %d", GetLastError());
 		r = -L_ENOMEM;
 		goto out;
 	}
@@ -1624,12 +1624,12 @@ out:
 
 DEFINE_SYSCALL(munlock, const void *, addr, size_t, len)
 {
-	log_info("munlock(0x%p, 0x%p)\n", addr, len);
+	log_info("munlock(0x%p, 0x%p)", addr, len);
 	if (!IS_ALIGNED(addr, PAGE_SIZE))
 		return -L_EINVAL;
 	if (!VirtualUnlock((LPVOID)addr, len))
 	{
-		log_warning("VirtualUnlock() failed, error code: %d\n", GetLastError());
+		log_warning("VirtualUnlock() failed, error code: %d", GetLastError());
 		return -L_ENOMEM;
 	}
 	return 0;
@@ -1637,24 +1637,24 @@ DEFINE_SYSCALL(munlock, const void *, addr, size_t, len)
 
 DEFINE_SYSCALL(mremap, void *, old_address, size_t, old_size, size_t, new_size, int, flags, void *, new_address)
 {
-	log_info("mremap(old_address=%p, old_size=%p, new_size=%p, flags=%x, new_address=%p)\n", old_address, old_size, new_size, flags, new_address);
-	log_error("mremap() not implemented.\n");
+	log_info("mremap(old_address=%p, old_size=%p, new_size=%p, flags=%x, new_address=%p)", old_address, old_size, new_size, flags, new_address);
+	log_error("mremap() not implemented.");
 	return -L_ENOSYS;
 }
 
 DEFINE_SYSCALL(madvise, void *, addr, size_t, length, int, advise)
 {
-	log_info("madvise(%p, %p, %x)\n", addr, length, advise);
+	log_info("madvise(%p, %p, %x)", addr, length, advise);
 	/* Notes behaviour-changing advices, other non-critical advises are ignored for now */
 	if (advise & MADV_DONTFORK)
-		log_error("MADV_DONTFORK not supported.\n");
+		log_error("MADV_DONTFORK not supported.");
 	return 0;
 }
 
 DEFINE_SYSCALL(brk, void *, addr)
 {
-	log_info("brk(%p)\n", addr);
-	log_info("Last brk: %p\n", mm->brk);
+	log_info("brk(%p)", addr);
+	log_info("Last brk: %p", mm->brk);
 	AcquireSRWLockExclusive(&mm->rw_lock);
 	size_t brk = ALIGN_TO_PAGE(mm->brk);
 	addr = (void*)ALIGN_TO_PAGE(addr);
@@ -1662,7 +1662,7 @@ DEFINE_SYSCALL(brk, void *, addr)
 	{
 		if (munmap_internal(addr, (size_t)brk - (size_t)addr) < 0)
 		{
-			log_error("Shrink brk failed.\n");
+			log_error("Shrink brk failed.");
 			goto out;
 		}
 		mm->brk = addr;
@@ -1673,13 +1673,13 @@ DEFINE_SYSCALL(brk, void *, addr)
 			MAP_FIXED | MAP_ANONYMOUS | MAP_PRIVATE, INTERNAL_MAP_NOOVERWRITE, NULL, 0);
 		if (r < 0)
 		{
-			log_error("Enlarge brk failed.\n");
+			log_error("Enlarge brk failed.");
 			goto out;
 		}
 		mm->brk = addr;
 	}
 out:
 	ReleaseSRWLockExclusive(&mm->rw_lock);
-	log_info("New brk: %p\n", mm->brk);
+	log_info("New brk: %p", mm->brk);
 	return (intptr_t)mm->brk;
 }

@@ -152,7 +152,7 @@ static BOOL WINAPI console_ctrlc_handler(DWORD dwCtrlType)
 static void save_cursor();
 void console_init()
 {
-	log_info("Initializing console shared memory region.\n");
+	log_info("Initializing console shared memory region.");
 	/* TODO: mm_mmap() does not support MAP_SHARED yet */
 	HANDLE section;
 	LARGE_INTEGER section_size;
@@ -168,7 +168,7 @@ void console_init()
 	status = NtCreateSection(&section, SECTION_MAP_READ | SECTION_MAP_WRITE, &obj_attr, &section_size, PAGE_READWRITE, SEC_COMMIT, NULL);
 	if (!NT_SUCCESS(status))
 	{
-		log_error("NtCreateSection() failed, status: %x\n", status);
+		log_error("NtCreateSection() failed, status: %x", status);
 		return;
 	}
 	PVOID base_addr = NULL;
@@ -176,7 +176,7 @@ void console_init()
 	status = NtMapViewOfSection(section, NtCurrentProcess(), &base_addr, 0, sizeof(struct console_data), NULL, &view_size, ViewUnmap, MEM_TOP_DOWN, PAGE_READWRITE);
 	if (!NT_SUCCESS(status))
 	{
-		log_error("NtMapViewOfSection() failed, status: %x\n", status);
+		log_error("NtMapViewOfSection() failed, status: %x", status);
 		return;
 	}
 	console = (struct console_data *)base_addr;
@@ -189,20 +189,20 @@ void console_init()
 	HANDLE mutex = CreateMutexW(&attr, FALSE, NULL);
 	if (mutex == NULL)
 	{
-		log_error("CreateMutexW() failed, error code: %d\n", GetLastError());
+		log_error("CreateMutexW() failed, error code: %d", GetLastError());
 		return;
 	}
 
 	HANDLE in = CreateFileA("CONIN$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &attr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (in == INVALID_HANDLE_VALUE)
 	{
-		log_error("CreateFile(\"CONIN$\") failed, error code: %d\n", GetLastError());
+		log_error("CreateFile(\"CONIN$\") failed, error code: %d", GetLastError());
 		return;
 	}
 	HANDLE out = CreateFileA("CONOUT$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, &attr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (out == INVALID_HANDLE_VALUE)
 	{
-		log_error("CreateFile(\"CONOUT$\") failed, error code: %d\n", GetLastError());
+		log_error("CreateFile(\"CONOUT$\") failed, error code: %d", GetLastError());
 		return;
 	}
 	console->section = section;
@@ -247,24 +247,24 @@ void console_init()
 	SetConsoleMode(out, ENABLE_PROCESSED_OUTPUT);
 	SetConsoleCtrlHandler(console_ctrlc_handler, TRUE);
 
-	log_info("Console shared memory region successfully initialized.\n");
+	log_info("Console shared memory region successfully initialized.");
 }
 
 int console_fork(HANDLE process)
 {
-	log_info("Mapping console shared memory region to child process...\n");
+	log_info("Mapping console shared memory region to child process...");
 	PVOID base_addr = NULL;
 	SIZE_T view_size = sizeof(struct console_data);
 	NTSTATUS status;
 	status = NtMapViewOfSection(console->section, process, &base_addr, 0, sizeof(struct console_data), NULL, &view_size, ViewUnmap, MEM_TOP_DOWN, PAGE_READWRITE);
 	if (!NT_SUCCESS(status))
 	{
-		log_error("NtMapViewOfSection() failed, status: %x\n", status);
+		log_error("NtMapViewOfSection() failed, status: %x", status);
 		return 0;
 	}
 	if (!WriteProcessMemory(process, &console, &base_addr, sizeof(PVOID), NULL))
 	{
-		log_error("WriteProcessMemory() failed, error code: %d\n", GetLastError());
+		log_error("WriteProcessMemory() failed, error code: %d", GetLastError());
 		return 0;
 	}
 	return 1;
@@ -712,7 +712,7 @@ static void erase_screen(int mode)
 	}
 	else
 	{
-		log_error("erase_screen(): Invalid mode %d\n", mode);
+		log_error("erase_screen(): Invalid mode %d", mode);
 		return;
 	}
 	DWORD num_written;
@@ -748,7 +748,7 @@ static void erase_line(int mode)
 	}
 	else
 	{
-		log_error("erase_line(): Invalid mode %d\n", mode);
+		log_error("erase_line(): Invalid mode %d", mode);
 		return;
 	}
 	DWORD num_written;
@@ -799,7 +799,7 @@ static void change_mode(int mode, int set)
 		break;
 
 	default:
-		log_error("change_mode(): mode %d not supported.\n", mode);
+		log_error("change_mode(): mode %d not supported.", mode);
 	}
 }
 
@@ -878,7 +878,7 @@ static void change_private_mode(int mode, int set)
 		break;
 
 	default:
-		log_error("change_private_mode(): private mode %d not supported.\n", mode);
+		log_error("change_private_mode(): private mode %d not supported.", mode);
 	}
 }
 
@@ -902,7 +902,7 @@ static void control_escape_csi(char ch)
 
 	case ';':
 		if (console->param_count + 1 == CONSOLE_MAX_PARAMS)
-			log_error("Too many console parameters.\n");
+			log_error("Too many console parameters.");
 		else
 			console->param_count++;
 		break;
@@ -1020,14 +1020,14 @@ static void control_escape_csi(char ch)
 			if (console->params[0] == 0)
 				console_add_input("\x1B[>61;95;0c", 11);
 			else
-				log_warning("DA2 parameter is not zero.\n");
+				log_warning("DA2 parameter is not zero.");
 		}
 		else /* DA1 */
 		{
 			if (console->params[0] == 0)
-				log_error("DA1 not supported.\n");
+				log_error("DA1 not supported.");
 			else
-				log_warning("DA1 parameter is not zero.\n");
+				log_warning("DA1 parameter is not zero.");
 		}
 		console->processor = NULL;
 		break;
@@ -1083,7 +1083,7 @@ static void control_escape_csi(char ch)
 				break;
 
 			default:
-				log_error("Unknown console attribute: %d\n", console->params[i]);
+				log_error("Unknown console attribute: %d", console->params[i]);
 			}
 		}
 		/* Set updated text attribute */
@@ -1117,7 +1117,7 @@ static void control_escape_csi(char ch)
 		break;
 
 	default:
-		log_error("control_escape_csi(): Unhandled character %c\n", ch);
+		log_error("control_escape_csi(): Unhandled character %c", ch);
 		console->processor = NULL;
 	}
 }
@@ -1146,7 +1146,7 @@ static void control_escape_osc(char ch)
 			int r = utf8_to_utf16(console->string_buffer, console->string_len, title, MAX_STRING + 1);
 			if (r < 0)
 			{
-				log_error("Invalid UTF-8 sequence.\n");
+				log_error("Invalid UTF-8 sequence.");
 				return;
 			}
 			title[r] = 0;
@@ -1160,7 +1160,7 @@ static void control_escape_osc(char ch)
 		console->string_buffer[console->string_len++] = ch;
 		return;
 	}
-	log_error("control_escape_osc(): Unhandled character %c\n", ch);
+	log_error("control_escape_osc(): Unhandled character %c", ch);
 	console->processor = NULL;
 }
 
@@ -1182,7 +1182,7 @@ static void control_escape_sharp(char ch)
 	}
 
 	default:
-		log_error("control_escape_sharp(): Unhandled character %c\n", ch);
+		log_error("control_escape_sharp(): Unhandled character %c", ch);
 		console->processor = NULL;
 	}
 }
@@ -1193,7 +1193,7 @@ static void control_escape_set_default_character_set(char ch)
 	if (c)
 		console->g0_charset = c;
 	else
-		log_warning("console: set default character set: %c, ignored.\n", ch);
+		log_warning("console: set default character set: %c, ignored.", ch);
 	console->processor = NULL;
 }
 
@@ -1203,7 +1203,7 @@ static void control_escape_set_alternate_character_set(char ch)
 	if (c)
 		console->g1_charset = c;
 	else
-		log_warning("console: set alternate character set: %c, ignored.\n", ch);
+		log_warning("console: set alternate character set: %c, ignored.", ch);
 	console->processor = NULL;
 }
 
@@ -1266,7 +1266,7 @@ static void control_escape(char ch)
 		break;
 
 	default:
-		log_error("control_escape(): Unhandled character %c\n", ch);
+		log_error("control_escape(): Unhandled character %c", ch);
 		console->processor = NULL;
 	}
 }
@@ -1597,7 +1597,7 @@ static size_t console_write(struct file *f, const void *b, size_t count)
 		else if (ch < 0x20)
 		{
 			OUTPUT();
-			log_error("Unhandled control character '\\x%x'\n", ch);
+			log_error("Unhandled control character '\\x%x'", ch);
 		}
 		else if (last == -1)
 			last = i;
@@ -1607,10 +1607,9 @@ static size_t console_write(struct file *f, const void *b, size_t count)
 	set_pos(console->x, console->y);
 	console_unlock();
 #if 0
-	char str[4096];
+	char str[1024];
 	memcpy(str, buf, count);
-	str[count] = '\n';
-	str[count + 1] = 0;
+	str[count] = 0;
 	log_debug(str);
 #endif
 	return count;
@@ -1650,7 +1649,7 @@ static int console_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 
 	case TIOCGPGRP:
 	{
-		log_warning("Unsupported TIOCGPGRP: Return fake result.\n");
+		log_warning("Unsupported TIOCGPGRP: Return fake result.");
 		*(pid_t *)arg = process_get_pgid(0);
 		r = 0;
 		break;
@@ -1658,7 +1657,7 @@ static int console_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 
 	case TIOCSPGRP:
 	{
-		log_warning("Unsupported TIOCSPGRP: Do nothing.\n");
+		log_warning("Unsupported TIOCSPGRP: Do nothing.");
 		r = 0;
 		break;
 	}
@@ -1686,7 +1685,7 @@ static int console_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 	}
 
 	default:
-		log_error("console: unknown ioctl command: %x\n", cmd);
+		log_error("console: unknown ioctl command: %x", cmd);
 		r = -L_EINVAL;
 		break;
 	}

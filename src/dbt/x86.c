@@ -263,7 +263,7 @@ static __forceinline void gen_modrm_sib(uint8_t **out, int r, struct modrm_rm_t 
 	}
 	if (rm.index == 4)
 	{
-		log_error("gen_modrm(): rsp or r12 cannot be used as an index register.\n");
+		log_error("gen_modrm(): rsp or r12 cannot be used as an index register.");
 		return;
 	}
 	int is_disp8 = (((int8_t)rm.disp) == rm.disp);
@@ -737,16 +737,16 @@ void dbt_init_thread()
 {
 	dbt = VirtualAlloc(NULL, sizeof(struct dbt_data), MEM_RESERVE | MEM_COMMIT | MEM_TOP_DOWN, PAGE_READWRITE);
 	if (!(dbt->blocks = VirtualAlloc(NULL, DBT_BLOCKS_TABLE_SIZE, MEM_RESERVE | MEM_COMMIT | MEM_TOP_DOWN, PAGE_READWRITE)))
-		log_error("VirtualAlloc() for dbt_blocks failed.\n");
+		log_error("VirtualAlloc() for dbt_blocks failed.");
 	if (!(dbt->code_cache = VirtualAlloc(NULL, DBT_CACHE_SIZE, MEM_RESERVE | MEM_COMMIT | MEM_TOP_DOWN, PAGE_EXECUTE_READWRITE)))
-		log_error("VirtualAlloc() for dbt_cache failed.\n");
+		log_error("VirtualAlloc() for dbt_cache failed.");
 	dbt_gen_tables();
 	__writefsdword(dbt_global->tls_dbt_offset, (DWORD)dbt);
 }
 
 void dbt_init()
 {
-	log_info("Initializing dbt subsystem...\n");
+	log_info("Initializing dbt subsystem...");
 	/* Initialize TLS offsets */
 	dbt_global->tls_dbt_offset = tls_kernel_entry_to_offset(TLS_ENTRY_DBT);
 	dbt_global->tls_scratch_offset = tls_kernel_entry_to_offset(TLS_ENTRY_SCRATCH);
@@ -760,7 +760,7 @@ void dbt_init()
 	dbt_gen_return_trampoline(buffer);
 	/* Initialize dbt thread local data for main thread */
 	dbt_init_thread();
-	log_info("dbt subsystem initialized.\n");
+	log_info("dbt subsystem initialized.");
 }
 
 void dbt_shutdown()
@@ -773,7 +773,7 @@ static void dbt_flush()
 	for (int i = 0; i < DBT_BLOCK_HASH_BUCKETS; i++)
 		slist_init(&dbt->block_hash[i]);
 	dbt_gen_tables();
-	log_info("dbt code cache flushed.\n");
+	log_info("dbt code cache flushed.");
 }
 
 void dbt_reset()
@@ -793,7 +793,7 @@ void dbt_code_changed(size_t pc, size_t len)
 	{
 		/* Bad, cached code changed. Flush all code cache for safety. */
 		/* TODO: Take care of signal/thread safety */
-		log_info("DBT block at [%p, %p) changed. Code cache flushed.\n", pc, pc + len);
+		log_info("DBT block at [%p, %p) changed. Code cache flushed.", pc, pc + len);
 		dbt_flush();
 	}
 }
@@ -1070,7 +1070,7 @@ static int find_unused_register(struct instruction_t *ins)
 	TEST_REG(ESI);
 	TEST_REG(EDI);
 #undef TEST_REG
-	log_error("find_unused_register: No usable register found. There must be a bug in our implementation.\n");
+	log_error("find_unused_register: No usable register found. There must be a bug in our implementation.");
 	__debugbreak();
 	return 0;
 }
@@ -1218,13 +1218,13 @@ static bool dbt_gen_ret_trampoline(uint8_t **out, struct syscall_context *contex
 
 static void dbt_log_opcode(struct instruction_t *ins)
 {
-	log_info("Opcode: 0x%02x\n", ins->opcode);
-	log_info("Escape_0F: %d\n", ins->escape_0x0f);
-	log_info("Escape byte2: 0x%02x\n", ins->escape_byte2);
-	log_info("R: %d\n", ins->r);
-	log_info("Lock: %d\n", ins->lock_prefix);
-	log_info("rep: %d\n", ins->rep_prefix);
-	log_info("segment: 0x%02x\n", ins->segment_prefix);
+	log_info("Opcode: 0x%02x", ins->opcode);
+	log_info("Escape_0F: %d", ins->escape_0x0f);
+	log_info("Escape byte2: 0x%02x", ins->escape_byte2);
+	log_info("R: %d", ins->r);
+	log_info("Lock: %d", ins->lock_prefix);
+	log_info("rep: %d", ins->rep_prefix);
+	log_info("segment: 0x%02x", ins->segment_prefix);
 }
 
 /* CAUTION
@@ -1284,7 +1284,7 @@ static struct dbt_block *dbt_translate(size_t pc, struct syscall_context *contex
 	}
 
 	//dbt_save_simd_state();
-	//log_debug("block id: %d, pc: %p, block start: %p\n", dbt->blocks_count, block->pc, block->start);
+	//log_debug("block id: %d, pc: %p, block start: %p", dbt->blocks_count, block->pc, block->start);
 	//dbt_restore_simd_state();
 
 	uint8_t *code = (uint8_t *)pc;
@@ -1340,7 +1340,7 @@ static struct dbt_block *dbt_translate(size_t pc, struct syscall_context *contex
 				break;
 
 			case 0x64: /* FS segment override */
-				log_error("FS segment override not supported\n");
+				log_error("FS segment override not supported.");
 				__debugbreak();
 				break;
 
@@ -1353,7 +1353,7 @@ static struct dbt_block *dbt_translate(size_t pc, struct syscall_context *contex
 				break;
 
 			case 0x67: /* Address size prefix */
-				log_error("Address size prefix not supported\n");
+				log_error("Address size prefix not supported.");
 				__debugbreak();
 				break;
 
@@ -1403,16 +1403,16 @@ done_prefix:
 
 		if (ins.desc->require_0x66 && !ins.opsize_prefix)
 		{
-			log_error("Unknown opcode.\n");
+			log_error("Unknown opcode.");
 			__debugbreak();
 		}
 
 		/* Translate instruction */
 		switch (ins.desc->type)
 		{
-		case INST_TYPE_UNKNOWN: log_error("Unknown opcode.\n"); dbt_log_opcode(&ins); __debugbreak(); break;
-		case INST_TYPE_INVALID: log_error("Invalid opcode.\n"); dbt_log_opcode(&ins); __debugbreak(); break;
-		case INST_TYPE_UNSUPPORTED: log_error("Unsupported opcode.\n"); dbt_log_opcode(&ins); __debugbreak(); break;
+		case INST_TYPE_UNKNOWN: log_error("Unknown opcode."); dbt_log_opcode(&ins); __debugbreak(); break;
+		case INST_TYPE_INVALID: log_error("Invalid opcode."); dbt_log_opcode(&ins); __debugbreak(); break;
+		case INST_TYPE_UNSUPPORTED: log_error("Unsupported opcode."); dbt_log_opcode(&ins); __debugbreak(); break;
 
 		case INST_TYPE_EXTENSION:
 		{
@@ -1424,7 +1424,7 @@ done_prefix:
 		{
 			if (!ins.escape_0x0f)
 			{
-				log_error("Invalid opcode.\n");
+				log_error("Invalid opcode.");
 				__debugbreak();
 			}
 			if (ins.opsize_prefix)
@@ -1776,7 +1776,7 @@ done_prefix:
 			uint8_t id = parse_byte(&code);
 			if (id != 0x80)
 			{
-				log_error("INT 0x%x not supported.\n", id);
+				log_error("INT 0x%x not supported.", id);
 				__debugbreak();
 			}
 			gen_push_imm32(&out, (size_t)code);
@@ -1794,7 +1794,7 @@ done_prefix:
 		{
 			if (ins.r != 5) /* GS */
 			{
-				log_error("mov from segment selectors other than GS not supported.\n");
+				log_error("mov from segment selectors other than GS not supported.");
 				__debugbreak();
 			}
 			int temp_reg = find_unused_register(&ins);
@@ -1834,7 +1834,7 @@ done_prefix:
 			/* TODO: Fix context */
 			if (ins.r != 5) /* GS */
 			{
-				log_error("mov to segment selector other than GS not supported.\n");
+				log_error("mov to segment selector other than GS not supported.");
 				__debugbreak();
 			}
 			int temp_reg = find_unused_register(&ins);
@@ -1957,14 +1957,14 @@ void dbt_find_direct(size_t pc, size_t patch_addr)
 void __declspec(noreturn) dbt_run(size_t pc, size_t sp)
 {
 	size_t entrypoint = (size_t)dbt_find(pc);
-	log_info("dbt: Calling into application code generated at %p, (original: pc: %p, sp: %p)\n", entrypoint, pc, sp);
+	log_info("dbt: Calling into application code generated at %p, (original: pc: %p, sp: %p)", entrypoint, pc, sp);
 	dbt_set_return_addr(pc, entrypoint);
 	((void(*)(size_t sp))dbt->run_trampoline)(sp);
 }
 
 void __declspec(noreturn) dbt_restore_fork_context(struct syscall_context *ctx)
 {
-	log_info("dbt: Restoring fork context, (original: pc: %p, sp: %p)\n", ctx->eip, ctx->esp);
+	log_info("dbt: Restoring fork context, (original: pc: %p, sp: %p)", ctx->eip, ctx->esp);
 	((void(*)(struct syscall_context *ctx))dbt->restore_fork_trampoline)(ctx);
 }
 

@@ -137,7 +137,7 @@ void tls_init()
 	for (int i = 0; i < TLS_KERNEL_ENTRY_COUNT; i++)
 	{
 		tls->kernel_entries[i] = TlsAlloc();
-		log_info("Allocated kernel TLS entry, entry: %d, slot: %d, fs offset 0x%x\n", i, tls->kernel_entries[i], tls_slot_to_offset(tls->kernel_entries[i]));
+		log_info("Allocated kernel TLS entry, entry: %d, slot: %d, fs offset 0x%x", i, tls->kernel_entries[i], tls_slot_to_offset(tls->kernel_entries[i]));
 	}
 }
 
@@ -159,37 +159,37 @@ void tls_shutdown()
 int tls_fork(HANDLE process)
 {
 	AcquireSRWLockShared(&tls->rw_lock);
-	log_info("Saving TLS context...\n");
+	log_info("Saving TLS context...");
 	/* Save tls data for current thread into shared memory regions */
 	for (int i = 0; i < tls->entry_count; i++)
 	{
 		tls->current_values[i] = (XWORD)TlsGetValue(tls->entries[i]);
-		log_info("user entry %d value 0x%p\n", tls->entries[i], tls->current_values[i]);
+		log_info("user entry %d value 0x%p", tls->entries[i], tls->current_values[i]);
 	}
 	for (int i = 0; i < TLS_KERNEL_ENTRY_COUNT; i++)
 	{
 		tls->current_kernel_values[i] = (XWORD)TlsGetValue(tls->kernel_entries[i]);
-		log_info("kernel entry %d value 0x%p\n", tls->kernel_entries[i], tls->current_kernel_values[i]);
+		log_info("kernel entry %d value 0x%p", tls->kernel_entries[i], tls->current_kernel_values[i]);
 	}
 	return 1;
 }
 
 void tls_afterfork_child()
 {
-	log_info("Restoring TLS context...\n");
+	log_info("Restoring TLS context...");
 	tls = mm_static_alloc(sizeof(struct tls_data));
 	InitializeSRWLock(&tls->rw_lock);
 	for (int i = 0; i < tls->entry_count; i++)
 	{
 		tls->entries[i] = TlsAlloc();
 		TlsSetValue(tls->entries[i], (LPVOID)tls->current_values[i]);
-		log_info("user entry %d value 0x%p\n", tls->entries[i], tls->current_values[i]);
+		log_info("user entry %d value 0x%p", tls->entries[i], tls->current_values[i]);
 	}
 	for (int i = 0; i < TLS_KERNEL_ENTRY_COUNT; i++)
 	{
 		tls->kernel_entries[i] = TlsAlloc();
 		TlsSetValue(tls->kernel_entries[i], (LPVOID)tls->current_kernel_values[i]);
-		log_info("kernel entry %d value 0x%p\n", tls->kernel_entries[i], tls->current_kernel_values[i]);
+		log_info("kernel entry %d value 0x%p", tls->kernel_entries[i], tls->current_kernel_values[i]);
 	}
 }
 
@@ -232,7 +232,7 @@ int tls_user_entry_to_offset(int entry)
  */
 int tls_set_thread_area(struct user_desc *u_info)
 {
-	log_info("set_thread_area(%p): entry=%d, base=%p, limit=%p\n", u_info, u_info->entry_number, u_info->base_addr, u_info->limit);
+	log_info("set_thread_area(%p): entry=%d, base=%p, limit=%p", u_info, u_info->entry_number, u_info->base_addr, u_info->limit);
 	int ret = 0;
 	AcquireSRWLockExclusive(&tls->rw_lock);
 	if (u_info->entry_number == -1)
@@ -244,7 +244,7 @@ int tls_set_thread_area(struct user_desc *u_info)
 			int slot = TlsAlloc();
 			tls->entries[tls->entry_count] = slot;
 			u_info->entry_number = tls->entry_count;
-			log_info("allocated entry %d (slot %d), fs offset 0x%x\n", tls->entry_count, slot, tls_slot_to_offset(u_info->entry_number));
+			log_info("allocated entry %d (slot %d), fs offset 0x%x", tls->entry_count, slot, tls_slot_to_offset(u_info->entry_number));
 			tls->entry_count++;
 			TlsSetValue(slot, (LPVOID)u_info->base_addr);
 		}
@@ -262,27 +262,27 @@ DEFINE_SYSCALL(set_thread_area, struct user_desc *, u_info)
 
 DEFINE_SYSCALL(arch_prctl, int, code, uintptr_t, addr)
 {
-	log_info("arch_prctl(%d, 0x%p)\n", code, addr);
+	log_info("arch_prctl(%d, 0x%p)", code, addr);
 	switch (code)
 	{
 	case ARCH_SET_FS:
-		log_error("ARCH_SET_FS not supported.\n");
+		log_error("ARCH_SET_FS not supported.");
 		return -L_EINVAL;
 
 	case ARCH_GET_FS:
-		log_error("ARCH_GET_FS not supported.\n");
+		log_error("ARCH_GET_FS not supported.");
 		return -L_EINVAL;
 
 	case ARCH_SET_GS:
-		log_error("ARCH_SET_GS not supported.\n");
+		log_error("ARCH_SET_GS not supported.");
 		return -L_EINVAL;
 
 	case ARCH_GET_GS:
-		log_error("ARCH_GET_GS not supported.\n");
+		log_error("ARCH_GET_GS not supported.");
 		return -L_EINVAL;
 
 	default:
-		log_error("Unknown code.\n");
+		log_error("Unknown code.");
 		return -L_EINVAL;
 	}
 }

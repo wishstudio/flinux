@@ -87,24 +87,24 @@ static int inotify_init1(int flags)
 
 DEFINE_SYSCALL(inotify_init)
 {
-	log_info("inotify_init()\n");
+	log_info("inotify_init()");
 	return inotify_init1(0);
 }
 
 DEFINE_SYSCALL(inotify_init1, int, flags)
 {
-	log_info("inotify_init1(%d)\n", flags);
+	log_info("inotify_init1(%d)", flags);
 	return inotify_init1(flags);
 }
 
 DEFINE_SYSCALL(inotify_add_watch, int, fd, const char *, pathname, uint32_t, mask)
 {
-	log_info("inotify_add_watch(%d, \"%s\", %x)\n", fd, pathname, mask);
+	log_info("inotify_add_watch(%d, \"%s\", %x)", fd, pathname, mask);
 	return 0;
 }
 
 DEFINE_SYSCALL(inotify_rm_watch, int, fd, int, wd)
 {
-	log_info("inotify_rm_watch(%d, %d)\n", fd, wd);
+	log_info("inotify_rm_watch(%d, %d)", fd, wd);
 	return 0;
 }

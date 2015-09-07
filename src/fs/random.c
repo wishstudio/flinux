@@ -29,7 +29,7 @@
 
 DEFINE_SYSCALL(getrandom, void *, buf, size_t, buflen, unsigned int, flags)
 {
-	log_info("getrandom(%p, %d, %x)\n", buf, buflen, flags);
+	log_info("getrandom(%p, %d, %x)", buf, buflen, flags);
 	if (!mm_check_write(buf, buflen))
 		return -L_EFAULT;
 	if (!RtlGenRandom(buf, buflen))

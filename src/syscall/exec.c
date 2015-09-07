@@ -124,7 +124,7 @@ static void run(struct binfmt *binary, int argc, char *argv[], int env_size, cha
 		entrypoint = start->load_base + start->eh.e_entry;
 	else
 		entrypoint = start->eh.e_entry;
-	log_info("Entrypoint: %p\n", entrypoint);
+	log_info("Entrypoint: %p", entrypoint);
 
 	/* TODO: The current way isn't bullet-proof
 	 * Basically our 'kernel' routines uses the application's stack
@@ -142,18 +142,18 @@ static int load_elf(struct file *f, struct binfmt *binary)
 	f->op_vtable->pread(f, &eh, sizeof(eh), 0);
 	if (eh.e_type != ET_EXEC && eh.e_type != ET_DYN)
 	{
-		log_error("Only ET_EXEC and ET_DYN executables can be loaded.\n");
+		log_error("Only ET_EXEC and ET_DYN executables can be loaded.");
 		return -L_EACCES;
 	}
 
 #ifdef _WIN64
 	if (eh.e_machine != EM_X86_64)
 	{
-		log_error("Not an x86_64 executable.\n");
+		log_error("Not an x86_64 executable.");
 #else
 	if (eh.e_machine != EM_386)
 	{
-		log_error("Not an i386 executable.\n");
+		log_error("Not an i386 executable.");
 #endif
 		return -L_EACCES;
 	}
@@ -178,10 +178,10 @@ static int load_elf(struct file *f, struct binfmt *binary)
 		{
 			elf->low = min(elf->low, ph->p_vaddr);
 			elf->high = max(elf->high, ph->p_vaddr + ph->p_memsz);
-			log_info("PT_LOAD: vaddr %p, size %p\n", ph->p_vaddr, ph->p_memsz);
+			log_info("PT_LOAD: vaddr %p, size %p", ph->p_vaddr, ph->p_memsz);
 		}
 		else if (ph->p_type == PT_DYNAMIC)
-			log_info("PT_DYNAMIC: vaddr %p, size %p\n", ph->p_vaddr, ph->p_memsz);
+			log_info("PT_DYNAMIC: vaddr %p, size %p", ph->p_vaddr, ph->p_memsz);
 		else if (ph->p_type == PT_PHDR) /* Patch phdr pointer in PT_PHDR, glibc uses it to determine load offset */
 			ph->p_vaddr = (size_t)elf->pht;
 	}
@@ -194,7 +194,7 @@ static int load_elf(struct file *f, struct binfmt *binary)
 		if (!free_addr)
 			return -L_ENOMEM;
 		elf->load_base = free_addr - elf->low;
-		log_info("ET_DYN load offset: %p, real range [%p, %p)\n", elf->load_base, elf->load_base + elf->low, elf->load_base + elf->high);
+		log_info("ET_DYN load offset: %p, real range [%p, %p)", elf->load_base, elf->load_base + elf->low, elf->load_base + elf->high);
 	}
 
 #ifdef _WIN64
@@ -257,7 +257,7 @@ static int load_elf(struct file *f, struct binfmt *binary)
 			char path[MAX_PATH];
 			f->op_vtable->pread(f, path, ph->p_filesz, ph->p_offset); /* TODO */
 			path[ph->p_filesz] = 0;
-			log_info("interpreter: %s\n", path);
+			log_info("interpreter: %s", path);
 
 			struct file *fi;
 			int r = vfs_openat(AT_FDCWD, path, O_RDONLY, 0, &fi);
@@ -364,14 +364,14 @@ int do_execve(const char *filename, int argc, char *argv[], int env_size, char *
 	/* Load file */
 	if (magic[0] == ELFMAG0 && magic[1] == ELFMAG1 && magic[2] == ELFMAG2 && magic[3] == ELFMAG3)
 	{
-		log_info("It is an ELF file.\n");
+		log_info("It is an ELF file.");
 		if (initialize_routine)
 			initialize_routine();
 		r = load_elf(f, &binary);
 	}
 	else if (magic[0] == '#' && magic[1] == '!')
 	{
-		log_info("It is a script file.\n");
+		log_info("It is a script file.");
 		if (initialize_routine)
 			initialize_routine();
 		r = load_script(f, &binary);
@@ -384,7 +384,7 @@ int do_execve(const char *filename, int argc, char *argv[], int env_size, char *
 	vfs_release(f);
 	if (r < 0)
 	{
-		log_error("FATAL: Load executable failed, cannot continue.\n");
+		log_error("FATAL: Load executable failed, cannot continue.");
 		process_exit(1, 0);
 	}
 
@@ -425,7 +425,7 @@ DEFINE_SYSCALL(execve, const char *, filename, char **, argv, char **, envp)
 {
 	/* TODO: Deal with argv/envp == NULL */
 	/* TODO: Don't destroy things on failure */
-	log_info("execve(%s, %p, %p)\n", filename, argv, envp);
+	log_info("execve(%s, %p, %p)", filename, argv, envp);
 
 	/* Copy argv[] and envp[] to startup data */
 	char *current_startup_base = flip_startup_base();
@@ -467,16 +467,16 @@ DEFINE_SYSCALL(execve, const char *, filename, char **, argv, char **, envp)
 	new_envp[env_size] = NULL;
 
 	for (int i = 0; i < argc; i++)
-		log_info("argv[%d] = \"%s\"\n", i, new_argv[i]);
+		log_info("argv[%d] = \"%s\"", i, new_argv[i]);
 	for (int i = 0; i < env_size; i++)
-		log_info("envp[%d] = \"%s\"\n", i, new_envp[i]);
+		log_info("envp[%d] = \"%s\"", i, new_envp[i]);
 
 	base = (char *)(new_envp + env_size + 1);
 
 	int r = do_execve(filename, argc, new_argv, env_size, new_envp, base, execve_initialize_routine);
 	if (r < 0) /* Should always be the case */
 	{
-		log_warning("execve() failed.\n");
+		log_warning("execve() failed.");
 		flip_startup_base();
 	}
 	return r;

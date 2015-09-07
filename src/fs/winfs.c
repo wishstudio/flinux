@@ -137,7 +137,7 @@ static NTSTATUS move_to_recycle_bin(HANDLE handle, WCHAR *pathname)
 		status = NtQueryInformationFile(handle, &status_block, &info, sizeof(info), FileInternalInformation);
 		if (!NT_SUCCESS(status))
 		{
-			log_error("NtQueryInformationFile(FileInternalInformation) failed, status: %x\n", status);
+			log_error("NtQueryInformationFile(FileInternalInformation) failed, status: %x", status);
 			return status;
 		}
 		RtlAppendInt64ToString(info.IndexNumber.QuadPart, 16, &rename);
@@ -161,7 +161,7 @@ static NTSTATUS move_to_recycle_bin(HANDLE handle, WCHAR *pathname)
 	status = NtSetInformationFile(handle, &status_block, info, sizeof(*info) + info->FileNameLength, FileRenameInformation);
 	if (!NT_SUCCESS(status))
 	{
-		log_error("NtSetInformationFile(FileRenameInformation) failed, status: %x\n", status);
+		log_error("NtSetInformationFile(FileRenameInformation) failed, status: %x", status);
 		return status;
 	}
 	return STATUS_SUCCESS;
@@ -182,7 +182,7 @@ static int winfs_is_symlink(HANDLE hFile)
 	overlapped.hEvent = 0;
 	if (!ReadFile(hFile, header, WINFS_SYMLINK_HEADER_LEN, &num_read, &overlapped) || num_read < WINFS_SYMLINK_HEADER_LEN)
 	{
-		log_error("ReadFile(): %d\n", GetLastError());
+		log_error("ReadFile(): %d", GetLastError());
 		return 0;
 	}
 	if (memcmp(header, WINFS_SYMLINK_HEADER, WINFS_SYMLINK_HEADER_LEN))
@@ -263,7 +263,7 @@ static size_t winfs_read(struct file *f, void *buf, size_t count)
 		{
 			if (GetLastError() == ERROR_HANDLE_EOF)
 				break;
-			log_warning("ReadFile() failed, error code: %d\n", GetLastError());
+			log_warning("ReadFile() failed, error code: %d", GetLastError());
 			num_read = -L_EIO;
 			break;
 		}
@@ -294,7 +294,7 @@ static size_t winfs_write(struct file *f, const void *buf, size_t count)
 		DWORD num_written_dword;
 		if (!WriteFile(winfile->handle, buf, count_dword, &num_written_dword, overlapped_pointer))
 		{
-			log_warning("WriteFile() failed, error code: %d\n", GetLastError());
+			log_warning("WriteFile() failed, error code: %d", GetLastError());
 			num_written = -L_EIO;
 			break;
 		}
@@ -324,7 +324,7 @@ static size_t winfs_pread(struct file *f, void *buf, size_t count, loff_t offset
 		{
 			if (GetLastError() == ERROR_HANDLE_EOF)
 				break;
-			log_warning("ReadFile() failed, error code: %d\n", GetLastError());
+			log_warning("ReadFile() failed, error code: %d", GetLastError());
 			num_read = -L_EIO;
 			break;
 		}
@@ -355,7 +355,7 @@ static size_t winfs_pwrite(struct file *f, const void *buf, size_t count, loff_t
 		DWORD num_written_dword;
 		if (!WriteFile(winfile->handle, buf, count_dword, &num_written_dword, &overlapped))
 		{
-			log_warning("WriteFile() failed, error code: %d\n", GetLastError());
+			log_warning("WriteFile() failed, error code: %d", GetLastError());
 			num_written = -L_EIO;
 			break;
 		}
@@ -391,7 +391,7 @@ static int winfs_truncate(struct file *f, loff_t length)
 	ReleaseSRWLockShared(&f->rw_lock);
 	if (!NT_SUCCESS(status))
 	{
-		log_warning("NtSetInformationFile(FileEndOfFileInformation) failed, status: %x\n", status);
+		log_warning("NtSetInformationFile(FileEndOfFileInformation) failed, status: %x", status);
 		return -L_EIO;
 	}
 	return 0;
@@ -405,7 +405,7 @@ static int winfs_fsync(struct file *f)
 	ReleaseSRWLockShared(&f->rw_lock);
 	if (!ok)
 	{
-		log_warning("FlushFileBuffers() failed, error code: %d\n", GetLastError());
+		log_warning("FlushFileBuffers() failed, error code: %d", GetLastError());
 		return -L_EIO;
 	}
 	return 0;
@@ -538,7 +538,7 @@ static int winfs_getdents(struct file *f, void *dirent, size_t count, getdents_c
 		if (!NT_SUCCESS(status))
 		{
 			if (status != STATUS_NO_MORE_FILES)
-				log_error("NtQueryDirectoryFile() failed, status: %x\n", status);
+				log_error("NtQueryDirectoryFile() failed, status: %x", status);
 			break;
 		}
 		if (status_block.Information == 0)
@@ -586,7 +586,7 @@ static int winfs_getdents(struct file *f, void *dirent, size_t count, getdents_c
 					NtClose(handle);
 				}
 				else
-					log_warning("NtCreateFile() failed, status: %x\n", status);
+					log_warning("NtCreateFile() failed, status: %x", status);
 			}
 			intptr_t reclen = fill_callback(p, inode, info->FileName, info->FileNameLength / 2, type, count - size, GETDENTS_UTF16);
 			if (reclen < 0)
@@ -613,7 +613,7 @@ static int winfs_statfs(struct file *f, struct statfs64 *buf)
 	int r = 0;
 	if (!NT_SUCCESS(status))
 	{
-		log_warning("NtQueryVolumeInformationFile() failed, status: %x\n", status);
+		log_warning("NtQueryVolumeInformationFile() failed, status: %x", status);
 		r = -L_EIO;
 		goto out;
 	}
@@ -664,30 +664,30 @@ static int winfs_symlink(struct file_system *fs, const char *target, const char 
 	if (utf8_to_utf16_filename(linkpath, strlen(linkpath) + 1, wlinkpath, PATH_MAX) <= 0)
 		return -L_ENOENT;
 
-	log_info("CreateFileW(): %s\n", linkpath);
+	log_info("CreateFileW(): %s", linkpath);
 	handle = CreateFileW(wlinkpath, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, CREATE_NEW, FILE_ATTRIBUTE_SYSTEM, NULL);
 	if (handle == INVALID_HANDLE_VALUE)
 	{
 		DWORD err = GetLastError();
 		if (err == ERROR_FILE_EXISTS || err == ERROR_ALREADY_EXISTS)
 		{
-			log_warning("File already exists.\n");
+			log_warning("File already exists.");
 			return -L_EEXIST;
 		}
-		log_warning("CreateFileW() failed, error code: %d.\n", GetLastError());
+		log_warning("CreateFileW() failed, error code: %d.", GetLastError());
 		return -L_ENOENT;
 	}
 	DWORD num_written;
 	if (!WriteFile(handle, WINFS_SYMLINK_HEADER, WINFS_SYMLINK_HEADER_LEN, &num_written, NULL) || num_written < WINFS_SYMLINK_HEADER_LEN)
 	{
-		log_warning("WriteFile() failed, error code: %d.\n", GetLastError());
+		log_warning("WriteFile() failed, error code: %d.", GetLastError());
 		CloseHandle(handle);
 		return -L_EIO;
 	}
 	DWORD targetlen = strlen(target);
 	if (!WriteFile(handle, target, targetlen, &num_written, NULL) || num_written < targetlen)
 	{
-		log_warning("WriteFile() failed, error code: %d.\n", GetLastError());
+		log_warning("WriteFile() failed, error code: %d.", GetLastError());
 		CloseHandle(handle);
 		return -L_EIO;
 	}
@@ -715,7 +715,7 @@ static int winfs_link(struct file_system *fs, struct file *f, const char *newpat
 	status = NtSetInformationFile(winfile->handle, &status_block, info, info->FileNameLength + sizeof(FILE_LINK_INFORMATION), FileLinkInformation);
 	if (!NT_SUCCESS(status))
 	{
-		log_warning("NtSetInformationFile() failed, status: %x.\n", status);
+		log_warning("NtSetInformationFile() failed, status: %x.", status);
 		r = -L_ENOENT;
 		goto out;
 	}
@@ -749,7 +749,7 @@ static int winfs_unlink(struct file_system *fs, const char *pathname)
 	{
 		if (status != STATUS_SHARING_VIOLATION)
 		{
-			log_warning("NtOpenFile() failed, status: %x\n", status);
+			log_warning("NtOpenFile() failed, status: %x", status);
 			return -L_ENOENT;
 		}
 		/* This file has open handles in some processes, even we set delete disposition flags
@@ -761,7 +761,7 @@ static int winfs_unlink(struct file_system *fs, const char *pathname)
 			FILE_NON_DIRECTORY_FILE | FILE_OPEN_FOR_BACKUP_INTENT);
 		if (!NT_SUCCESS(status))
 		{
-			log_warning("NtOpenFile() failed, status: %x\n", status);
+			log_warning("NtOpenFile() failed, status: %x", status);
 			return -L_EBUSY;
 		}
 		status = move_to_recycle_bin(handle, wpathname);
@@ -774,7 +774,7 @@ static int winfs_unlink(struct file_system *fs, const char *pathname)
 	status = NtSetInformationFile(handle, &status_block, &info, sizeof(info), FileDispositionInformation);
 	if (!NT_SUCCESS(status))
 	{
-		log_warning("NtSetInformation(FileDispositionInformation) failed, status: %x\n", status);
+		log_warning("NtSetInformation(FileDispositionInformation) failed, status: %x", status);
 		return -L_EBUSY;
 	}
 	NtClose(handle);
@@ -818,7 +818,7 @@ retry:
 				goto out;
 			goto retry;
 		}
-		log_warning("NtSetInformationFile() failed, status: %x\n", status);
+		log_warning("NtSetInformationFile() failed, status: %x", status);
 		r = -L_ENOENT;
 		goto out;
 	}
@@ -838,10 +838,10 @@ static int winfs_mkdir(struct file_system *fs, const char *pathname, int mode)
 		DWORD err = GetLastError();
 		if (err == ERROR_FILE_EXISTS || err == ERROR_ALREADY_EXISTS)
 		{
-			log_warning("File already exists.\n");
+			log_warning("File already exists.");
 			return -L_EEXIST;
 		}
-		log_warning("CreateDirectoryW() failed, error code: %d\n", GetLastError());
+		log_warning("CreateDirectoryW() failed, error code: %d", GetLastError());
 		return -L_ENOENT;
 	}
 	return 0;
@@ -854,7 +854,7 @@ static int winfs_rmdir(struct file_system *fs, const char *pathname)
 		return -L_ENOENT;
 	if (!RemoveDirectoryW(wpathname))
 	{
-		log_warning("RemoveDirectoryW() failed, error code: %d\n", GetLastError());
+		log_warning("RemoveDirectoryW() failed, error code: %d", GetLastError());
 		return -L_ENOENT;
 	}
 	return 0;
@@ -903,12 +903,12 @@ static int open_file(HANDLE *hFile, const char *pathname, DWORD desired_access, 
 		create_disposition, create_options, NULL, 0);
 	if (status == STATUS_OBJECT_NAME_COLLISION)
 	{
-		log_warning("File already exists.\n");
+		log_warning("File already exists.");
 		return -L_EEXIST;
 	}
 	else if (!NT_SUCCESS(status))
 	{
-		log_warning("Unhandled NtCreateFile error, status: %x, returning ENOENT.\n", status);
+		log_warning("Unhandled NtCreateFile error, status: %x, returning ENOENT.", status);
 		return -L_ENOENT;
 	}
 
@@ -916,7 +916,7 @@ static int open_file(HANDLE *hFile, const char *pathname, DWORD desired_access, 
 	status = NtQueryInformationFile(handle, &status_block, &attribute_info, sizeof(attribute_info), FileAttributeTagInformation);
 	if (!NT_SUCCESS(status))
 	{
-		log_error("NtQueryInformationFile(FileAttributeTagInformation) failed, status: %x\n", status);
+		log_error("NtQueryInformationFile(FileAttributeTagInformation) failed, status: %x", status);
 		NtClose(handle);
 		return -L_EIO;
 	}
@@ -932,7 +932,7 @@ static int open_file(HANDLE *hFile, const char *pathname, DWORD desired_access, 
 				FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, FILE_FLAG_BACKUP_SEMANTICS);
 			if (read_handle == INVALID_HANDLE_VALUE)
 			{
-				log_warning("Reopen symlink file failed, error code %d. Assume not symlink.\n", GetLastError());
+				log_warning("Reopen symlink file failed, error code %d. Assume not symlink.", GetLastError());
 				return 0;
 			}
 			CloseHandle(handle);
@@ -948,14 +948,14 @@ static int open_file(HANDLE *hFile, const char *pathname, DWORD desired_access, 
 			if (!(flags & O_PATH))
 			{
 				CloseHandle(handle);
-				log_info("Specified O_NOFOLLOW but not O_PATH, returning ELOOP.\n");
+				log_info("Specified O_NOFOLLOW but not O_PATH, returning ELOOP.");
 				return -L_ELOOP;
 			}
 		}
 	}
 	else if (!(attribute_info.FileAttributes & FILE_ATTRIBUTE_DIRECTORY) && (flags & O_DIRECTORY))
 	{
-		log_warning("Not a directory.\n");
+		log_warning("Not a directory.");
 		return -L_ENOTDIR;
 	}
 	*hFile = handle;
@@ -995,7 +995,7 @@ static int winfs_open(struct file_system *fs, const char *pathname, int flags, i
 		IO_STATUS_BLOCK status_block;
 		NTSTATUS status = NtSetInformationFile(handle, &status_block, &info, sizeof(info), FileEndOfFileInformation);
 		if (!NT_SUCCESS(status))
-			log_error("NtSetInformationFile() failed, status: %x\n", status);
+			log_error("NtSetInformationFile() failed, status: %x", status);
 	}
 
 	if (fp)
