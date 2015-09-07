@@ -32,6 +32,7 @@ HWND LogViewer::Create(HWND hWndParent, ATL::_U_RECT rect, LPCTSTR szWindowName)
 	m_mouseDown = false;
 	m_selStart = std::make_pair(0, 0);
 	m_selEnd = std::make_pair(0, 0);
+	m_savedX = 0;
 	SetScrollSize(1, 1, FALSE);
 	return hWnd;
 }
@@ -86,20 +87,16 @@ void LogViewer::DoPaint(CDCHandle dc)
 			int x = 0;
 			SIZE size;
 			/* Draw text before selection */
-			dc.ExtTextOutW(x, y, 0, NULL, m_lines[i].c_str(), start, 0);
-			/* Calculate text metrics */
 			GetTextExtentPoint32W(dc, m_lines[i].c_str(), start, &size);
+			dc.ExtTextOutW(x, y, 0, NULL, m_lines[i].c_str(), start, 0);
 			x += size.cx;
 			/* Draw selection */
-			dc.SetBkMode(OPAQUE);
-			dc.SetBkColor(RGB(0, 0, 0xFF));
 			dc.SetTextColor(RGB(0xFF, 0xFF, 0xFF));
-			dc.ExtTextOutW(x, y, 0, NULL, m_lines[i].c_str() + start, end - start, 0);
-			/* Calculate text metrics */
 			GetTextExtentPoint32W(dc, m_lines[i].c_str() + start, end - start, &size);
+			dc.FillSolidRect(x, y, size.cx, FONT_SIZE, RGB(0x00, 0xAA, 0xFF));
+			dc.ExtTextOutW(x, y, 0, NULL, m_lines[i].c_str() + start, end - start, 0);
 			x += size.cx;
 			/* Draw text after selection */
-			dc.SetBkMode(TRANSPARENT);
 			dc.SetTextColor(RGB(0, 0, 0));
 			dc.ExtTextOutW(x, y, 0, NULL, m_lines[i].c_str() + end, -1, 0);
 		}
@@ -138,12 +135,11 @@ void LogViewer::OnKillFocus(CWindow wndFocus)
 void LogViewer::OnLButtonDown(UINT nFlags, CPoint point)
 {
 	SetFocus();
-	CPoint pos = TranslateMousePoint(point);
 	m_mouseDown = true;
 	if (nFlags & MK_SHIFT)
-		m_selEnd = std::make_pair(pos.y, pos.x);
+		m_selEnd = TranslateMousePoint(point);
 	else
-		m_selStart = m_selEnd = std::make_pair(pos.y, pos.x);
+		m_selStart = m_selEnd = TranslateMousePoint(point);
 	Invalidate();
 	SetCapture();
 	UpdateCaret();
@@ -159,8 +155,7 @@ void LogViewer::OnMouseMove(UINT nFlags, CPoint point)
 {
 	if (m_mouseDown)
 	{
-		CPoint pos = TranslateMousePoint(point);
-		m_selEnd = std::make_pair(pos.y, pos.x);
+		m_selEnd = TranslateMousePoint(point);
 		Invalidate();
 		UpdateCaret();
 	}
@@ -176,6 +171,124 @@ void LogViewer::OnMButtonDown(UINT nFlags, CPoint point)
 	SetFocus();
 }
 
+void LogViewer::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
+{
+	if (m_lines.empty())
+		return;
+	bool shift = (GetKeyState(VK_SHIFT) & 0x8000) > 0;
+	bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) > 0;
+	int pageSize = m_sizeClient.cy / FONT_SIZE;
+	switch (nChar)
+	{
+	case VK_UP:
+		if (m_selEnd.first > 0)
+		{
+			CPoint point = TranslateCharPosToClientPoint(m_selEnd);
+			m_savedX = max(m_savedX, point.x);
+			int y = (m_selEnd.first - 1) * FONT_SIZE;
+			m_selEnd = TranslateClientPointToCharPos(CPoint(m_savedX, y));
+		}
+		if (!shift)
+			m_selStart = m_selEnd;
+		break;
+
+	case VK_DOWN:
+		if (m_selEnd.first + 1 < (int)m_lines.size())
+		{
+			CPoint point = TranslateCharPosToClientPoint(m_selEnd);
+			m_savedX = max(m_savedX, point.x);
+			int y = (m_selEnd.first + 1) * FONT_SIZE;
+			m_selEnd = TranslateClientPointToCharPos(CPoint(m_savedX, y));
+		}
+		if (!shift)
+			m_selStart = m_selEnd;
+		break;
+
+	case VK_PRIOR: /* Page up */
+		if (m_selEnd.first > 0)
+		{
+			CPoint point = TranslateCharPosToClientPoint(m_selEnd);
+			m_savedX = max(m_savedX, point.x);
+			int y = max(0, m_selEnd.first - pageSize) * FONT_SIZE;
+			m_selEnd = TranslateClientPointToCharPos(CPoint(m_savedX, y));
+		}
+		if (!shift)
+			m_selStart = m_selEnd;
+		break;
+
+	case VK_NEXT: /* Page down */
+		if (m_selEnd.first < (int)m_lines.size())
+		{
+			CPoint point = TranslateCharPosToClientPoint(m_selEnd);
+			m_savedX = max(m_savedX, point.x);
+			int y = min((int)m_lines.size() - 1, m_selEnd.first + pageSize) * FONT_SIZE;
+			m_selEnd = TranslateClientPointToCharPos(CPoint(m_savedX, y));
+		}
+		if (!shift)
+			m_selStart = m_selEnd;
+		break;
+
+	case VK_LEFT:
+		if (m_selEnd.second == 0 && m_selEnd.first > 0)
+		{
+			m_selEnd.first--;
+			m_selEnd.second = (int)m_lines[m_selEnd.first].size();
+		}
+		else if (m_selEnd.second > 0)
+			m_selEnd.second--;
+		if (!shift)
+			m_selStart = m_selEnd;
+		m_savedX = 0;
+		break;
+
+	case VK_RIGHT:
+		if (m_selEnd.second == (int)m_lines[m_selEnd.first].size() && m_selEnd.first < (int)m_lines.size())
+		{
+			m_selEnd.first++;
+			m_selEnd.second = 0;
+		}
+		else if (m_selEnd.second < (int)m_lines[m_selEnd.first].size())
+			m_selEnd.second++;
+		if (!shift)
+			m_selStart = m_selEnd;
+		m_savedX = 0;
+		break;
+
+	case VK_HOME:
+		m_selEnd.second = 0;
+		if (!shift)
+			m_selStart = m_selEnd;
+		m_savedX = 0;
+		break;
+
+	case VK_END:
+		m_selEnd.second = (int)m_lines[m_selEnd.first].size();
+		if (!shift)
+			m_selStart = m_selEnd;
+		m_savedX = 0;
+		break;
+
+	case 'A':
+		if (ctrl)
+		{
+			m_selStart = std::make_pair(0, 0);
+			m_selEnd = std::make_pair((int)m_lines.size() - 1, (int)m_lines.back().size());
+			m_savedX = 0;
+		}
+		break;
+
+	case 'C':
+		if (ctrl)
+			CopySelectionToClipboard();
+		break;
+
+	default:
+		return;
+	}
+	Invalidate();
+	UpdateCaret();
+}
+
 void LogViewer::AddLine(int type, const std::wstring &line)
 {
 	m_types.push_back(type);
@@ -187,10 +300,10 @@ void LogViewer::AddLine(int type, const std::wstring &line)
 	}
 }
 
-CPoint LogViewer::TranslateMousePoint(CPoint mousePoint)
+std::pair<int, int> LogViewer::TranslateMousePoint(CPoint mousePoint)
 {
 	if (m_lines.empty())
-		return CPoint(0, 0);
+		return std::make_pair(0, 0);
 
 	POINT offset;
 	GetScrollOffset(offset);
@@ -198,7 +311,14 @@ CPoint LogViewer::TranslateMousePoint(CPoint mousePoint)
 	mousePoint.x += offset.x;
 	mousePoint.y += offset.y;
 
-	int y = mousePoint.y / FONT_SIZE;
+	return TranslateClientPointToCharPos(mousePoint);
+}
+
+std::pair<int, int> LogViewer::TranslateClientPointToCharPos(CPoint clientPoint)
+{
+	int y = clientPoint.y / FONT_SIZE;
+	if (y < 0)
+		y = 0;
 	if (y >= (int)m_lines.size())
 		y = (int)m_lines.size() - 1;
 	CDCHandle dc = GetDC();
@@ -207,7 +327,7 @@ CPoint LogViewer::TranslateMousePoint(CPoint mousePoint)
 	float cur = 0;
 	for (int i = 0; i < (int)m_lines[y].size();)
 	{
-		if (mousePoint.x <= cur)
+		if (clientPoint.x <= cur)
 		{
 			x = i;
 			break;
@@ -228,7 +348,17 @@ CPoint LogViewer::TranslateMousePoint(CPoint mousePoint)
 			cur += abc.abcfA + abc.abcfB + abc.abcfC;
 	}
 	ReleaseDC(dc);
-	return CPoint(x, y);
+	return std::make_pair(y, x);
+}
+
+CPoint LogViewer::TranslateCharPosToClientPoint(std::pair<int, int> pos)
+{
+	CDCHandle dc = GetDC();
+	dc.SelectFont(m_font);
+	SIZE size;
+	GetTextExtentPoint32W(dc, m_lines[pos.first].c_str(), pos.second, &size);
+	ReleaseDC(dc);
+	return CPoint(size.cx, pos.first * FONT_SIZE);
 }
 
 void LogViewer::UpdateCaret()
@@ -244,8 +374,56 @@ void LogViewer::UpdateCaret()
 		x = size.cx;
 		ReleaseDC(dc);
 	}
+	RECT caret;
+	caret.left = caret.right = x;
+	caret.top = y;
+	caret.bottom = y + FONT_SIZE;
+	ScrollToView(caret);
 	POINT offset;
 	GetScrollOffset(offset);
 	SetCaretPos(x - offset.x, y - offset.y);
 	ShowCaret();
+}
+
+void LogViewer::CopySelectionToClipboard()
+{
+	/* Do we have anything to copy? */
+	if (m_selStart == m_selEnd)
+		return;
+	/* Prepare data */
+	std::wstring data;
+	std::pair<int, int> start, end;
+	start = min(m_selStart, m_selEnd);
+	end = max(m_selStart, m_selEnd);
+	/* First line */
+	data += m_lines[start.first].substr(start.second);
+	/* Middle lines */
+	for (int i = start.first + 1; i < end.first; i++)
+	{
+		data += L"\r\n";
+		data += m_lines[i];
+	}
+	/* Last line */
+	data += L"\r\n";
+	data += m_lines[end.first].substr(0, end.second);
+	/* Copy data to clipboard */
+	if (!OpenClipboard())
+		return;
+	if (!EmptyClipboard())
+	{
+		CloseClipboard();
+		return;
+	}
+	HANDLE memory = GlobalAlloc(GMEM_MOVEABLE, (data.size() + 1) * sizeof(wchar_t));
+	if (memory == NULL)
+	{
+		CloseClipboard();
+		return;
+	}
+	void *buf = GlobalLock(memory);
+	memcpy(buf, data.c_str(), (data.size() + 1) * sizeof(wchar_t));
+	GlobalUnlock(memory);
+
+	SetClipboardData(CF_UNICODETEXT, memory);
+	CloseClipboard();
 }

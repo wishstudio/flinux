@@ -46,6 +46,7 @@ public:
 		MSG_WM_MOUSEMOVE(OnMouseMove)
 		MSG_WM_RBUTTONDOWN(OnRButtonDown)
 		MSG_WM_MBUTTONDOWN(OnMButtonDown)
+		MSG_WM_KEYDOWN(OnKeyDown)
 		CHAIN_MSG_MAP(CDoubleBufferImpl<LogViewer>)
 		CHAIN_MSG_MAP(CScrollImpl<LogViewer>)
 	END_MSG_MAP()
@@ -60,15 +61,20 @@ public:
 	void OnMouseMove(UINT nFlags, CPoint point);
 	void OnRButtonDown(UINT nFlags, CPoint point);
 	void OnMButtonDown(UINT nFlags, CPoint point);
+	void OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags);
 	void AddLine(int type, const std::wstring &msg);
 
 private:
-	CPoint TranslateMousePoint(CPoint mousePoint);
+	std::pair<int, int> TranslateMousePoint(CPoint mousePoint);
+	std::pair<int, int> TranslateClientPointToCharPos(CPoint clientPoint);
+	CPoint TranslateCharPosToClientPoint(std::pair<int, int> pos);
 	void UpdateCaret();
+	void CopySelectionToClipboard();
 
 	CFont m_font;
 	bool m_timerShot, m_mouseDown;
 	std::pair<int, int> m_selStart, m_selEnd;
+	int m_savedX;
 	std::vector<int> m_types;
 	std::vector<std::wstring> m_lines;
 };
