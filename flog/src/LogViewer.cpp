@@ -115,6 +115,12 @@ void LogViewer::OnTimer(UINT_PTR id)
 	{
 		offset.y = m_sizeAll.cy - m_sizeClient.cy;
 		SetScrollOffset(offset);
+		POINT off;
+		GetScrollOffset(off);
+		if (off.x != offset.x || off.y != offset.y)
+		{
+			int t = 0;
+		}
 	}
 	KillTimer(id);
 	m_timerShot = false;
@@ -123,7 +129,7 @@ void LogViewer::OnTimer(UINT_PTR id)
 void LogViewer::OnSetFocus(CWindow wndOld)
 {
 	CreateSolidCaret(1, FONT_SIZE);
-	UpdateCaret();
+	UpdateCaret(false);
 	ShowCaret();
 }
 
@@ -324,14 +330,10 @@ std::pair<int, int> LogViewer::TranslateClientPointToCharPos(CPoint clientPoint)
 	CDCHandle dc = GetDC();
 	dc.SelectFont(m_font);
 	int x = (int)m_lines[y].size();
-	float cur = 0;
+	float totalX = 0;
 	for (int i = 0; i < (int)m_lines[y].size();)
 	{
-		if (clientPoint.x <= cur)
-		{
-			x = i;
-			break;
-		}
+		int j = i;
 		ABCFLOAT abc;
 		UINT ch;
 		/* UTF-16 surrogate pair handling */
@@ -344,8 +346,18 @@ std::pair<int, int> LogViewer::TranslateClientPointToCharPos(CPoint clientPoint)
 		}
 		else
 			ch = m_lines[y][i++];
+		double cur = 0;
 		if (GetCharABCWidthsFloatW(dc, m_lines[y][i], m_lines[y][i], &abc))
-			cur += abc.abcfA + abc.abcfB + abc.abcfC;
+		{
+			cur = abc.abcfA + abc.abcfB + abc.abcfC;
+			totalX += cur;
+		}
+		/* Treat mouse at next position when it's right to the center of current character */
+		if (clientPoint.x < totalX - cur / 2)
+		{
+			x = j;
+			break;
+		}
 	}
 	ReleaseDC(dc);
 	return std::make_pair(y, x);
@@ -361,7 +373,7 @@ CPoint LogViewer::TranslateCharPosToClientPoint(std::pair<int, int> pos)
 	return CPoint(size.cx, pos.first * FONT_SIZE);
 }
 
-void LogViewer::UpdateCaret()
+void LogViewer::UpdateCaret(bool scrollToCaret)
 {
 	int y = m_selEnd.first * FONT_SIZE;
 	int x = 0;
@@ -374,11 +386,14 @@ void LogViewer::UpdateCaret()
 		x = size.cx;
 		ReleaseDC(dc);
 	}
-	RECT caret;
-	caret.left = caret.right = x;
-	caret.top = y;
-	caret.bottom = y + FONT_SIZE;
-	ScrollToView(caret);
+	if (scrollToCaret)
+	{
+		RECT caret;
+		caret.left = caret.right = x;
+		caret.top = y;
+		caret.bottom = y + FONT_SIZE;
+		ScrollToView(caret);
+	}
 	POINT offset;
 	GetScrollOffset(offset);
 	SetCaretPos(x - offset.x, y - offset.y);

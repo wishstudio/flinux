@@ -68,7 +68,7 @@ private:
 	std::pair<int, int> TranslateMousePoint(CPoint mousePoint);
 	std::pair<int, int> TranslateClientPointToCharPos(CPoint clientPoint);
 	CPoint TranslateCharPosToClientPoint(std::pair<int, int> pos);
-	void UpdateCaret();
+	void UpdateCaret(bool scrollToCaret = true);
 	void CopySelectionToClipboard();
 
 	CFont m_font;
