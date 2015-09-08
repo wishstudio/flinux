@@ -2192,14 +2192,14 @@ static int vfs_pselect6(int nfds, struct fdset *readfds, struct fdset *writefds,
 		}
 	}
 	int r = vfs_ppoll(fds, cnt, timeout, sigmask);
-	if (r <= 0)
-		return r;
 	if (readfds)
 		LINUX_FD_ZERO(nfds, readfds);
 	if (writefds)
 		LINUX_FD_ZERO(nfds, writefds);
 	if (exceptfds)
 		LINUX_FD_ZERO(nfds, exceptfds);
+	if (r <= 0)
+		return r;
 	for (int i = 0; i < cnt; i++)
 	{
 		if (readfds && (fds[i].revents & LINUX_POLLIN))
