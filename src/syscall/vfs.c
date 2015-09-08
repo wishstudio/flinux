@@ -1716,6 +1716,7 @@ DEFINE_SYSCALL(ioctl, int, fd, unsigned int, cmd, unsigned long, arg)
 		else
 			f->flags &= ~O_NONBLOCK;
 		ReleaseSRWLockExclusive(&f->rw_lock);
+		vfs_release(f);
 		return 0;
 	}
 	struct file *f = vfs_get(fd);
