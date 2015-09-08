@@ -31,6 +31,13 @@
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
+static int mounts_gettext(int tag, char *buf)
+{
+	return ksprintf(buf, "none / ntfs\n");
+}
+
+static struct virtualfs_text_desc proc_mounts_desc = VIRTUALFS_TEXT(mounts_gettext);
+
 static int proc_stat_gettext(int tag, char *buf)
 {
 	return process_query_pid(tag, PROCESS_QUERY_STAT, buf);
@@ -42,6 +49,7 @@ struct virtualfs_directory_desc proc_pid_desc =
 {
 	.type = VIRTUALFS_TYPE_DIRECTORY,
 	.entries = {
+		VIRTUALFS_ENTRY("mounts", proc_mounts_desc)
 		VIRTUALFS_ENTRY("stat", proc_stat_desc)
 		VIRTUALFS_ENTRY_END()
 	}
@@ -269,6 +277,7 @@ static const struct virtualfs_directory_desc procfs =
 		VIRTUALFS_ENTRY("loadavg", loadavg_desc)
 		VIRTUALFS_ENTRY("meminfo", meminfo_desc)
 		VIRTUALFS_ENTRY("uptime", uptime_desc)
+		VIRTUALFS_ENTRY("mounts", proc_mounts_desc)
 		VIRTUALFS_ENTRY_END()
 	}
 };
