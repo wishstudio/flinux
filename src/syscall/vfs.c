@@ -1701,6 +1701,23 @@ DEFINE_SYSCALL(ioctl, int, fd, unsigned int, cmd, unsigned long, arg)
 		return sys_fcntl(fd, F_SETFD, FD_CLOEXEC);
 	else if (cmd == L_FIONCLEX)
 		return sys_fcntl(fd, F_SETFD, 0);
+	else if (cmd == L_FIONBIO)
+	{
+		int *on = (int *)arg;
+		if (!mm_check_read(on, sizeof(int)))
+			return -L_EFAULT;
+		log_info("FIONBIO: %d", *on);
+		struct file *f = vfs_get(fd);
+		if (!f)
+			return -L_EBADF;
+		AcquireSRWLockExclusive(&f->rw_lock);
+		if (*on)
+			f->flags |= O_NONBLOCK;
+		else
+			f->flags &= ~O_NONBLOCK;
+		ReleaseSRWLockExclusive(&f->rw_lock);
+		return 0;
+	}
 	struct file *f = vfs_get(fd);
 	int r;
 	if (f && f->op_vtable->ioctl)
