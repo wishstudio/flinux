@@ -1697,9 +1697,9 @@ DEFINE_SYSCALL(fadvise64, int, fd, loff_t, offset, size_t, len, int, advice)
 DEFINE_SYSCALL(ioctl, int, fd, unsigned int, cmd, unsigned long, arg)
 {
 	log_info("ioctl(%d, %x, %x)", fd, cmd, arg);
-	if (cmd == FIOCLEX)
+	if (cmd == L_FIOCLEX)
 		return sys_fcntl(fd, F_SETFD, FD_CLOEXEC);
-	else if (cmd == FIONCLEX)
+	else if (cmd == L_FIONCLEX)
 		return sys_fcntl(fd, F_SETFD, 0);
 	struct file *f = vfs_get(fd);
 	int r;
@@ -2110,7 +2110,10 @@ static int vfs_ppoll(struct linux_pollfd *fds, int nfds, int timeout, const sigs
 				/* Wait successfully, fill in the revents field of that handle */
 				int id = indices[result - WAIT_OBJECT_0];
 				struct file *f = files[id];
-				/* Retrieve current event flags */
+				/*
+				 * Some file descriptors (console, socket) may be not readable even if it is signaled
+				 * Query the current state again to make sure
+				 */
 				int e;
 				if (f->op_vtable->get_poll_status)
 				{
@@ -2124,10 +2127,6 @@ static int vfs_ppoll(struct linux_pollfd *fds, int nfds, int timeout, const sigs
 				}
 				if ((e & fds[id].events) == 0)
 				{
-					/*
-					* Some file descriptors (console, socket) may be not readable even if it is signaled
-					* Query the state again to make sure
-					*/
 					LARGE_INTEGER current;
 					QueryPerformanceCounter(&current);
 					if (timeout != INFINITE)

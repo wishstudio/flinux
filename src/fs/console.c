@@ -1070,6 +1070,9 @@ static void control_escape_csi(char ch)
 			case 37:
 				console->foreground = console->params[i] - 30;
 				break;
+			case 39:
+				console->foreground = 7; /* White */
+				break;
 
 			case 40:
 			case 41:
@@ -1080,6 +1083,9 @@ static void control_escape_csi(char ch)
 			case 46:
 			case 47:
 				console->background = console->params[i] - 40;
+				break;
+			case 49:
+				console->background = 0; /* Black */
 				break;
 
 			default:
@@ -1628,7 +1634,7 @@ static int console_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 	/* TODO: What is the different between S/SW/SF variants? */
 	switch (cmd)
 	{
-	case TCGETS:
+	case L_TCGETS:
 	{
 		struct termios *t = (struct termios *)arg;
 		memcpy(t, &console->termios, sizeof(struct termios));
@@ -1636,9 +1642,9 @@ static int console_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 		break;
 	}
 
-	case TCSETS:
-	case TCSETSW:
-	case TCSETSF:
+	case L_TCSETS:
+	case L_TCSETSW:
+	case L_TCSETSF:
 	{
 		struct termios *t = (struct termios *)arg;
 		memcpy(&console->termios, t, sizeof(struct termios));
@@ -1647,7 +1653,7 @@ static int console_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 		break;
 	}
 
-	case TIOCGPGRP:
+	case L_TIOCGPGRP:
 	{
 		log_warning("Unsupported TIOCGPGRP: Return fake result.");
 		*(pid_t *)arg = process_get_pgid(0);
@@ -1655,14 +1661,14 @@ static int console_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 		break;
 	}
 
-	case TIOCSPGRP:
+	case L_TIOCSPGRP:
 	{
 		log_warning("Unsupported TIOCSPGRP: Do nothing.");
 		r = 0;
 		break;
 	}
 
-	case TIOCGWINSZ:
+	case L_TIOCGWINSZ:
 	{
 		struct winsize *win = (struct winsize *)arg;
 		CONSOLE_SCREEN_BUFFER_INFO info;
@@ -1676,7 +1682,7 @@ static int console_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 		break;
 	}
 
-	case TIOCSWINSZ:
+	case L_TIOCSWINSZ:
 	{
 		const struct winsize *win = (const struct winsize *)arg;
 		console_set_size(win->ws_col, win->ws_row);
