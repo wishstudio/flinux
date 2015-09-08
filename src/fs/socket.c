@@ -225,6 +225,8 @@ static int socket_get_poll_status(struct file *f)
 	int ret = 0;
 	if (e & FD_READ)
 		ret |= LINUX_POLLIN;
+	if (e & FD_CLOSE)
+		ret |= LINUX_POLLIN | LINUX_POLLHUP;
 	if (e & FD_WRITE)
 		ret |= LINUX_POLLOUT;
 	return ret;
@@ -333,7 +335,7 @@ static int socket_recvfrom(struct socket_file *f, void *buf, size_t len, int fla
 	struct sockaddr_storage addr_storage;
 	int addr_storage_len = sizeof(struct sockaddr_storage);
 	int r;
-	while ((r = socket_wait_event(f, FD_READ, flags)) == 0)
+	while ((r = socket_wait_event(f, FD_READ | FD_CLOSE, flags)) == 0)
 	{
 		if (!(flags & LINUX_MSG_PEEK))
 			f->events &= ~FD_READ;
@@ -413,7 +415,7 @@ static int socket_recvmsg(struct socket_file *f, struct msghdr *msg, int flags)
 	wsamsg.dwFlags = 0;
 
 	int r;
-	while ((r = socket_wait_event(f, FD_READ, flags)) == 0)
+	while ((r = socket_wait_event(f, FD_READ | FD_CLOSE, flags)) == 0)
 	{
 		if (WSARecvMsg(f->socket, &wsamsg, &r, NULL, NULL) != SOCKET_ERROR)
 			break;
@@ -482,7 +484,7 @@ static HANDLE init_socket_event(int sock)
 		log_error("CreateEventW() failed, error code: %d", GetLastError());
 		return NULL;
 	}
-	if (WSAEventSelect(sock, handle, FD_READ | FD_WRITE | FD_ACCEPT | FD_CONNECT) == SOCKET_ERROR)
+	if (WSAEventSelect(sock, handle, FD_READ | FD_WRITE | FD_ACCEPT | FD_CONNECT | FD_CLOSE) == SOCKET_ERROR)
 	{
 		log_error("WSAEventSelect() failed, error code: %d", WSAGetLastError());
 		CloseHandle(handle);

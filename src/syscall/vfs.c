@@ -2192,6 +2192,10 @@ static int vfs_pselect6(int nfds, struct fdset *readfds, struct fdset *writefds,
 		}
 	}
 	int r = vfs_ppoll(fds, cnt, timeout, sigmask);
+	/* Always clear the fd arrays even if there is an error.
+	 * Some applications may simply check the fd array and not the return value,
+	 * If these arrays are not cleared it will cause problems.
+	 */
 	if (readfds)
 		LINUX_FD_ZERO(nfds, readfds);
 	if (writefds)
