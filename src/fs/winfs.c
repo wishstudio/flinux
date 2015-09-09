@@ -40,6 +40,7 @@ struct winfs_file
 {
 	struct file base_file;
 	HANDLE handle;
+	HANDLE fp_mutex; /* Mutex for guarding file pointer */
 	int restart_scan; /* for getdents() */
 	int pathlen;
 	char pathname[]; /* Not necessary null-terminated */
@@ -170,7 +171,7 @@ static NTSTATUS move_to_recycle_bin(HANDLE handle, WCHAR *pathname)
 /* Test if a handle is a symlink, does not read the target
  * The current file pointer will be changed
  */
-static int winfs_is_symlink(HANDLE hFile)
+static int winfs_is_symlink_unsafe(HANDLE hFile)
 {
 	char header[WINFS_SYMLINK_HEADER_LEN];
 	DWORD num_read;
@@ -194,7 +195,7 @@ static int winfs_is_symlink(HANDLE hFile)
 Test if a handle is a symlink, also return its target if requested.
 For optimal performance, caller should ensure the handle is a regular file with system attribute.
 */
-static int winfs_read_symlink(HANDLE hFile, char *target, int buflen)
+static int winfs_read_symlink_unsafe(HANDLE hFile, char *target, int buflen)
 {
 	char header[WINFS_SYMLINK_HEADER_LEN];
 	DWORD num_read;
@@ -229,13 +230,10 @@ static int winfs_read_symlink(HANDLE hFile, char *target, int buflen)
 static int winfs_close(struct file *f)
 {
 	struct winfs_file *winfile = (struct winfs_file *)f;
-	if (CloseHandle(winfile->handle))
-	{
-		kfree(winfile, sizeof(struct winfs_file) + winfile->pathlen);
-		return 0;
-	}
-	else
-		return -1;
+	CloseHandle(winfile->handle);
+	CloseHandle(winfile->fp_mutex);
+	kfree(winfile, sizeof(struct winfs_file) + winfile->pathlen);
+	return 0;
 }
 
 static int winfs_getpath(struct file *f, char *buf)
@@ -254,6 +252,7 @@ static size_t winfs_read(struct file *f, void *buf, size_t count)
 {
 	AcquireSRWLockShared(&f->rw_lock);
 	struct winfs_file *winfile = (struct winfs_file *) f;
+	WaitForSingleObject(winfile->fp_mutex, INFINITE);
 	size_t num_read = 0;
 	while (count > 0)
 	{
@@ -272,6 +271,7 @@ static size_t winfs_read(struct file *f, void *buf, size_t count)
 		num_read += num_read_dword;
 		count -= num_read_dword;
 	}
+	ReleaseMutex(winfile->fp_mutex);
 	ReleaseSRWLockShared(&f->rw_lock);
 	return num_read;
 }
@@ -280,6 +280,7 @@ static size_t winfs_write(struct file *f, const void *buf, size_t count)
 {
 	AcquireSRWLockShared(&f->rw_lock);
 	struct winfs_file *winfile = (struct winfs_file *) f;
+	WaitForSingleObject(winfile->fp_mutex, INFINITE);
 	size_t num_written = 0;
 	OVERLAPPED overlapped;
 	overlapped.Internal = 0;
@@ -301,14 +302,38 @@ static size_t winfs_write(struct file *f, const void *buf, size_t count)
 		num_written += num_written_dword;
 		count -= num_written_dword;
 	}
+	ReleaseMutex(winfile->fp_mutex);
 	ReleaseSRWLockShared(&f->rw_lock);
 	return num_written;
 }
 
+/* Notes for pread() and pwrite()
+ * In Linux pread() and pwrite() are defined to be atomic and not touch file pointers.
+ * In Windows we can specify the start pointer to use in the OVERLAPPED structure passed
+ * to ReadFile() or WriteFile() function. But unfortunately Windows will always update
+ * file pointers after the operation.
+ *
+ * To mimic the semantic, we add interprocess locks to guard all file pointer changing
+ * operations. In pread() and pwrite() we read the fp before ReadFile() or WriteFile()
+ * and seek to that position afterward.
+ *
+ * This method may be slow in practice, but the performance is completely untested.
+ * Advices on potential improvements are encouraged.
+ *
+ * An alternative approach would be use two file handles, one for ordinary read/write,
+ * and another for pread/pwrite, while it solves this problem easily, it may encounter
+ * other problems such as file content desync, and file permission problems. Due to
+ * the additional complications this method is not used here.
+ */
 static size_t winfs_pread(struct file *f, void *buf, size_t count, loff_t offset)
 {
 	AcquireSRWLockShared(&f->rw_lock);
 	struct winfs_file *winfile = (struct winfs_file *) f;
+	WaitForSingleObject(winfile->fp_mutex, INFINITE);
+	/* Acquire current file pointer */
+	LARGE_INTEGER distanceToMove, currentFilePointer;
+	distanceToMove.QuadPart = 0;
+	SetFilePointerEx(winfile->handle, distanceToMove, &currentFilePointer, FILE_CURRENT);
 	size_t num_read = 0;
 	while (count > 0)
 	{
@@ -334,6 +359,9 @@ static size_t winfs_pread(struct file *f, void *buf, size_t count, loff_t offset
 		offset += num_read_dword;
 		count -= num_read_dword;
 	}
+	/* Restore previous file pointer */
+	SetFilePointerEx(winfile->handle, currentFilePointer, &currentFilePointer, FILE_BEGIN);
+	ReleaseMutex(winfile->fp_mutex);
 	ReleaseSRWLockShared(&f->rw_lock);
 	return num_read;
 }
@@ -342,6 +370,11 @@ static size_t winfs_pwrite(struct file *f, const void *buf, size_t count, loff_t
 {
 	AcquireSRWLockShared(&f->rw_lock);
 	struct winfs_file *winfile = (struct winfs_file *) f;
+	WaitForSingleObject(winfile->fp_mutex, INFINITE);
+	/* Acquire current file pointer */
+	LARGE_INTEGER distanceToMove, currentFilePointer;
+	distanceToMove.QuadPart = 0;
+	SetFilePointerEx(winfile->handle, distanceToMove, &currentFilePointer, FILE_CURRENT);
 	size_t num_written = 0;
 	while (count > 0)
 	{
@@ -363,15 +396,22 @@ static size_t winfs_pwrite(struct file *f, const void *buf, size_t count, loff_t
 		offset += num_written_dword;
 		count -= num_written_dword;
 	}
+	/* Restore previous file pointer */
+	SetFilePointerEx(winfile->handle, currentFilePointer, &currentFilePointer, FILE_BEGIN);
+	ReleaseMutex(winfile->fp_mutex);
 	ReleaseSRWLockShared(&f->rw_lock);
 	return num_written;
 }
 
 static size_t winfs_readlink(struct file *f, char *target, size_t buflen)
 {
+	/* This file is a symlink, so read(), write() should not be called on this file
+	 * Thus we don't need to lock the file pointer
+	 */
+	/* TODO: Store the file type in winfile structure so we can be sure this file is really a symlink */
 	AcquireSRWLockShared(&f->rw_lock);
 	struct winfs_file *winfile = (struct winfs_file *) f;
-	int r = winfs_read_symlink(winfile->handle, target, (int)buflen);
+	int r = winfs_read_symlink_unsafe(winfile->handle, target, (int)buflen);
 	ReleaseSRWLockShared(&f->rw_lock);
 	if (r == 0)
 		return -L_EINVAL;
@@ -423,16 +463,18 @@ static int winfs_llseek(struct file *f, loff_t offset, loff_t *newoffset, int wh
 		dwMoveMethod = FILE_END;
 	else
 		return -L_EINVAL;
-	AcquireSRWLockExclusive(&f->rw_lock);
+	AcquireSRWLockShared(&f->rw_lock);
+	WaitForSingleObject(winfile->fp_mutex, INFINITE);
 	LARGE_INTEGER liDistanceToMove, liNewFilePointer;
 	liDistanceToMove.QuadPart = offset;
 	SetFilePointerEx(winfile->handle, liDistanceToMove, &liNewFilePointer, dwMoveMethod);
 	*newoffset = liNewFilePointer.QuadPart;
 	if (whence == SEEK_SET && offset == 0)
 	{
-		/* TODO: Currently we don't know if it is a directory, pretend it is */
+		/* TODO: Currently we don't know if it is a directory, it's no harm to do this anyway */
 		winfile->restart_scan = 1;
 	}
+	ReleaseMutex(winfile->fp_mutex);
 	ReleaseSRWLockExclusive(&f->rw_lock);
 	return 0;
 }
@@ -465,7 +507,7 @@ static int winfs_stat(struct file *f, struct newstat *buf)
 	{
 		int r;
 		if ((info.dwFileAttributes & FILE_ATTRIBUTE_SYSTEM)
-			&& (r = winfs_read_symlink(winfile->handle, NULL, 0)) > 0)
+			&& (r = winfs_read_symlink_unsafe(winfile->handle, NULL, 0)) > 0)
 		{
 			buf->st_mode |= S_IFLNK;
 			buf->st_size = r;
@@ -581,7 +623,7 @@ static int winfs_getdents(struct file *f, void *dirent, size_t count, getdents_c
 					FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT, NULL, 0);
 				if (NT_SUCCESS(status))
 				{
-					if (winfs_is_symlink(handle))
+					if (winfs_is_symlink_unsafe(handle))
 						type = DT_LNK;
 					NtClose(handle);
 				}
@@ -938,7 +980,7 @@ static int open_file(HANDLE *hFile, const char *pathname, DWORD desired_access, 
 			CloseHandle(handle);
 			handle = read_handle;
 		}
-		if (winfs_read_symlink(handle, target, buflen) > 0)
+		if (winfs_read_symlink_unsafe(handle, target, buflen) > 0)
 		{
 			if (!(flags & O_NOFOLLOW))
 			{
@@ -1004,6 +1046,12 @@ static int winfs_open(struct file_system *fs, const char *pathname, int flags, i
 		struct winfs_file *file = (struct winfs_file *)kmalloc(sizeof(struct winfs_file) + pathlen);
 		file_init(&file->base_file, &winfs_ops, flags);
 		file->handle = handle;
+		SECURITY_ATTRIBUTES attr;
+		attr.nLength = sizeof(SECURITY_ATTRIBUTES);
+		attr.bInheritHandle = TRUE;
+		attr.lpSecurityDescriptor = NULL;
+		/* TODO: Don't need this mutex for directory or symlink */
+		file->fp_mutex = CreateMutexW(&attr, FALSE, NULL);
 		file->restart_scan = 1;
 		file->pathlen = pathlen;
 		memcpy(file->pathname, pathname, pathlen);
