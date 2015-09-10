@@ -7,10 +7,6 @@ Foreign LINUX
 
 Foreign LINUX is a dynamic binary translator and a Linux system call interface emulator for the Windows platform. It is capable of running *unmodified* Linux binaries on Windows without any drivers or modifications to the system. This provides another way of running Linux applications under Windows in constrast to Cygwin and other tools. It now runs a large bunch of console applications and some GUI applications.
 
-Screenshots
-=====
-![Screenshot](https://xysun.me/static/flinux-screenshot.png)
-
 Quick start
 =====
 Download a premade archlinux environment [here](https://xysun.me/static/flinux-archlinux.7z).
@@ -21,9 +17,7 @@ Then you can run `pacman -Syu` to update all packages to the current version. Th
 
 Development snapshots: you can download development versions of the software [here](https://ci.appveyor.com/project/wishstudio/flinux/build/artifacts). Just replace the two executables (flinux.exe and flog.exe) for an update.
 
-Documentation
-=====
-Please visit our [wiki](https://github.com/wishstudio/flinux/wiki) for more information.
+[Documentation](https://github.com/wishstudio/flinux/wiki)
 
 Contributing
 =====
