@@ -5,46 +5,34 @@ Foreign LINUX
 
 [![Build status](https://ci.appveyor.com/api/projects/status/a340ver0l85l14tf?svg=true)](https://ci.appveyor.com/project/wishstudio/flinux)
 
-Foreign LINUX is a dynamic binary translator and a Linux system call interface emulator for the Windows platform. It is capable of running *unmodified* Linux binaries on Windows without any drivers or modifications to the system. This provides another way of running Linux applications under Windows in constrast to Cygwin and other tools. There is a  [comparison](https://github.com/wishstudio/flinux/wiki/Comparison) over existing projects.
-
-This project is in heavy development. It is currently capable of running many Linux utilities. Including but not limiting to:
-
-* Shells: **bash**, **zsh**
-* Editors: **vim**, **nano**
-* Programming environments: **python**, **gcc**
-* Package managers: **pacman**
-* Terminal-based games: **vitetris**, **nethack**
-* Network utilities: **wget**, **curl**, **ssh**
-* X applications: **xeyes**, **xclock**, **glxgears**
-
-Some major missing functions are file permissions, process management, multi-threading, and more. Applications depending on these technologies will not work properly.
-
-How to use
-=====
-Foreign LINUX is still in early stage, bad things like *crashing your system* or *eating your harddisk* may happen. **You have been warned.**
-
-For users who just want to give it a try. Download a premade Arch Linux environment [here](https://xysun.me/static/flinux-archlinux.7z). Then visit [Beginner's Guide](https://github.com/wishstudio/flinux/wiki/Beginner's-Guide).
-
-For just the binary executables, visit [release page](https://github.com/wishstudio/flinux/releases). For getting the latest development snapshot, visit [here](https://ci.appveyor.com/project/wishstudio/flinux/build/artifacts).
-
-For developers, you can also visit [this guide](https://github.com/wishstudio/flinux/wiki/ArchLinux-installation-steps) for detailed bootstrapping steps of an ArchLinux chroot.
+Foreign LINUX is a dynamic binary translator and a Linux system call interface emulator for the Windows platform. It is capable of running *unmodified* Linux binaries on Windows without any drivers or modifications to the system. This provides another way of running Linux applications under Windows in constrast to Cygwin and other tools. It now runs a large bunch of console applications and some GUI applications.
 
 Screenshots
 =====
 ![Screenshot](https://xysun.me/static/flinux-screenshot.png)
 
-Development
-======
-See [development](https://github.com/wishstudio/flinux/wiki/Development).
+Quick start
+=====
+Download a premade archlinux environment [here](https://xysun.me/static/flinux-archlinux.7z).
 
-Contact
-======
-Mailing list: flinux@googlegroups.com ([subscribe](https://groups.google.com/forum/#!forum/flinux))
+Extract it anywhere on your harddrive. Then run `run_bash.cmd` to open bash. You will get a minimal archlinux environment.
 
-Freenode IRC: #flinux
+Then you can run `pacman -Syu` to update all packages to the current version. Then use `pacman -S <name>` to install any packages you want.
+
+Development snapshots: you can download development versions of the software [here](https://ci.appveyor.com/project/wishstudio/flinux/build/artifacts). Just replace the two executables (flinux.exe and flog.exe) for an update.
+
+Documentation
+=====
+Please visit our [wiki](https://github.com/wishstudio/flinux/wiki) for more information.
+
+Contributing
+=====
+This project still lacks functionality required for many Linux applications. Any help is greatly appreciated. You can contribute using the following ways:
+
+* Contribute code. Visit [development guideline](https://github.com/wishstudio/flinux/wiki/Development-Guideline) and our [TODO list](https://github.com/wishstudio/flinux/wiki/TODO-List).
+* Test programs and report bugs. Read [report a bug](https://github.com/wishstudio/flinux/wiki/Report-a-bug) first.
+* Help with the documentations.
 
 License
-======
-Copyright (C) 2014, 2015 Xiangyan Sun <wishstudio@gmail.com>
-
-The source code is licensed under GNU General Public License version 3 or above (GPLv3+)
+=====
+This software is licensed in GPLv3+.
