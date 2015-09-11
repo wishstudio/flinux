@@ -1,9 +1,13 @@
 Foreign LINUX
 ======
 
+[![Build status](https://ci.appveyor.com/api/projects/status/a340ver0l85l14tf?svg=true)](https://ci.appveyor.com/project/wishstudio/flinux)
+
 [![Join the chat at https://gitter.im/wishstudio/flinux](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/wishstudio/flinux?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
-[![Build status](https://ci.appveyor.com/api/projects/status/a340ver0l85l14tf?svg=true)](https://ci.appveyor.com/project/wishstudio/flinux)
+IRC: #flinux at freenode
+
+Google groups: [flinux](https://groups.google.com/forum/#!forum/flinux)
 
 Foreign LINUX is a dynamic binary translator and a Linux system call interface emulator for the Windows platform. It is capable of running *unmodified* Linux binaries on Windows without any drivers or modifications to the system. This provides another way of running Linux applications under Windows in constrast to Cygwin and other tools. It now runs a large bunch of console applications and some GUI applications.
 
