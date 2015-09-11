@@ -1616,9 +1616,9 @@ DEFINE_SYSCALL(mlock, const void *, addr, size_t, len)
 		r = -L_ENOMEM;
 		goto out;
 	}
-	ReleaseSRWLockExclusive(&mm->rw_lock);
 
 out:
+	ReleaseSRWLockExclusive(&mm->rw_lock);
 	return r;
 }
 
