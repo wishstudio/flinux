@@ -2477,3 +2477,10 @@ DEFINE_SYSCALL(fallocate, int, fd, int, mode, loff_t, offset, loff_t, len)
 	log_warning("fallocate() not implemented.");
 	return -L_EOPNOTSUPP;
 }
+
+DEFINE_SYSCALL(flock, int, fd, int, operation)
+{
+	log_info("flock(%d, %d)", fd, operation);
+	log_error("flock() not implemented.");
+	return 0;
+}
