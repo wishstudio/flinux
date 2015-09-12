@@ -34,6 +34,7 @@ HWND LogViewer::Create(HWND hWndParent, ATL::_U_RECT rect, LPCTSTR szWindowName)
 	m_selEnd = std::make_pair(0, 0);
 	m_savedX = 0;
 	SetScrollSize(1, 1, FALSE);
+	SetScrollLine(0, FONT_SIZE);
 	return hWnd;
 }
 
@@ -346,7 +347,7 @@ std::pair<int, int> LogViewer::TranslateClientPointToCharPos(CPoint clientPoint)
 		}
 		else
 			ch = m_lines[y][i++];
-		double cur = 0;
+		float cur = 0;
 		if (GetCharABCWidthsFloatW(dc, m_lines[y][i], m_lines[y][i], &abc))
 		{
 			cur = abc.abcfA + abc.abcfB + abc.abcfC;
