@@ -34,7 +34,6 @@ HWND LogViewer::Create(HWND hWndParent, ATL::_U_RECT rect, LPCTSTR szWindowName)
 	m_selEnd = std::make_pair(0, 0);
 	m_savedX = 0;
 	SetScrollSize(1, 1, FALSE);
-	SetScrollLine(0, FONT_SIZE);
 	return hWnd;
 }
 
@@ -112,6 +111,7 @@ void LogViewer::OnTimer(UINT_PTR id)
 	if (offset.y >= m_sizeAll.cy - m_sizeClient.cy - 1)
 		atBottom = true;
 	SetScrollSize(1, m_lines.size() * FONT_SIZE, TRUE, FALSE);
+	SetScrollLine(0, FONT_SIZE);
 	if (atBottom)
 	{
 		offset.y = m_sizeAll.cy - m_sizeClient.cy;
