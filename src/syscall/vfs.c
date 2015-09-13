@@ -406,10 +406,15 @@ DEFINE_SYSCALL(read, int, fd, char *, buf, size_t, count)
 		return -L_EFAULT;
 	struct file *f = vfs_get(fd);
 	ssize_t r;
-	if (f && f->op_vtable->read)
-		r = f->op_vtable->read(f, buf, count);
-	else
+	if (!f)
 		r = -L_EBADF;
+	else if (!f->op_vtable->read)
+	{
+		log_error("read() not implemented for the file.");
+		r = -L_EINVAL;
+	}
+	else
+		r = f->op_vtable->read(f, buf, count);
 	if (f)
 		vfs_release(f);
 	return r;
@@ -422,10 +427,15 @@ DEFINE_SYSCALL(write, int, fd, const char *, buf, size_t, count)
 		return -L_EFAULT;
 	struct file *f = vfs_get(fd);
 	ssize_t r;
-	if (f && f->op_vtable->write)
-		r = f->op_vtable->write(f, buf, count);
-	else
+	if (!f)
 		r = -L_EBADF;
+	else if (!f->op_vtable->write)
+	{
+		log_error("write() not implemented for the file.");
+		r = -L_EINVAL;
+	}
+	else
+		r = f->op_vtable->write(f, buf, count);
 	if (f)
 		vfs_release(f);
 	return r;
@@ -438,10 +448,15 @@ DEFINE_SYSCALL(pread64, int, fd, char *, buf, size_t, count, loff_t, offset)
 		return -L_EFAULT;
 	struct file *f = vfs_get(fd);
 	ssize_t r;
-	if (f && f->op_vtable->pread)
-		r = f->op_vtable->pread(f, buf, count, offset);
-	else
+	if (!f)
 		r = -L_EBADF;
+	else if (!f->op_vtable->pread)
+	{
+		log_error("pread() not implemented for the file.");
+		r = -L_EINVAL;
+	}
+	else
+		r = f->op_vtable->pread(f, buf, count, offset);
 	if (f)
 		vfs_release(f);
 	return r;
@@ -454,12 +469,16 @@ DEFINE_SYSCALL(pwrite64, int, fd, const char *, buf, size_t, count, loff_t, offs
 		return -L_EFAULT;
 	struct file *f = vfs_get(fd);
 	ssize_t r;
-	if (f && f->op_vtable->pwrite)
-		r = f->op_vtable->pwrite(f, buf, count, offset);
-	else
+	if (!f)
 		r = -L_EBADF;
-	if (f)
-		vfs_release(f);
+	else if (!f->op_vtable->pwrite)
+	{
+		log_error("pwrite() not implemented for the file.");
+		r = -L_EINVAL;
+	}
+	else
+		r = f->op_vtable->pwrite(f, buf, count, offset);
+	vfs_release(f);
 	return r;
 }
 
@@ -471,7 +490,14 @@ DEFINE_SYSCALL(readv, int, fd, const struct iovec *, iov, int, iovcnt)
 			return -L_EFAULT;
 	struct file *f = vfs_get(fd);
 	ssize_t r;
-	if (f && f->op_vtable->read)
+	if (!f)
+		r = -L_EBADF;
+	else if (!f->op_vtable->read)
+	{
+		log_error("read() not implemented for the file.");
+		r = -L_EINVAL;
+	}
+	else
 	{
 		r = 0;
 		for (int i = 0; i < iovcnt; i++)
@@ -487,8 +513,6 @@ DEFINE_SYSCALL(readv, int, fd, const struct iovec *, iov, int, iovcnt)
 				break;
 		}
 	}
-	else
-		r = -L_EBADF;
 	if (f)
 		vfs_release(f);
 	return r;
@@ -502,7 +526,14 @@ DEFINE_SYSCALL(writev, int, fd, const struct iovec *, iov, int, iovcnt)
 			return -L_EFAULT;
 	struct file *f = vfs_get(fd);
 	ssize_t r;
-	if (f && f->op_vtable->write)
+	if (!f)
+		r = -L_EBADF;
+	else if (!f->op_vtable->write)
+	{
+		log_error("write() not implemented for the file.");
+		r = -L_EINVAL;
+	}
+	else
 	{
 		r = 0;
 		for (int i = 0; i < iovcnt; i++)
@@ -518,8 +549,6 @@ DEFINE_SYSCALL(writev, int, fd, const struct iovec *, iov, int, iovcnt)
 				break;
 		}
 	}
-	else
-		r = -L_EBADF;
 	if (f)
 		vfs_release(f);
 	return r;
@@ -533,7 +562,14 @@ DEFINE_SYSCALL(preadv, int, fd, const struct iovec *, iov, int, iovcnt, off_t, o
 			return -L_EFAULT;
 	struct file *f = vfs_get(fd);
 	ssize_t r;
-	if (f && f->op_vtable->pread)
+	if (!f)
+		r = -L_EBADF;
+	else if (!f->op_vtable->pread)
+	{
+		log_error("pread() not implemented for the file.");
+		r = -L_EINVAL;
+	}
+	else
 	{
 		r = 0;
 		for (int i = 0; i < iovcnt; i++)
@@ -550,8 +586,6 @@ DEFINE_SYSCALL(preadv, int, fd, const struct iovec *, iov, int, iovcnt, off_t, o
 				break;
 		}
 	}
-	else
-		r = -L_EBADF;
 	if (f)
 		vfs_release(f);
 	return r;
@@ -565,7 +599,14 @@ DEFINE_SYSCALL(pwritev, int, fd, const struct iovec *, iov, int, iovcnt, off_t, 
 			return -L_EFAULT;
 	struct file *f = vfs_get(fd);
 	ssize_t r;
-	if (f && f->op_vtable->pwrite)
+	if (!f)
+		r = -L_EBADF;
+	else if (!f->op_vtable->pwrite)
+	{
+		log_error("pwrite() not implemented for the file.");
+		r = -L_EINVAL;
+	}
+	else
 	{
 		r = 0;
 		for (int i = 0; i < iovcnt; i++)
@@ -582,8 +623,6 @@ DEFINE_SYSCALL(pwritev, int, fd, const struct iovec *, iov, int, iovcnt, off_t, 
 				break;
 		}
 	}
-	else
-		r = -L_EBADF;
 	if (f)
 		vfs_release(f);
 	return r;
@@ -595,17 +634,17 @@ DEFINE_SYSCALL(truncate, const char *, path, off_t, length)
 	AcquireSRWLockExclusive(&vfs->rw_lock);
 	struct file *f;
 	int r = vfs_openat(AT_FDCWD, path, O_WRONLY, 0, &f);
-	if (r < 0)
-		goto out;
-	if (!f->op_vtable->truncate)
+	if (r == 0)
 	{
-		r = -L_EPERM;
-		goto out;
+		if (!f->op_vtable->truncate)
+		{
+			log_error("truncate() not implemented for the file.");
+			r = -L_EINVAL;
+		}
+		else
+			r = f->op_vtable->truncate(f, length);
+		vfs_release(f);
 	}
-	r = f->op_vtable->truncate(f, length);
-	vfs_release(f);
-
-out:
 	ReleaseSRWLockExclusive(&vfs->rw_lock);
 	return r;
 }
@@ -615,10 +654,15 @@ DEFINE_SYSCALL(ftruncate, int, fd, off_t, length)
 	log_info("ftruncate(%d, %p)", fd, length);
 	struct file *f = vfs_get(fd);
 	int r;
-	if (f && f->op_vtable->truncate)
-		r = f->op_vtable->truncate(f, length);
-	else
+	if (!f)
 		r = -L_EBADF;
+	else if (!f->op_vtable->truncate)
+	{
+		log_error("truncate() not implemented for the file.");
+		r = -L_EINVAL;
+	}
+	else
+		r = f->op_vtable->truncate(f, length);
 	if (f)
 		vfs_release(f);
 	return r;
@@ -630,17 +674,17 @@ DEFINE_SYSCALL(truncate64, const char *, path, loff_t, length)
 	AcquireSRWLockExclusive(&vfs->rw_lock);
 	struct file *f;
 	int r = vfs_openat(AT_FDCWD, path, O_WRONLY, 0, &f);
-	if (r < 0)
-		goto out;
-	if (!f->op_vtable->truncate)
+	if (r == 0)
 	{
-		r = -L_EPERM;
-		goto out;
+		if (!f->op_vtable->truncate)
+		{
+			log_error("truncate() not implemented for the file.");
+			r = -L_EINVAL;
+		}
+		else
+			r = f->op_vtable->truncate(f, length);
+		vfs_release(f);
 	}
-	r = f->op_vtable->truncate(f, length);
-	vfs_release(f);
-
-out:
 	ReleaseSRWLockExclusive(&vfs->rw_lock);
 	return r;
 }
@@ -650,10 +694,15 @@ DEFINE_SYSCALL(ftruncate64, int, fd, loff_t, length)
 	log_info("ftruncate(%d, %lld)", fd, length);
 	struct file *f = vfs_get(fd);
 	int r;
-	if (f && f->op_vtable->truncate)
-		r = f->op_vtable->truncate(f, length);
-	else
+	if (!f)
 		r = -L_EBADF;
+	else if (!f->op_vtable->truncate)
+	{
+		log_error("truncate() not implemented for the file.");
+		r = -L_EINVAL;
+	}
+	else
+		r = f->op_vtable->truncate(f, length);
 	if (f)
 		vfs_release(f);
 	return r;
@@ -667,7 +716,10 @@ DEFINE_SYSCALL(fsync, int, fd)
 	if (!f)
 		r = -L_EBADF;
 	else if (!f->op_vtable->fsync)
+	{
+		log_error("fsync() not implemented for the file.");
 		r = -L_EINVAL;
+	}
 	else
 		r = f->op_vtable->fsync(f);
 	if (f)
@@ -683,7 +735,10 @@ DEFINE_SYSCALL(fdatasync, int, fd)
 	if (!f)
 		r = -L_EBADF;
 	else if (!f->op_vtable->fsync)
+	{
+		log_error("fsync() not implemented for the file.");
 		r = -L_EINVAL;
+	}
 	else
 		r = f->op_vtable->fsync(f);
 	if (f)
@@ -696,7 +751,14 @@ DEFINE_SYSCALL(lseek, int, fd, off_t, offset, int, whence)
 	log_info("lseek(%d, %d, %d)", fd, offset, whence);
 	struct file *f = vfs_get(fd);
 	intptr_t r;
-	if (f && f->op_vtable->llseek)
+	if (!f)
+		r = -L_EBADF;
+	else if (!f->op_vtable->llseek)
+	{
+		log_error("llseek() not implemented for the file.");
+		r = -L_EINVAL;
+	}
+	else
 	{
 		loff_t n;
 		r = f->op_vtable->llseek(f, offset, &n, whence);
@@ -707,8 +769,6 @@ DEFINE_SYSCALL(lseek, int, fd, off_t, offset, int, whence)
 		else
 			r = (off_t) n;
 	}
-	else
-		r = -L_EBADF;
 	if (f)
 		vfs_release(f);
 	return r;
@@ -721,11 +781,16 @@ DEFINE_SYSCALL(llseek, int, fd, unsigned long, offset_high, unsigned long, offse
 	if (!mm_check_write(result, sizeof(loff_t)))
 		return -L_EFAULT;
 	struct file *f = vfs_get(fd);
-	int r = 0;
-	if (f && f->op_vtable->llseek)
-		r = f->op_vtable->llseek(f, offset, result, whence);
-	else
+	int r;
+	if (!f)
 		r = -L_EBADF;
+	else if (!f->op_vtable->llseek)
+	{
+		log_error("llseek() not implemented for the file.");
+		r = -L_EINVAL;
+	}
+	else
+		r = f->op_vtable->llseek(f, offset, result, whence);
 	if (f)
 		vfs_release(f);
 	return r;
@@ -1147,7 +1212,10 @@ DEFINE_SYSCALL(readlinkat, int, dirfd, const char *, pathname, char *, buf, int,
 	if (r >= 0)
 	{
 		if (!f->op_vtable->readlink)
+		{
+			log_error("readlink() not implemented for the file.");
 			r = -L_EINVAL;
+		}
 		else
 			r = f->op_vtable->readlink(f, buf, bufsize);
 		vfs_release(f);
@@ -1328,10 +1396,15 @@ DEFINE_SYSCALL(getdents, int, fd, struct linux_dirent *, dirent, unsigned int, c
 		return -L_EFAULT;
 	struct file *f = vfs_get(fd);
 	int r;
-	if (f && f->op_vtable->getdents)
-		r = f->op_vtable->getdents(f, dirent, count, getdents_fill);
-	else
+	if (!f)
 		r = -L_EBADF;
+	else if (!f->op_vtable->getdents)
+	{
+		log_error("getdents() not implemented for the file.");
+		r = -L_EINVAL;
+	}
+	else
+		r = f->op_vtable->getdents(f, dirent, count, getdents_fill);
 	if (f)
 		vfs_release(f);
 	return r;
@@ -1344,10 +1417,15 @@ DEFINE_SYSCALL(getdents64, int, fd, struct linux_dirent64 *, dirent, unsigned in
 		return -L_EFAULT;
 	struct file *f = vfs_get(fd);
 	int r;
-	if (f && f->op_vtable->getdents)
-		r = f->op_vtable->getdents(f, dirent, count, getdents64_fill);
-	else
+	if (!f)
 		r = -L_EBADF;
+	else if (!f->op_vtable->getdents)
+	{
+		log_error("getdents() not implemented for the file.");
+		r = -L_EINVAL;
+	}
+	else
+		r = f->op_vtable->getdents(f, dirent, count, getdents64_fill);
 	if (f)
 		vfs_release(f);
 	return r;
@@ -1430,7 +1508,13 @@ static int vfs_statat(int dirfd, const char *pathname, struct newstat *stat, int
 		if (r < 0)
 			goto out;
 	}
-	r = f->op_vtable->stat(f, stat);
+	if (!f->op_vtable->stat)
+	{
+		log_error("stat() not implemented for the file.");
+		r = -L_EINVAL;
+	}
+	else
+		r = f->op_vtable->stat(f, stat);
 	vfs_release(f);
 
 out:
@@ -1588,10 +1672,15 @@ static int vfs_fstatfs(int fd, struct statfs64 *buf)
 {
 	struct file *f = vfs_get(fd);
 	int r;
-	if (f && f->op_vtable->statfs)
-		r = f->op_vtable->statfs(f, buf);
-	else
+	if (!f)
 		r = -L_EBADF;
+	else if (!f->op_vtable->statfs)
+	{
+		log_error("statfs() not implemented for the file.");
+		r = -L_EINVAL;
+	}
+	else
+		r = f->op_vtable->statfs(f, buf);
 	if (f)
 		vfs_release(f);
 	return r;
@@ -1604,10 +1693,13 @@ static int vfs_statfs(const char *pathname, struct statfs64 *buf)
 	int r = vfs_openat(AT_FDCWD, pathname, O_PATH, 0, &f);
 	if (r == 0)
 	{
-		if (f->op_vtable->statfs)
-			r = f->op_vtable->statfs(f, buf);
+		if (!f->op_vtable->statfs)
+		{
+			log_error("statfs() not implemented for the file.");
+			r = -L_EINVAL;
+		}
 		else
-			r = -L_EBADF;
+			r = f->op_vtable->statfs(f, buf);
 		vfs_release(f);
 	}
 	ReleaseSRWLockExclusive(&vfs->rw_lock);
@@ -1721,10 +1813,15 @@ DEFINE_SYSCALL(ioctl, int, fd, unsigned int, cmd, unsigned long, arg)
 	}
 	struct file *f = vfs_get(fd);
 	int r;
-	if (f && f->op_vtable->ioctl)
-		r = f->op_vtable->ioctl(f, cmd, arg);
-	else
+	if (!f)
 		r = -L_EBADF;
+	else if (!f->op_vtable->ioctl)
+	{
+		log_error("ioctl() not implemented for the file.");
+		r = -L_EINVAL;
+	}
+	else
+		r = f->op_vtable->ioctl(f, cmd, arg);
 	if (f)
 		vfs_release(f);
 	return r;
@@ -1740,16 +1837,24 @@ DEFINE_SYSCALL(utime, const char *, filename, const struct utimbuf *, times)
 	int r = vfs_openat(AT_FDCWD, filename, O_WRONLY, 0, &f);
 	if (r < 0)
 		goto out;
-	if (!times)
-		r = f->op_vtable->utimens(f, NULL);
+	if (!f->op_vtable->utimens)
+	{
+		log_error("utimens() not implemented for the file.");
+		r = -L_EINVAL;
+	}
 	else
 	{
-		struct timespec t[2];
-		t[0].tv_sec = times->actime;
-		t[0].tv_nsec = 0;
-		t[1].tv_sec = times->modtime;
-		t[1].tv_nsec = 0;
-		r = f->op_vtable->utimens(f, t);
+		if (!times)
+			r = f->op_vtable->utimens(f, NULL);
+		else
+		{
+			struct timespec t[2];
+			t[0].tv_sec = times->actime;
+			t[0].tv_nsec = 0;
+			t[1].tv_sec = times->modtime;
+			t[1].tv_nsec = 0;
+			r = f->op_vtable->utimens(f, t);
+		}
 	}
 	vfs_release(f);
 
@@ -1768,14 +1873,22 @@ DEFINE_SYSCALL(utimes, const char *, filename, const struct timeval *, times)
 	int r = vfs_openat(AT_FDCWD, filename, O_WRONLY, 0, &f);
 	if (r < 0)
 		goto out;
-	if (!times)
-		r = f->op_vtable->utimens(f, NULL);
+	if (!f->op_vtable->utimens)
+	{
+		log_error("utimens() not implemented for the file.");
+		r = -L_EINVAL;
+	}
 	else
 	{
-		struct timespec t[2];
-		unix_timeval_to_unix_timespec(&times[0], &t[0]);
-		unix_timeval_to_unix_timespec(&times[1], &t[1]);
-		r = f->op_vtable->utimens(f, t);
+		if (!times)
+			r = f->op_vtable->utimens(f, NULL);
+		else
+		{
+			struct timespec t[2];
+			unix_timeval_to_unix_timespec(&times[0], &t[0]);
+			unix_timeval_to_unix_timespec(&times[1], &t[1]);
+			r = f->op_vtable->utimens(f, t);
+		}
 	}
 	vfs_release(f);
 out:
@@ -1793,10 +1906,15 @@ DEFINE_SYSCALL(utimensat, int, dirfd, const char *, pathname, const struct times
 		/* Special case: use dirfd as file fd */
 		struct file *f = vfs_get(dirfd);
 		int r;
-		if (f && f->op_vtable->utimens)
-			r = f->op_vtable->utimens(f, times);
-		else
+		if (!f)
 			r = -L_EBADF;
+		else if (!f->op_vtable->utimens)
+		{
+			log_error("utimens() not implemented for the file.");
+			r = -L_EINVAL;
+		}
+		else
+			r = f->op_vtable->utimens(f, times);
 		if (f)
 			vfs_release(f);
 		return r;
@@ -1809,7 +1927,13 @@ DEFINE_SYSCALL(utimensat, int, dirfd, const char *, pathname, const struct times
 	int r = vfs_openat(dirfd, pathname, openflags, 0, &f);
 	if (r < 0)
 		goto out;
-	r = f->op_vtable->utimens(f, times);
+	if (!f->op_vtable->utimens)
+	{
+		log_error("utimens() not implemented for the file.");
+		r = -L_EINVAL;
+	}
+	else
+		r = f->op_vtable->utimens(f, times);
 	vfs_release(f);
 out:
 	ReleaseSRWLockExclusive(&vfs->rw_lock);
