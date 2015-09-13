@@ -463,6 +463,28 @@ static size_t socket_write(struct file *f, const char *buf, size_t count)
 	return socket_sendto(socket_file, buf, count, 0, NULL, 0);
 }
 
+static int socket_stat(struct file *f, struct newstat *buf)
+{
+	INIT_STRUCT_NEWSTAT_PADDING(buf);
+	buf->st_dev = 0;
+	buf->st_ino = 0;
+	buf->st_mode = S_IFSOCK + 0644;
+	buf->st_nlink = 1;
+	buf->st_uid = 0;
+	buf->st_gid = 0;
+	buf->st_rdev = 0;
+	buf->st_size = 0;
+	buf->st_blksize = PAGE_SIZE;
+	buf->st_blocks = 0;
+	buf->st_atime = 0;
+	buf->st_atime_nsec = 0;
+	buf->st_mtime = 0;
+	buf->st_mtime_nsec = 0;
+	buf->st_ctime = 0;
+	buf->st_ctime_nsec = 0;
+	return 0;
+}
+
 struct file_ops socket_ops =
 {
 	.get_poll_status = socket_get_poll_status,
@@ -470,6 +492,7 @@ struct file_ops socket_ops =
 	.close = socket_close,
 	.read = socket_read,
 	.write = socket_write,
+	.stat = socket_stat,
 };
 
 static HANDLE init_socket_event(int sock)
