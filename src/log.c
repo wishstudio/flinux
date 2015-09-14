@@ -102,8 +102,11 @@ static void log_internal(int type, char typech, const char *format, va_list ap)
 {
 	struct packet *packet = (struct packet*)buffer;
 	packet->type = type;
+	FILETIME tf;
 	SYSTEMTIME ts;
-	GetSystemTime(&ts); /* TODO: Use GetSystemTimePreciseAsFileTime for Win8 */
+	GetSystemTimePreciseAsFileTime(&tf);
+	FileTimeToLocalFileTime(&tf, &tf);
+	FileTimeToSystemTime(&tf, &ts);
 	packet->len = ksprintf(packet->text, "[%02u:%02u:%02u.%03u] (%c%c) ", ts.wHour,
 		ts.wMinute, ts.wSecond, ts.wMilliseconds, typech, typech);
 	packet->len += kvsprintf(packet->text + packet->len, format, ap);

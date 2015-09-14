@@ -48,9 +48,8 @@ DEFINE_SYSCALL(gettimeofday, struct timeval *, tv, struct timezone *, tz)
 		log_error("warning: timezone is not NULL");
 	if (tv)
 	{
-		/* TODO: Use GetSystemTimePreciseAsFileTime() on Windows 8 */
 		FILETIME system_time;
-		GetSystemTimeAsFileTime(&system_time);
+		GetSystemTimePreciseAsFileTime(&system_time);
 		filetime_to_unix_timeval(&system_time, tv);
 	}
 	return 0;
@@ -76,9 +75,8 @@ DEFINE_SYSCALL(clock_gettime, int, clk_id, struct timespec *, tp)
 	{
 	case CLOCK_REALTIME:
 	{
-		/* TODO: Use GetSystemTimePreciseAsFileTime() on Windows 8 */
 		FILETIME system_time;
-		GetSystemTimeAsFileTime(&system_time);
+		GetSystemTimePreciseAsFileTime(&system_time);
 		filetime_to_unix_timespec(&system_time, tp);
 		return 0;
 	}
