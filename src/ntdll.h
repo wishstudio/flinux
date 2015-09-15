@@ -510,6 +510,49 @@ NTSYSAPI NTSTATUS NTAPI NtQueryTimerResolution(
 	_Out_		PULONG ActualResolution
 	);
 
+typedef enum _NT_PROCESS_INFORMATION_CLASS {
+	ProcessBasicInformation,
+	ProcessQuotaLimits,
+	ProcessIoCounters,
+	ProcessVmCounters,
+	ProcessTimes,
+	ProcessBasePriority,
+	ProcessRaisePriority,
+	ProcessDebugPort,
+	ProcessExceptionPort,
+	ProcessAccessToken,
+	ProcessLdtInformation,
+	ProcessLdtSize,
+	ProcessDefaultHardErrorMode,
+	ProcessIoPortHandlers,
+	ProcessPooledUsageAndLimits,
+	ProcessWorkingSetWatch,
+	ProcessUserModeIOPL,
+	ProcessEnableAlignmentFaultFixup,
+	ProcessPriorityClass,
+	ProcessWx86Information,
+	ProcessHandleCount,
+	ProcessAffinityMask,
+	ProcessPriorityBoost,
+} NT_PROCESS_INFORMATION_CLASS;
+
+typedef struct _PROCESS_BASIC_INFORMATION {
+	NTSTATUS	ExitStatus;
+	PVOID		PebBaseAddress;
+	ULONG_PTR	AffinityMask;
+	KPRIORITY	BasePriority;
+	ULONG_PTR	UniqueProcessId;
+	ULONG_PTR	InheritedFromUniqueProcessId;
+} PROCESS_BASIC_INFORMATION, *PPROCESS_BASIC_INFORMATION;
+
+NTSYSAPI NTSTATUS NTAPI NtQueryInformationProcess(
+	_In_		HANDLE ProcessHandle,
+	_In_		NT_PROCESS_INFORMATION_CLASS ProcessInformationClass,
+	_Out_		PVOID ProcessInformation,
+	_In_		ULONG ProcessInformationLength,
+	_Out_opt_	PULONG ReturnLength
+	);
+
 typedef enum _NT_THREAD_INFORMATION_CLASS {
 	ThreadBasicInformation,
 	ThreadTimes,

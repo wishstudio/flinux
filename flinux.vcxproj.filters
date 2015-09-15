@@ -316,7 +316,6 @@
     <ClCompile Include="src\dbt\cpuid.c">
       <Filter>dbt</Filter>
     </ClCompile>
-    <ClCompile Include="src\wcwidth.c" />
     <ClCompile Include="src\lib\rbtree.c">
       <Filter>lib</Filter>
     </ClCompile>
