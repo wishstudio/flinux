@@ -162,7 +162,7 @@ static pid_t fork_process(struct syscall_context *context, unsigned long flags, 
 	PROCESS_INFORMATION info;
 	STARTUPINFOW si = { 0 };
 	si.cb = sizeof(si);
-	if (!CreateProcessW(filename, L"/?/fork", NULL, NULL, TRUE, CREATE_SUSPENDED, NULL, NULL, &si, &info))
+	if (!CreateProcessW(filename, L"/?/fork", NULL, NULL, TRUE, CREATE_SUSPENDED | DETACHED_PROCESS, NULL, NULL, &si, &info))
 	{
 		log_warning("fork(): CreateProcessW() failed.");
 		return -1;

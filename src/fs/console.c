@@ -80,7 +80,7 @@ int console_fork(HANDLE hProcess)
 
 void console_afterfork()
 {
-	/* Nothing to do here */
+	console = (struct console_data *)mm_static_alloc(sizeof(struct console_data));
 }
 
 struct console_file
