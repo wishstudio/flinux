@@ -116,7 +116,7 @@ static void message_loop()
 			if (size > 0)
 			{
 				/* Data message */
-				WriteFile(control_pipe_server, control_pipe_recv_buf, size, NULL, &control_pipe_send_overlapped);
+				WriteFile(control_pipe_server, packet->data, size, NULL, &control_pipe_send_overlapped);
 			}
 			else
 			{

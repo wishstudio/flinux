@@ -121,11 +121,6 @@ static size_t console_write(struct file *f, const void *buf, size_t count)
 	return (size_t)written;
 }
 
-static void console_update_termios()
-{
-	/* Nothing to do for now */
-}
-
 struct console_control_packet
 {
 	uint32_t cmd;
