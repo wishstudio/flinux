@@ -36,9 +36,16 @@
 #include <ntdll.h>
 #include <malloc.h>
 
+struct console_control_packet
+{
+	uint32_t cmd;
+	char data[0];
+};
+
 struct console_data
 {
-	HANDLE read_pipe, write_pipe;
+	HANDLE data_event;
+	HANDLE write_pipe;
 	HANDLE control_pipe;
 	HANDLE control_mutex;
 };
@@ -59,16 +66,15 @@ void console_init()
 	attr.nLength = sizeof(SECURITY_ATTRIBUTES);
 	attr.bInheritHandle = TRUE;
 	attr.lpSecurityDescriptor = NULL;
-	char pipe_name[256];
-	ksprintf(pipe_name, "\\\\.\\pipe\\fconsole-write-%d", parent);
-	console->write_pipe = CreateFileA(pipe_name, GENERIC_WRITE, FILE_SHARE_WRITE,
+	char name[256];
+	ksprintf(name, "\\\\.\\pipe\\fconsole-write-%d", parent);
+	console->write_pipe = CreateFileA(name, GENERIC_WRITE, FILE_SHARE_WRITE,
 		&attr, OPEN_EXISTING, 0, NULL);
-	ksprintf(pipe_name, "\\\\.\\pipe\\fconsole-read-%d", parent);
-	console->read_pipe = CreateFileA(pipe_name, GENERIC_READ, FILE_SHARE_READ,
+	ksprintf(name, "\\\\.\\pipe\\fconsole-control-%d", parent);
+	console->control_pipe = CreateFileA(name, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
 		&attr, OPEN_EXISTING, 0, NULL);
-	ksprintf(pipe_name, "\\\\.\\pipe\\fconsole-control-%d", parent);
-	console->control_pipe = CreateFileA(pipe_name, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
-		&attr, OPEN_EXISTING, 0, NULL);
+	ksprintf(name, "fconsole-data-event-%d", parent);
+	console->data_event = OpenEvent(EVENT_ALL_ACCESS, TRUE, name);
 	console->control_mutex = CreateMutexW(&attr, FALSE, NULL);
 }
 
@@ -91,7 +97,7 @@ struct console_file
 static HANDLE console_get_poll_handle(struct file *f, int *poll_events)
 {
 	*poll_events = LINUX_POLLIN | LINUX_POLLOUT;
-	return console->read_pipe;
+	return console->data_event;
 }
 
 static int console_close(struct file *f)
@@ -100,16 +106,69 @@ static int console_close(struct file *f)
 	return 0;
 }
 
-static size_t console_read(struct file *f, void *buf, size_t count)
+#define MAX_READ_SIZE	1024
+static size_t console_read(struct file *f, void *b, size_t count)
 {
-	DWORD read;
-	ReadFile(console->read_pipe, buf, count, &read, NULL);
-	return (size_t)read;
+	WaitForSingleObject(console->control_mutex, INFINITE);
+	/* Get current termios */
+	struct termios termios;
+	{
+		struct console_control_packet packet;
+		packet.cmd = L_TCGETS;
+		DWORD bytes;
+		WriteFile(console->control_pipe, &packet, sizeof(packet), &bytes, NULL);
+		ReadFile(console->control_pipe, &termios, sizeof(struct termios), &bytes, NULL);
+	}
+
+	int vtime = termios.c_cc[VTIME];
+	int vmin = termios.c_cc[VMIN];
+
+	char buf[sizeof(struct console_control_packet) + MAX_READ_SIZE];
+	struct console_control_packet *packet = (struct console_control_packet *)buf;
+	int bytes_read = 0;
+	while (count)
+	{
+		if (bytes_read > 0 && bytes_read >= vmin)
+			break;
+		if ((vmin == 0 && vtime == 0)			/* Polling read */
+			|| (vtime > 0 && bytes_read > 0))	/* Read with interbyte timeout. Apply after reading first character */
+		{
+			DWORD r = signal_wait(1, &console->data_event, vtime * 100);
+			if (r == WAIT_TIMEOUT)
+				break;
+			if (r == WAIT_INTERRUPTED)
+			{
+				if (bytes_read == 0)
+					bytes_read = -L_EINTR;
+				break;
+			}
+		}
+		else
+		{
+			/* Blocking read */
+			if (signal_wait(1, &console->data_event, INFINITE) == WAIT_INTERRUPTED)
+			{
+				if (bytes_read == 0)
+					bytes_read = -L_EINTR;
+				break;
+			}
+		}
+		packet->cmd = 0;
+		*(int*)packet->data = min(count, MAX_READ_SIZE);
+		DWORD bytes;
+		WriteFile(console->control_pipe, packet, sizeof(struct console_control_packet) + sizeof(int), &bytes, NULL);
+		ReadFile(console->control_pipe, buf, sizeof(struct console_control_packet) + MAX_READ_SIZE, &bytes, NULL);
+		memcpy((char*)b + bytes_read, packet->data, packet->cmd);
+		bytes_read += packet->cmd;
+		count -= packet->cmd;
+	}
+	ReleaseMutex(console->control_mutex);
+	return bytes_read;
 }
 
 static size_t console_write(struct file *f, const void *buf, size_t count)
 {
-#if 1
+#if 0
 	char str[1024];
 	memcpy(str, buf, count);
 	str[count] = 0;
@@ -120,12 +179,6 @@ static size_t console_write(struct file *f, const void *buf, size_t count)
 	FlushFileBuffers(console->write_pipe);
 	return (size_t)written;
 }
-
-struct console_control_packet
-{
-	uint32_t cmd;
-	char data[0];
-};
 
 static int console_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 {
