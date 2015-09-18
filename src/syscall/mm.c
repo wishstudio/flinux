@@ -948,11 +948,9 @@ int mm_fork(HANDLE process)
 		/* Map section */
 		size_t start_block = GET_BLOCK_OF_PAGE(e->start_page);
 		size_t end_block = GET_BLOCK_OF_PAGE(e->end_page);
-		if (start_block == last_block)
-			start_block++;
 		if (e->flags & INTERNAL_MAP_VIRTUALALLOC)
 		{
-			/* Memory region allocated via VirtualAlloc() */
+			/* Memory region allocated via VirtualAlloc(), always block aligned */
 			if (!VirtualAllocEx(process, GET_BLOCK_ADDRESS(start_block), (end_block - start_block + 1) * BLOCK_SIZE, MEM_RESERVE | MEM_COMMIT, prot_linux2win(e->prot)))
 			{
 				log_error("VirtualAllocEx() failed, error code: %d", GetLastError());
@@ -1010,6 +1008,8 @@ int mm_fork(HANDLE process)
 			}
 			continue;
 		}
+		if (start_block == last_block)
+			start_block++;
 		for (size_t i = start_block; i <= end_block; i++)
 		{
 			HANDLE handle = get_section_handle(i);
@@ -1017,51 +1017,14 @@ int mm_fork(HANDLE process)
 			{
 				PVOID base_addr = GET_BLOCK_ADDRESS(i);
 				SIZE_T view_size = BLOCK_SIZE;
-				if (e->flags & INTERNAL_MAP_COPYONFORK)
+				status = NtMapViewOfSection(handle, process, &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, PAGE_EXECUTE_READWRITE);
+				if (!NT_SUCCESS(status))
 				{
-					/* Use DUPLICATE_CLOSE_SOURCE to close section handle in child process */
-					HANDLE dummy;
-					if (!DuplicateHandle(process, handle, GetCurrentProcess(), &dummy, 0, FALSE, DUPLICATE_CLOSE_SOURCE | DUPLICATE_SAME_ACCESS))
-					{
-						log_error("DuplicateHandle() failed, error code: %d", GetLastError());
-						mm_dump_windows_memory_mappings(process);
-						return 0;
-					}
-					/* Close the dummy duplicated handle */
-					CloseHandle(dummy);
-					/* Copy section memory */
-					HANDLE duplicated_section = duplicate_section(handle, base_addr);
-					/* Map section object to child */
-					status = NtMapViewOfSection(duplicated_section, process, &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, PAGE_EXECUTE_READWRITE);
-					if (!NT_SUCCESS(status))
-					{
-						log_error("mm_fork(): Map failed: %p, status code: %x", base_addr, status);
-						mm_dump_windows_memory_mappings(process);
-						return 0;
-					}
-					/* Duplicate section handle to child */
-					HANDLE child_handle;
-					if (!DuplicateHandle(GetCurrentProcess(), handle, process, &child_handle, 0, TRUE, DUPLICATE_CLOSE_SOURCE | DUPLICATE_SAME_ACCESS))
-					{
-						log_error("DuplicateHandle() to child failed, error code: %d", GetLastError());
-						mm_dump_windows_memory_mappings(process);
-						return 0;
-					}
-					/* Copy section handle to child */
-					replace_section_handle_ex(process, i, duplicated_section);
-					copied_section_count++;
+					log_error("mm_fork(): Map failed: %p, status code: %x", base_addr, status);
+					mm_dump_windows_memory_mappings(process);
+					return 0;
 				}
-				else
-				{
-					status = NtMapViewOfSection(handle, process, &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0, PAGE_EXECUTE_READWRITE);
-					if (!NT_SUCCESS(status))
-					{
-						log_error("mm_fork(): Map failed: %p, status code: %x", base_addr, status);
-						mm_dump_windows_memory_mappings(process);
-						return 0;
-					}
-					mapped_section_count++;
-				}
+				mapped_section_count++;
 			}
 		}
 		last_block = end_block;
@@ -1079,7 +1042,7 @@ int mm_fork(HANDLE process)
 				return 0;
 		}
 	}
-	log_info("Section object statistics: %d mapped CoW, %d copied.", mapped_section_count, copied_section_count);
+	log_info("Section object statistics: %d mapped as CoW", mapped_section_count);
 	return 1;
 }
 
@@ -1228,8 +1191,6 @@ static void *mmap_internal(void *addr, size_t length, int prot, int flags, int i
 		entry->flags |= INTERNAL_MAP_NORESET;
 	if (internal_flags & INTERNAL_MAP_VIRTUALALLOC)
 		entry->flags |= INTERNAL_MAP_VIRTUALALLOC;
-	if (internal_flags & INTERNAL_MAP_COPYONFORK)
-		entry->flags |= INTERNAL_MAP_COPYONFORK;
 
 	rb_add(&mm->entry_tree, &entry->tree, map_entry_cmp);
 

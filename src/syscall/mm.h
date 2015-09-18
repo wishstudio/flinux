@@ -54,9 +54,8 @@
 #define INTERNAL_MAP_NORESET		4	/* Don't unmap the memory region at mm_reset() */
 #define INTERNAL_MAP_VIRTUALALLOC	8	/* This will cause the memory region to be allocated via VirtualAlloc() */
 #define INTERNAL_MAP_SHARED			16	/* A MAP_SHARED memory region */
-#define INTERNAL_MAP_COPYONFORK		32	/* Copy the memory region on forking instead of using CoW */
 /* Macro to test if the given internal flags require block aligned memory region to be allocated */
-#define BLOCK_ALIGNED(flag)			((flag & INTERNAL_MAP_VIRTUALALLOC) || (flag & INTERNAL_MAP_SHARED) || (flag & INTERNAL_MAP_COPYONFORK))
+#define BLOCK_ALIGNED(flag)			((flag & INTERNAL_MAP_VIRTUALALLOC) || (flag & INTERNAL_MAP_SHARED))
 
 void mm_init();
 void mm_reset();
