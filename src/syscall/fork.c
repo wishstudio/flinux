@@ -31,6 +31,7 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
+#include <ntdll.h>
 
 /* Fork process
  *
@@ -193,15 +194,15 @@ static pid_t fork_process(struct syscall_context *context, unsigned long flags, 
 
 	/* Set up fork_info in child process */
 	void *stack_base = process_get_stack_base();
-	WriteProcessMemory(info.hProcess, &fork->context, context, sizeof(struct syscall_context), NULL);
-	WriteProcessMemory(info.hProcess, &fork->stack_base, &stack_base, sizeof(stack_base), NULL);
-	WriteProcessMemory(info.hProcess, &fork->pid, &pid, sizeof(pid_t), NULL);
+	NtWriteVirtualMemory(info.hProcess, &fork->context, context, sizeof(struct syscall_context), NULL);
+	NtWriteVirtualMemory(info.hProcess, &fork->stack_base, &stack_base, sizeof(stack_base), NULL);
+	NtWriteVirtualMemory(info.hProcess, &fork->pid, &pid, sizeof(pid_t), NULL);
 	if (flags & CLONE_CHILD_SETTID)
-		WriteProcessMemory(info.hProcess, &fork->ctid, &ctid, sizeof(void*), NULL);
+		NtWriteVirtualMemory(info.hProcess, &fork->ctid, &ctid, sizeof(void*), NULL);
 
 	/* Copy stack */
 	VirtualAllocEx(info.hProcess, stack_base, STACK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
-	WriteProcessMemory(info.hProcess, (LPVOID)context->esp, (LPCVOID)context->esp,
+	NtWriteVirtualMemory(info.hProcess, (PVOID)context->esp, (PVOID)context->esp,
 		(SIZE_T)((char *)stack_base + STACK_SIZE - context->esp), NULL);
 	ResumeThread(info.hThread);
 	CloseHandle(info.hThread);

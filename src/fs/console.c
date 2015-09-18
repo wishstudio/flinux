@@ -262,9 +262,10 @@ int console_fork(HANDLE process)
 		log_error("NtMapViewOfSection() failed, status: %x", status);
 		return 0;
 	}
-	if (!WriteProcessMemory(process, &console, &base_addr, sizeof(PVOID), NULL))
+	status = NtWriteVirtualMemory(process, &console, &base_addr, sizeof(PVOID), NULL);
+	if (!NT_SUCCESS(status))
 	{
-		log_error("WriteProcessMemory() failed, error code: %d", GetLastError());
+		log_error("NtWriteVirtualMemory() failed, status: %x", status);
 		return 0;
 	}
 	return 1;

@@ -451,6 +451,15 @@ NTSYSAPI NTSTATUS NTAPI NtSetEaFile(
 	_In_		ULONG Length
 	);
 
+/* Virtual memory */
+NTSYSAPI NTSTATUS NTAPI NtWriteVirtualMemory(
+	_In_		HANDLE ProcessHandle,
+	_In_		PVOID BaseAddress,
+	_In_		PVOID Buffer,
+	_In_		SIZE_T NumberOfBytesToWrite,
+	_Out_opt_	PSIZE_T NumberOfBytesWritten
+	);
+
 /* Section object */
 typedef enum _SECTION_INHERIT {
 	ViewShare = 1,

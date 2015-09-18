@@ -202,7 +202,7 @@ static __forceinline void replace_section_handle(size_t i, HANDLE handle)
 static __forceinline void replace_section_handle_ex(HANDLE process, size_t i, HANDLE handle)
 {
 	SIZE_T written;
-	WriteProcessMemory(process, &mm_section_handle[i], &handle, sizeof(HANDLE), &written);
+	NtWriteVirtualMemory(process, &mm_section_handle[i], &handle, sizeof(HANDLE), &written);
 }
 
 static __forceinline void remove_section_handle(size_t i)
@@ -610,11 +610,11 @@ static void map_entry_range(struct map_entry *e, size_t start_page, size_t end_p
 		if (r < desired_size)
 		{
 			size_t remain = desired_size - r;
-			RtlSecureZeroMemory((char*)GET_PAGE_ADDRESS(end_page + 1) - remain, remain);
+			RtlZeroMemory((char*)GET_PAGE_ADDRESS(end_page + 1) - remain, remain);
 		}
 	}
 	else
-		RtlSecureZeroMemory(GET_PAGE_ADDRESS(start_page), (end_page - start_page + 1) * PAGE_SIZE);
+		RtlZeroMemory(GET_PAGE_ADDRESS(start_page), (end_page - start_page + 1) * PAGE_SIZE);
 }
 
 static int mm_change_protection(HANDLE process, size_t start_page, size_t end_page, int prot)
@@ -906,15 +906,22 @@ int mm_handle_page_fault(void *addr)
 int mm_fork(HANDLE process)
 {
 	AcquireSRWLockShared(&mm->rw_lock);
+	NTSTATUS status;
 	/* Copy mm_data struct */
-	if (!WriteProcessMemory(process, mm, mm, sizeof(struct mm_data), NULL))
+	status = NtWriteVirtualMemory(process, mm, mm, sizeof(struct mm_data), NULL);
+	if (!NT_SUCCESS(status))
 	{
-		log_error("mm_fork(): Write mm_data structure failed, error code: %d", GetLastError());
+		log_error("mm_fork(): Write mm_data structure failed, status: %x", status);
 		return 0;
 	}
 	/* Copy section handle tables */
 	HANDLE *forked_section_handle = VirtualAllocEx(process, NULL, BLOCK_COUNT * sizeof(HANDLE), MEM_RESERVE | MEM_TOP_DOWN, PAGE_READWRITE);
-	WriteProcessMemory(process, &mm_section_handle, &forked_section_handle, sizeof(HANDLE *), NULL);
+	status = NtWriteVirtualMemory(process, &mm_section_handle, &forked_section_handle, sizeof(HANDLE *), NULL);
+	if (!NT_SUCCESS(status))
+	{
+		log_error("mm_fork(): Copy section handle master table failed, status: %x", status);
+		return 0;
+	}
 	for (size_t i = 0; i < SECTION_TABLE_COUNT; i++)
 		if (mm->section_table_handle_count[i])
 		{
@@ -924,9 +931,10 @@ int mm_fork(HANDLE process)
 				log_error("mm_fork(): Allocate section table 0x%p failed, error code: %d", i, GetLastError());
 				return 0;
 			}
-			if (!WriteProcessMemory(process, &forked_section_handle[j], &mm_section_handle[j], BLOCK_SIZE, NULL))
+			status = NtWriteVirtualMemory(process, &forked_section_handle[j], &mm_section_handle[j], BLOCK_SIZE, NULL);
+			if (!NT_SUCCESS(status))
 			{
-				log_error("mm_fork(): Write section table 0x%p failed, error code: %d", i, GetLastError());
+				log_error("mm_fork(): Write section table 0x%p failed, status: %x", status);
 				return 0;
 			}
 		}
@@ -980,10 +988,11 @@ int mm_fork(HANDLE process)
 				{
 					/* TODO: Check unhandled/invalid protections */
 					SIZE_T written;
-					if (!WriteProcessMemory(process, GET_PAGE_ADDRESS(e->start_page), GET_PAGE_ADDRESS(e->start_page),
-						(e->end_page - e->start_page + 1) * PAGE_SIZE, &written))
+					status = NtWriteVirtualMemory(process, GET_PAGE_ADDRESS(e->start_page), GET_PAGE_ADDRESS(e->start_page),
+						(e->end_page - e->start_page + 1) * PAGE_SIZE, &written);
+					if (!NT_SUCCESS(status))
 					{
-						log_error("WriteProcessMemory() failed, error code: %d", GetLastError());
+						log_error("NtWriteVirtualMemory() failed, status: %x", status);
 						mm_dump_windows_memory_mappings(process);
 						return 0;
 					}
@@ -1008,7 +1017,6 @@ int mm_fork(HANDLE process)
 			{
 				PVOID base_addr = GET_BLOCK_ADDRESS(i);
 				SIZE_T view_size = BLOCK_SIZE;
-				NTSTATUS status;
 				if (e->flags & INTERNAL_MAP_COPYONFORK)
 				{
 					/* Use DUPLICATE_CLOSE_SOURCE to close section handle in child process */

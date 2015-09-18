@@ -35,6 +35,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <malloc.h>
+#include <ntdll.h>
 
 #ifdef _WIN64
 #define Elf_Ehdr Elf64_Ehdr
@@ -484,7 +485,12 @@ DEFINE_SYSCALL(execve, const char *, filename, char **, argv, char **, envp)
 
 int exec_fork(HANDLE process)
 {
-	if (!WriteProcessMemory(process, &startup, &startup, sizeof(startup), NULL))
+	NTSTATUS status;
+	status = NtWriteVirtualMemory(process, &startup, &startup, sizeof(startup), NULL);
+	if (!NT_SUCCESS(status))
+	{
+		log_error("exec_fork(): NtWriteVirtualMemory() failed, status: %x", status);
 		return 0;
+	}
 	return 1;
 }
