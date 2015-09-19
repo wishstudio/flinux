@@ -275,6 +275,7 @@ pid_t process_init_thread(DWORD win_tid)
 }
 
 /* Caller ensures process rw lock is acquired (shared) */
+/* FIXME: Using shared lock here is incorrect */
 static pid_t process_wait(pid_t pid, int *status, int options, struct rusage *rusage)
 {
 	if (options & WUNTRACED)
