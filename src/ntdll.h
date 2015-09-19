@@ -9,6 +9,8 @@ typedef LONG NTSTATUS;
 #define STATUS_SUCCESS					0x00000000
 #define STATUS_OBJECT_NAME_EXISTS		0x40000000
 #define STATUS_NO_MORE_FILES			0x80000006
+#define STATUS_CONFLICTING_ADDRESSES	0xC0000018
+#define STATUS_NOT_MAPPED_VIEW			0xC0000019
 #define STATUS_ACCESS_DENIED			0xC0000022
 #define STATUS_OBJECT_NAME_COLLISION	0xC0000035
 #define STATUS_SHARING_VIOLATION		0xC0000043
@@ -458,6 +460,14 @@ NTSYSAPI NTSTATUS NTAPI NtWriteVirtualMemory(
 	_In_		PVOID Buffer,
 	_In_		SIZE_T NumberOfBytesToWrite,
 	_Out_opt_	PSIZE_T NumberOfBytesWritten
+	);
+
+NTSYSAPI NTSTATUS NTAPI NtProtectVirtualMemory(
+	_In_		HANDLE ProcessHandle,
+	_Inout_		PVOID *BaseAddress,
+	_Inout_		SIZE_T *NumberOfBytesToProtect,
+	_In_		ULONG NewAccessProtection,
+	_Out_		PULONG OldAccessProtection
 	);
 
 /* Section object */

@@ -324,6 +324,7 @@ static void free_map_entry_blocks(struct map_entry *e)
 		HANDLE handle = get_section_handle(i);
 		if (handle)
 		{
+			/* The section handle may not be currrently mapped, let it silently fail here */
 			NtUnmapViewOfSection(NtCurrentProcess(), GET_BLOCK_ADDRESS(i));
 			NtClose(handle);
 			remove_section_handle(i);
@@ -403,6 +404,7 @@ void mm_reset()
 			HANDLE handle = get_section_handle(i);
 			if (handle)
 			{
+				/* The section handle may not be currrently mapped, let it silently fail here */
 				NtUnmapViewOfSection(NtCurrentProcess(), GET_BLOCK_ADDRESS(i));
 				NtClose(handle);
 				remove_section_handle(i);
@@ -427,6 +429,7 @@ void mm_shutdown()
 		HANDLE handle = get_section_handle(i);
 		if (handle)
 		{
+			/* The section handle may not be currrently mapped, let it silently fail here */
 			NtUnmapViewOfSection(NtCurrentProcess(), GET_BLOCK_ADDRESS(i));
 			NtClose(handle);
 			remove_section_handle(i);
@@ -629,11 +632,16 @@ static int mm_change_protection(HANDLE process, size_t start_page, size_t end_pa
 		{
 			size_t range_start = max(GET_FIRST_PAGE_OF_BLOCK(i), start_page);
 			size_t range_end = min(GET_LAST_PAGE_OF_BLOCK(i), end_page);
-			DWORD oldProtect;
-			if (!VirtualProtectEx(process, GET_PAGE_ADDRESS(range_start), PAGE_SIZE * (range_end - range_start + 1), protection, &oldProtect))
+			DWORD old_protection;
+			PVOID addr = GET_PAGE_ADDRESS(range_start);
+			SIZE_T size = PAGE_SIZE * (range_end - range_start + 1);
+			NTSTATUS status;
+			status = NtProtectVirtualMemory(process, &addr, &size, protection, &old_protection);
+			if (status == STATUS_CONFLICTING_ADDRESSES) /* The block is not yet mapped */
+				log_info("NtProtectVirtualMemory(0x%p, 0x%p) failed: block %p not yet mapped, silently ignore.", addr, size, i);
+			else if (!NT_SUCCESS(status))
 			{
-				log_error("VirtualProtect(0x%p, 0x%p) failed, error code: %d", GET_PAGE_ADDRESS(range_start),
-					PAGE_SIZE * (range_end - range_start + 1), GetLastError());
+				log_error("NtProtectVirtualMemory(0x%p, 0x%p) failed, status: %p", addr, size, status);
 				mm_dump_windows_memory_mappings(process);
 				return 0;
 			}
@@ -699,10 +707,8 @@ static int allocate_block(size_t i)
 	return 1;
 }
 
-/* Duplicate the section `source' at given block and close it.
- * Return the duplicated section.
- */
-static int duplicate_section(HANDLE source, size_t block)
+/* Duplicate the section at given block. */
+static int duplicate_section(size_t block)
 {
 	OBJECT_ATTRIBUTES attr;
 	attr.Length = sizeof(OBJECT_ATTRIBUTES);
@@ -725,12 +731,16 @@ static int duplicate_section(HANDLE source, size_t block)
 	 * promoted afterwards. See mm_fork() for details.
 	 */
 	status = NtUnmapViewOfSection(NtCurrentProcess(), base_addr);
-	if (!NT_SUCCESS(status))
+	/* The section may not be mapped yet */
+	if (status == STATUS_NOT_MAPPED_VIEW)
+		log_info("NtUnmapViewOfSection() failed: view not yet mapped, silently ignore.");
+	else if (!NT_SUCCESS(status))
 	{
 		log_error("NtUnmapViewOfSection() failed, status: %x", status);
 		return 0;
 	}
 
+	HANDLE source = get_section_handle(block);
 	status = NtMapViewOfSection(source, NtCurrentProcess(), &remapped_addr, 0, BLOCK_SIZE,
 		NULL, &view_size, ViewUnmap, 0, PAGE_READWRITE);
 	if (!NT_SUCCESS(status))
@@ -761,7 +771,7 @@ static int take_block_ownership(size_t block)
 	HANDLE handle = get_section_handle(block);
 	if (!handle)
 	{
-		log_error("Block %p not mapped.", block);
+		log_error("Block %p not exist.", block);
 		return 0;
 	}
 	/* Query information about the section object which the page within */
@@ -781,7 +791,7 @@ static int take_block_ownership(size_t block)
 
 	/* We are not the only one holding the section, duplicate it */
 	log_info("Duplicating section %p...", block);
-	if (!duplicate_section(handle, block))
+	if (!duplicate_section(block))
 	{
 		log_error("Duplicating section failed.");
 		return 0;
@@ -790,29 +800,63 @@ static int take_block_ownership(size_t block)
 	return 1;
 }
 
-/* Remap the section as PAGE_EXECUTE_READWRITE */
-static int remap_section(size_t block)
+/* Load block protection flags, the block must be mapped as PAGE_EXECUTE_READWRITE
+ * and has its content loaded.
+ * prot_mask is AND-ed to the entry's prot flag
+ * initial_prot is the current prot of the block, or INITIAL_PROT_UNKNOWN if multiple
+ * prot flags are mixed or the current prot flag is unknown.
+ */
+#define INITIAL_PROT_UNKNOWN	-1
+static bool load_block_protection(size_t block, int prot_mask, int initial_prot)
 {
-	NTSTATUS status;
+	size_t start_page = GET_FIRST_PAGE_OF_BLOCK(block);
+	size_t end_page = GET_LAST_PAGE_OF_BLOCK(block);
+	for (struct rb_node *cur = start_node(start_page); cur; cur = rb_next(cur))
+	{
+		struct map_entry *e = rb_entry(cur, struct map_entry, tree);
+		if (end_page < e->start_page)
+			break;
+		else
+		{
+			size_t range_start = max(start_page, e->start_page);
+			size_t range_end = min(end_page, e->end_page);
+			if (range_start > range_end)
+				continue;
+			DWORD oldProtect;
+			int prot = (e->prot & prot_mask);
+			if (initial_prot == INITIAL_PROT_UNKNOWN || prot != initial_prot)
+			{
+				if (!VirtualProtect(GET_PAGE_ADDRESS(range_start), PAGE_SIZE * (range_end - range_start + 1), prot_linux2win(prot), &oldProtect))
+				{
+					log_error("VirtualProtect(0x%p, 0x%p) failed, error code: %d.", GET_PAGE_ADDRESS(range_start),
+						PAGE_SIZE * (range_end - range_start + 1), GetLastError());
+					return false;
+				}
+			}
+		}
+	}
+	return true;
+}
+
+/* Load the detached block if not yet loaded, returns true if a detached block is loaded */
+static bool load_detached_block(size_t block)
+{
 	HANDLE section = get_section_handle(block);
-	void *base_addr = GET_BLOCK_ADDRESS(block);
-	SIZE_T view_size = BLOCK_SIZE;
-
-	status = NtUnmapViewOfSection(NtCurrentProcess(), base_addr);
-	if (!NT_SUCCESS(status))
+	PVOID addr = GET_BLOCK_ADDRESS(block);
+	SIZE_T size = BLOCK_SIZE;
+	NTSTATUS status = NtMapViewOfSection(section, NtCurrentProcess(), &addr, 0, BLOCK_SIZE,
+		NULL, &size, ViewUnmap, 0, PAGE_EXECUTE_READWRITE);
+	if (NT_SUCCESS(status))
 	{
-		log_error("NtUnmapViewOfSection() failed, status: %x", status);
-		return 0;
+		/* Load content of the block and disable write permission */
+		if (load_block_protection(block, PROT_READ | PROT_EXEC, PROT_READ | PROT_WRITE | PROT_EXEC))
+		{
+			log_info("Detached block 0x%p successfully loaded.", block);
+			return true;
+		}
+		log_error("Detached block 0x%p cannot be loaded.", block);
 	}
-
-	status = NtMapViewOfSection(section, NtCurrentProcess(), &base_addr, 0, BLOCK_SIZE,
-		NULL, &view_size, ViewUnmap, 0, PAGE_EXECUTE_READWRITE);
-	if (!NT_SUCCESS(status))
-	{
-		log_error("NtMapViewOfSection() failed, status: %x", status);
-		return 0;
-	}
-	return 1;
+	return false;
 }
 
 static int handle_cow_page_fault(void *addr)
@@ -833,62 +877,31 @@ static int handle_cow_page_fault(void *addr)
 	if (!take_block_ownership(block))
 		return 0;
 
+	/* Make sure it is mapped */
+	PVOID base_addr = GET_BLOCK_ADDRESS(block);
+	HANDLE section = get_section_handle(block);
+	SIZE_T size = BLOCK_SIZE;
+	NTSTATUS status;
+	status = NtMapViewOfSection(section, NtCurrentProcess(), &base_addr, 0, size,
+		NULL, &size, ViewUnmap, 0, PAGE_EXECUTE_READWRITE);
+	int initial_prot = INITIAL_PROT_UNKNOWN;
+	if (NT_SUCCESS(status))
+		initial_prot = PROT_READ | PROT_WRITE | PROT_EXEC;
+
 	/* We're the only owner of the section now, change page protection flags */
-	size_t start_page = GET_FIRST_PAGE_OF_BLOCK(block);
-	size_t end_page = GET_LAST_PAGE_OF_BLOCK(block);
-	bool started_over = false;
-start_over:
-	for (struct rb_node *cur = start_node(start_page); cur; cur = rb_next(cur))
-	{
-		struct map_entry *e = rb_entry(cur, struct map_entry, tree);
-		if (end_page < e->start_page)
-			break;
-		else
-		{
-			size_t range_start = max(start_page, e->start_page);
-			size_t range_end = min(end_page, e->end_page);
-			if (range_start > range_end)
-				continue;
-			DWORD oldProtect;
-			if (!VirtualProtect(GET_PAGE_ADDRESS(range_start), PAGE_SIZE * (range_end - range_start + 1), prot_linux2win(e->prot), &oldProtect))
-			{
-				/* Maybe it's mapped as non writable so we cannot promote it here.
-				 * Remap the section as writeable.
-				 */
-				if (remap_section(block))
-				{
-					log_info("Section is not mapped as writeable, successfully remapped.");
-					/* Ok, it's settled. But previous entries may get wrong protections.
-					 * Start over to be sure.
-					 */
-					if (started_over)
-					{
-						/* Avoid double-fault */
-						log_error("VirtualProtect(0x%p, 0x%p) doublt fault, error code: %d.", GET_PAGE_ADDRESS(range_start),
-							PAGE_SIZE * (range_end - range_start + 1), GetLastError());
-						return 0;
-					}
-					started_over = true;
-					goto start_over;
-				}
-				log_error("VirtualProtect(0x%p, 0x%p) failed, error code: %d.", GET_PAGE_ADDRESS(range_start),
-					PAGE_SIZE * (range_end - range_start + 1), GetLastError());
-				return 0;
-			}
-		}
-	}
+	load_block_protection(block, PROT_READ | PROT_WRITE | PROT_EXEC, initial_prot);
+
+	/* TODO: Mark unmapped pages as PAGE_NOACCESS */
 	log_info("CoW section %p successfully duplicated.", block);
 	return 1;
 }
 
-static int handle_on_demand_page_fault(void *addr)
+static int handle_on_demand_page_fault(size_t block)
 {
-	size_t block = GET_BLOCK(addr);
-	size_t page = GET_PAGE(addr);
+	size_t page = GET_FIRST_PAGE_OF_BLOCK(block);
 	/* Map all map entries in the block */
 	size_t start_page = GET_FIRST_PAGE_OF_BLOCK(block);
 	size_t end_page = GET_LAST_PAGE_OF_BLOCK(block);
-	struct map_entry *p, *e;
 	int found = 0;
 	allocate_block(block);
 	for (struct rb_node *cur = start_node(start_page); cur; cur = rb_next(cur))
@@ -905,7 +918,7 @@ static int handle_on_demand_page_fault(void *addr)
 			if (page >= range_start && page <= range_end)
 				found = 1;
 			map_entry_range(e, range_start, range_end);
-			if (e->prot != PROT_READ | PROT_WRITE | PROT_EXEC)
+			if (e->prot != (PROT_READ | PROT_WRITE | PROT_EXEC))
 			{
 				DWORD oldProtect;
 				VirtualProtect(GET_PAGE_ADDRESS(range_start), (range_end - range_start + 1) * PAGE_SIZE, prot_linux2win(e->prot), &oldProtect);
@@ -914,13 +927,13 @@ static int handle_on_demand_page_fault(void *addr)
 	}
 	/* TODO: Mark unmapped pages as PAGE_NOACCESS */
 	if (!found)
-		log_error("Block 0x%p not mapped.", GET_BLOCK(addr));
+		log_error("Block 0x%p not mapped.", block);
 	else
-		log_info("On demand block 0x%p loaded.", GET_BLOCK(addr));
+		log_info("On demand block 0x%p loaded.", block);
 	return found;
 }
 
-int mm_handle_page_fault(void *addr)
+int mm_handle_page_fault(void *addr, bool is_write)
 {
 	log_info("Handling page fault at address %p (page %p)", addr, GET_PAGE(addr));
 	if ((size_t)addr < ADDRESS_SPACE_LOW || (size_t)addr >= ADDRESS_SPACE_HIGH)
@@ -930,10 +943,26 @@ int mm_handle_page_fault(void *addr)
 	}
 	AcquireSRWLockExclusive(&mm->rw_lock);
 	int r;
-	if (get_section_handle(GET_BLOCK(addr)))
-		r = handle_cow_page_fault(addr);
+	size_t block = GET_BLOCK(addr);
+	HANDLE section = get_section_handle(block);
+	if (!section)
+	{
+		/* Page not loaded, load it now */
+		r = handle_on_demand_page_fault(block);
+	}
 	else
-		r = handle_on_demand_page_fault(addr);
+	{
+		if (!is_write)
+		{
+			/* A detached block */
+			r = load_detached_block(block);
+		}
+		else
+		{
+			/* CoW triggered, this function will automatically map the section if not yet */
+			r = handle_cow_page_fault(addr);
+		}
+	}
 	ReleaseSRWLockExclusive(&mm->rw_lock);
 	return r;
 }
@@ -973,10 +1002,23 @@ int mm_fork(HANDLE process)
 				return 0;
 			}
 		}
-	size_t last_block = 0; /* The last processed block id */
-	size_t mapped_section_count = 0;
-	size_t copied_section_count = 0;
-	log_info("Mapping and changing memory protection...");
+	/* Section mapping plus protection change is very time consuming
+	 * It takes about 8 msec for 50-60 sections (3-4M) on my machine.
+	 * This is too slow that even a NtWriteVirtualMemory() for such amount of
+	 * data only takes about 4 msec.
+	 *
+	 * In most cases when execve() is invoked immediately after fork(),
+	 * these regions are quickly discarded and the mapping time is wasted.
+	 * To improve performance, we don't map any of the sections at all and leave
+	 * the section objects in the child as `detached'. That is, they are present
+	 * in the child's section handle table, but not actually mapped.
+	 * When they are accessed, page faults will occur and we get the chance to do
+	 * the actual mapping.
+	 *
+	 * So here we only do what is essential: copy VIRTUALALLOC mapped memory,
+	 * and mark CoW memory regions in parent as non-writeable.
+	 */
+	log_info("Copy VirtualAlloc() memory blocks...");
 	for (struct rb_node *cur = rb_first(&mm->entry_tree); cur; cur = rb_next(cur))
 	{
 		struct map_entry *e = rb_entry(cur, struct map_entry, tree);
@@ -1041,93 +1083,15 @@ int mm_fork(HANDLE process)
 				}
 				current = end_page + 1;
 			}
-			continue;
 		}
-
-		/* Here comes one of the most time consuming part of forking
-		 * due to a large number of system calls.
-		 * The NtMapViewOfSection() calls cannot be avoided, and NtProtectVirtualMemory()
-		 * calls cannot span multiple sections.
-		 * Here, we do our best to reduce NtProtectVirtualMemory() calls.
-		 */
-
-		/* The prot flag we want to use when mapping the memory region.
-		 * For anonymous mappings, we implement copy on write so disable write now.
-		 *
-		 * The annoying part is the protection of the mapped region is determined when it
-		 * is first mapped, and further NtProtectVirtualMemory() calls can only lower the
-		 * protection. For example, one cannot first map as PAGE_READ and then change to
-		 * PAGE_READWRITE.
-		 *
-		 * Here we always map MAP_SHARED regions as PAGE_EXECUTE_READWRITE and others as
-		 * PAGE_EXECUTE_READ, then adjust using NtVirtualProtectMemory() if needed.
-		 * Since write protection can only be added in handle_cow_page_fault() after
-		 * forking, we also add special handling there.
-		 */
-		int map_prot = (e->flags & INTERNAL_MAP_SHARED) ? PROT_READ | PROT_WRITE | PROT_EXEC
-			: PROT_READ | PROT_EXEC;
-		DWORD map_prot_win = prot_linux2win(map_prot);
-		/* The correct prot that should be used */
-		int correct_prot = (e->flags & INTERNAL_MAP_SHARED) ? e->prot : (e->prot & ~PROT_WRITE);
-		DWORD correct_prot_win = prot_linux2win(correct_prot);
-		for (size_t i = start_block; i <= end_block; i++)
+		else if (!(e->flags & INTERNAL_MAP_SHARED))
 		{
-			HANDLE handle = get_section_handle(i);
-			if (!handle)
-			{
-				/* Good, this section does not exist */
-				continue;
-			}
-			/* The current section is yet to be mapped */
-			if (last_block < i)
-			{
-				PVOID base_addr = GET_BLOCK_ADDRESS(i);
-				SIZE_T view_size = BLOCK_SIZE;
-				status = NtMapViewOfSection(handle, process, &base_addr, 0, BLOCK_SIZE, NULL, &view_size, ViewUnmap, 0,
-					map_prot_win);
-				if (!NT_SUCCESS(status))
-				{
-					log_error("mm_fork(): Map failed: %p, status code: %x", base_addr, status);
-					mm_dump_windows_memory_mappings(process);
-					return 0;
-				}
-				mapped_section_count++;
-			}
-			/* The protection flag is wrong, fix up it */
-			if (correct_prot != map_prot)
-			{
-				/* Since the read only memory regions are relatively rare, we don't do
-				 * proactive protection changes for later pages in the current block
-				 */
-				SIZE_T size = PAGE_SIZE * (PAGES_PER_BLOCK - GET_PAGE_IN_BLOCK(e->start_page));
-				DWORD old_prot;
-				if (!VirtualProtectEx(process, GET_PAGE_ADDRESS(e->start_page), size,
-					correct_prot_win, &old_prot))
-				{
-					log_error("VirtualProtectEx() failed, error code: %d", GetLastError());
-					mm_dump_windows_memory_mappings(process);
-					return 0;
-				}
-			}
-			/* e->prot is protection used in current process */
-			/* If correct_prot != e->prot, protection in current process should also be changed. */
-			if (correct_prot != e->prot)
-			{
-				int start_page = max(e->start_page, GET_FIRST_PAGE_OF_BLOCK(i));
-				int end_page = min(e->end_page, GET_LAST_PAGE_OF_BLOCK(i));
-				DWORD old_prot;
-				if (!VirtualProtect(GET_PAGE_ADDRESS(start_page), (end_page - start_page + 1) * PAGE_SIZE,
-					correct_prot_win, &old_prot))
-				{
-					log_error("VirtualProtect() failed, error code: %d", GetLastError());
-					return 0;
-				}
-			}
-			last_block = i;
+			/* It is a CoW page, disable write permission on parent */
+			if ((e->prot & PROT_WRITE))
+				mm_change_protection(NtCurrentProcess(), e->start_page, e->end_page, e->prot & ~PROT_WRITE);
 		}
 	}
-	/* TODO: Change protection of mmap holes to PAGE_NOACCESS */
-	log_info("Section object statistics: %d mapped as CoW", mapped_section_count);
+	log_info("Memory copying completed.");
 	return 1;
 }
 
@@ -1262,7 +1226,7 @@ static void *mmap_internal(void *addr, size_t length, int prot, int flags, int i
 		}
 	}
 
-	/* Set up all kinds of flags */
+	/* Create new map_entry */
 	struct map_entry *entry = new_map_entry();
 	entry->start_page = start_page;
 	entry->end_page = end_page;
@@ -1277,6 +1241,7 @@ static void *mmap_internal(void *addr, size_t length, int prot, int flags, int i
 	if (internal_flags & INTERNAL_MAP_VIRTUALALLOC)
 		entry->flags |= INTERNAL_MAP_VIRTUALALLOC;
 
+	/* Add the new entry to VAD tree */
 	rb_add(&mm->entry_tree, &entry->tree, map_entry_cmp);
 
 	if (internal_flags & INTERNAL_MAP_VIRTUALALLOC)
@@ -1293,13 +1258,18 @@ static void *mmap_internal(void *addr, size_t length, int prot, int flags, int i
 
 	/* If the first or last block is already allocated, we have to set up proper content in it
 	   For other blocks we map them on demand */
-	if (get_section_handle(start_block))
+	HANDLE section;
+	NTSTATUS status;
+	if ((section = get_section_handle(start_block)) != NULL)
 	{
 		if (!take_block_ownership(start_block))
 		{
 			log_error("Taking ownership of block %p failed.", start_block);
 			return (void*)-L_ENOMEM;
 		}
+		/* Load it if it is detached block */
+		load_detached_block(start_block);
+		/* Set up content */
 		size_t last_page = GET_LAST_PAGE_OF_BLOCK(start_block);
 		last_page = min(last_page, end_page);
 		DWORD oldProtect;
@@ -1309,13 +1279,16 @@ static void *mmap_internal(void *addr, size_t length, int prot, int flags, int i
 			VirtualProtect(GET_PAGE_ADDRESS(start_page), (last_page - start_page + 1) * PAGE_SIZE, prot_linux2win(prot), &oldProtect);
 		start_block++;
 	}
-	if (end_block >= start_block && get_section_handle(end_block))
+	if (end_block >= start_block && (section = get_section_handle(end_block)) != NULL)
 	{
 		if (!take_block_ownership(end_block))
 		{
 			log_error("Taking ownership of block %p failed.", start_block);
 			return (void*)-L_ENOMEM;
 		}
+		/* Load it if it is detached block */
+		load_detached_block(end_block);
+		/* Set up content */
 		size_t first_page = GET_FIRST_PAGE_OF_BLOCK(end_block);
 		DWORD oldProtect;
 		VirtualProtect(GET_PAGE_ADDRESS(first_page), (end_page - first_page + 1) * PAGE_SIZE, prot_linux2win(prot | PROT_WRITE), &oldProtect);
@@ -1329,7 +1302,7 @@ static void *mmap_internal(void *addr, size_t length, int prot, int flags, int i
 		for (size_t i = start_block; i <= end_block; i++)
 			allocate_block(i);
 		map_entry_range(entry, GET_FIRST_PAGE_OF_BLOCK(start_block), GET_LAST_PAGE_OF_BLOCK(end_block));
-		mm_change_protection(GetCurrentProcess(), GET_FIRST_PAGE_OF_BLOCK(start_block), GET_LAST_PAGE_OF_BLOCK(end_block), prot);
+		mm_change_protection(NtCurrentProcess(), GET_FIRST_PAGE_OF_BLOCK(start_block), GET_LAST_PAGE_OF_BLOCK(end_block), prot);
 	}
 	log_info("Allocated memory: [%p, %p)", addr, (size_t)addr + length);
 	return addr;
@@ -1610,10 +1583,15 @@ static int mm_populate_internal(const void *addr, size_t len)
 
 			size_t start_block = GET_BLOCK_OF_PAGE(range_start);
 			size_t end_block = GET_BLOCK_OF_PAGE(range_end);
-			/* TODO: Optimization: batch operation on continuous blocks */
 			for (size_t i = start_block; i <= end_block; i++)
-				if (get_section_handle(i))
+			{
+				HANDLE section = get_section_handle(i);
+				if (section != NULL)
+				{
+					/* Load it if it is detached block */
+					load_detached_block(i);
 					continue;
+				}
 				else
 				{
 					if (!allocate_block(i))
@@ -1628,6 +1606,7 @@ static int mm_populate_internal(const void *addr, size_t len)
 						VirtualProtect(GET_PAGE_ADDRESS(first_page), (last_page - first_page + 1) * PAGE_SIZE, prot_linux2win(e->prot), &oldProtect);
 					}
 				}
+			}
 		}
 	}
 	log_info("Populated memory blocks: %d", num_blocks);

@@ -46,49 +46,22 @@ static LONG CALLBACK exception_handler(PEXCEPTION_POINTERS ep)
 		uint8_t* code = (uint8_t *)ep->ContextRecord->Xip;
 		if (ep->ExceptionRecord->ExceptionInformation[0] == 8)
 		{
-#ifdef _WIN64
-			/* Special case: x64 vsyscalls */
-			/* TODO: Implement VDSOs, implement these in a more proper way */
-			if (code == 0xFFFFFFFFFF600000ULL) /* gettimeofday */
+			/* DEP problem */
+			if (mm_handle_page_fault(code, false))
+				return EXCEPTION_CONTINUE_EXECUTION;
+			else
 			{
-				ep->ContextRecord->Rax = sys_gettimeofday((struct timeval *)ep->ContextRecord->Rdi, (struct timezone *)ep->ContextRecord->Rsi);
-				ep->ContextRecord->Rip = *(DWORD64 *)ep->ContextRecord->Rsp;
-				ep->ContextRecord->Rsp += 8;
-				return EXCEPTION_CONTINUE_EXECUTION;
+				/* The problem may be actually in the next page */
+				if (mm_handle_page_fault(code + PAGE_SIZE, false))
+					return EXCEPTION_CONTINUE_EXECUTION;
 			}
-			else if (code == 0xFFFFFFFFFF600400ULL) /* time */
-			{
-				ep->ContextRecord->Rax = sys_time((intptr_t *)ep->ContextRecord->Rdi);
-				ep->ContextRecord->Rip = *(DWORD64 *)ep->ContextRecord->Rsp;
-				ep->ContextRecord->Rsp += 8;
-				return EXCEPTION_CONTINUE_EXECUTION;
-			}
-			else if (code == 0xFFFFFFFFFF600800ULL) /* getcpu */
-			{
-				ep->ContextRecord->Rax = sys_getcpu((unsigned int *)ep->ContextRecord->Rdi, (unsigned int *)ep->ContextRecord->Rsi, (void *)ep->ContextRecord->Rdx);
-				ep->ContextRecord->Rip = *(DWORD64 *)ep->ContextRecord->Rsp;
-				ep->ContextRecord->Rsp += 8;
-				return EXCEPTION_CONTINUE_EXECUTION;
-			}
-#endif
-			if (mm_handle_page_fault(code))
-				return EXCEPTION_CONTINUE_EXECUTION;
-			else if (mm_handle_page_fault(code + 0x1000)) // TODO: Use PAGE_SIZE
-				return EXCEPTION_CONTINUE_EXECUTION;
 		}
 		else
 		{
+			/* Read/write problem */
 			log_info("IP: 0x%p", ep->ContextRecord->Xip);
-#ifdef _WIN64
-			if (code[0] == 0xCD && code[1] == 0x80) /* INT 80h */
-			{
-				ep->ContextRecord->Xip += 2;
-				dispatch_syscall(ep->ContextRecord);
-				return EXCEPTION_CONTINUE_EXECUTION;
-			}
-			else
-#endif
-			if (mm_handle_page_fault((void *)ep->ExceptionRecord->ExceptionInformation[1]))
+			bool is_write = (ep->ExceptionRecord->ExceptionInformation[0] == 1);
+			if (mm_handle_page_fault((void *)ep->ExceptionRecord->ExceptionInformation[1], is_write))
 				return EXCEPTION_CONTINUE_EXECUTION;
 			void *ip = (void *)ep->ContextRecord->Xip;
 			if (ip >= &mm_check_read_begin && ip <= &mm_check_read_end)

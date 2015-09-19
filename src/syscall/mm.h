@@ -22,6 +22,7 @@
 #include <common/types.h>
 #include <common/mman.h>
 
+#include <stdbool.h>
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
@@ -71,7 +72,7 @@ int mm_check_read(const void *addr, size_t size);
 int mm_check_read_string(const char *addr);
 int mm_check_write(void *addr, size_t size);
 
-int mm_handle_page_fault(void *addr);
+int mm_handle_page_fault(void *addr, bool is_write);
 int mm_fork(HANDLE process);
 void mm_afterfork_parent();
 void mm_afterfork_child();
