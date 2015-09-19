@@ -526,6 +526,11 @@ extern void dbt_cpuid_internal();
 extern void syscall_handler();
 
 static __declspec(thread) struct dbt_data *dbt;
+/* A helper flag which will be set to true in dbt_flush().
+ * User can first set this to true, and read it after some operations
+ * to determine if dbt code cache is flushed during the operations.
+ */
+static __declspec(thread) bool dbt_flushed;
 
 /* We use a return trampoline for returning to user code from kernel code
  * The return address is stored in TLS and set up in kernel code
@@ -773,6 +778,7 @@ static void dbt_flush()
 	for (int i = 0; i < DBT_BLOCK_HASH_BUCKETS; i++)
 		slist_init(&dbt->block_hash[i]);
 	dbt_gen_tables();
+	dbt_flushed = true;
 	log_info("dbt code cache flushed.");
 }
 
@@ -1273,8 +1279,10 @@ static struct dbt_block *dbt_translate(size_t pc, struct syscall_context *contex
 		block = alloc_block();
 		if (!block) /* The cache is full */
 		{
+			log_info("dbt cache is full, flushing code cache...");
 			/* TODO: We may need to check this flush-all-on-full semantic when we add signal handling */
 			dbt_flush();
+			__debugbreak();
 			block = alloc_block(); /* We won't fail again */
 		}
 		block->pc = pc;
@@ -1948,9 +1956,13 @@ void dbt_find_next_sieve(size_t pc)
 void dbt_find_direct(size_t pc, size_t patch_addr)
 {
 	/* Translate or generate the block */
+	dbt_flushed = false;
 	size_t block_start = (size_t)dbt_find(pc);
-	/* Patch the jmp/call address so we don't need to repeat work again */
-	*(size_t*)patch_addr = (intptr_t)(block_start - (patch_addr + 4)); /* Relative address */
+	if (!dbt_flushed)
+	{
+		/* Patch the jmp/call address so we don't need to repeat work again */
+		*(size_t*)patch_addr = (intptr_t)(block_start - (patch_addr + 4)); /* Relative address */
+	}
 	dbt_set_return_addr(pc, block_start);
 }
 
