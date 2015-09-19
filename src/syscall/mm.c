@@ -53,7 +53,7 @@
 
 /* Hard limits */
 /* Maximum number of mmap()-ed areas */
-#define MAX_MMAP_COUNT 65535
+#define MAX_MMAP_COUNT 1024
 
 #ifdef _WIN64
 
@@ -237,7 +237,10 @@ static void *munmap_list_pop(size_t *length)
 static struct map_entry *new_map_entry()
 {
 	if (slist_empty(&mm->entry_free_list))
+	{
+		log_error("Map entry exhausted.");
 		return NULL;
+	}
 	struct map_entry *entry = slist_next_entry(&mm->entry_free_list, struct map_entry, free_list);
 	slist_remove(&mm->entry_free_list, &entry->free_list);
 	return entry;
