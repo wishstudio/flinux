@@ -1282,7 +1282,6 @@ static struct dbt_block *dbt_translate(size_t pc, struct syscall_context *contex
 			log_info("dbt cache is full, flushing code cache...");
 			/* TODO: We may need to check this flush-all-on-full semantic when we add signal handling */
 			dbt_flush();
-			__debugbreak();
 			block = alloc_block(); /* We won't fail again */
 		}
 		block->pc = pc;
