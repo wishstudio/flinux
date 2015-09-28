@@ -1043,12 +1043,13 @@ static bool dbt_direct_call_trampoline_fixup(struct syscall_context *context)
 struct instruction_t
 {
 	uint8_t opcode;
-	uint8_t opsize_prefix, rep_prefix;
-	int segment_prefix;
-	int lock_prefix;
-	int escape_0x0f;
+	uint8_t rep_prefix, segment_prefix;
+	bool opsize_prefix;
+	bool lock_prefix;
+	bool escape_0x0f;
 	uint8_t escape_byte2; /* 0x38 or 0x3A */
 	int r;
+	bool has_modrm;
 	struct modrm_rm_t rm;
 	int imm_bytes;
 	const struct instruction_desc *desc;
@@ -1058,15 +1059,26 @@ struct instruction_t
 static int find_unused_register(struct instruction_t *ins)
 {
 	/* Calculate used registers in this instruction */
-	int used_regs = ins->desc->read_regs | ins->desc->write_regs;
+	int used_regs = 0;
+	used_regs |= get_implicit_register_usage(ins->desc->op1, ins->opcode);
+	used_regs |= get_implicit_register_usage(ins->desc->op2, ins->opcode);
+	used_regs |= get_implicit_register_usage(ins->desc->op3, ins->opcode);
+	if ((ins->desc->handler_type & HANDLER_NORMAL) == HANDLER_NORMAL)
+	{
+		/* Additional register usage */
+		used_regs |= ins->desc->handler_type;
+	}
+	if (ins->has_modrm)
+	{
+		if (ins->r != -1)
+			used_regs |= REG_MASK(ins->r);
+		if (ins->rm.base != -1)
+			used_regs |= REG_MASK(ins->rm.base);
+		if (ins->rm.index != -1)
+			used_regs |= REG_MASK(ins->rm.index);
+	}
 	if (ins->rep_prefix)
 		used_regs |= REG_CX;
-	if (ins->r != -1)
-		used_regs |= REG_MASK(ins->r);
-	if (ins->rm.base != -1)
-		used_regs |= REG_MASK(ins->rm.base);
-	if (ins->rm.index != -1)
-		used_regs |= REG_MASK(ins->rm.index);
 #define TEST_REG(r) do { if ((used_regs & REG_MASK(r)) == 0) return r; } while (0)
 	/* We really don't want to use esp or ebp as a temporary register */
 	TEST_REG(EAX);
@@ -1104,7 +1116,7 @@ static void dbt_copy_instruction(uint8_t **out, uint8_t **code, struct instructi
 	if (ins->lock_prefix)
 		gen_byte(out, 0xF0);
 	if (ins->opsize_prefix)
-		gen_byte(out, ins->opsize_prefix);
+		gen_byte(out, 0x66);
 	if (ins->rep_prefix)
 		gen_byte(out, ins->rep_prefix);
 	if (ins->segment_prefix && ins->segment_prefix != PREFIX_GS)
@@ -1116,7 +1128,7 @@ static void dbt_copy_instruction(uint8_t **out, uint8_t **code, struct instructi
 			gen_byte(out, ins->escape_byte2);
 	}
 	gen_byte(out, ins->opcode);
-	if (ins->desc->has_modrm)
+	if (ins->has_modrm)
 		gen_modrm_sib(out, ins->r, ins->rm);
 	gen_copy(out, imm_start, ins->imm_bytes);
 }
@@ -1307,9 +1319,9 @@ static struct dbt_block *dbt_translate(size_t pc, struct syscall_context *contex
 		}
 		struct instruction_t ins;
 		ins.rep_prefix = 0;
-		ins.opsize_prefix = 0;
 		ins.segment_prefix = 0;
-		ins.lock_prefix = 0;
+		ins.opsize_prefix = false;
+		ins.lock_prefix = false;
 		/* Handle prefixes. According to x86 doc, they can appear in any order */
 		for (;;)
 		{
@@ -1319,7 +1331,7 @@ static struct dbt_block *dbt_translate(size_t pc, struct syscall_context *contex
 			switch (ins.opcode)
 			{
 			case 0xF0: /* LOCK */
-				ins.lock_prefix = 1;
+				ins.lock_prefix = true;
 				break;
 
 			case 0xF2: /* REPNE/REPNZ */
@@ -1356,7 +1368,7 @@ static struct dbt_block *dbt_translate(size_t pc, struct syscall_context *contex
 				break;
 
 			case 0x66: /* Operand size prefix */
-				ins.opsize_prefix = 0x66;
+				ins.opsize_prefix = true;
 				break;
 
 			case 0x67: /* Address size prefix */
@@ -1372,12 +1384,12 @@ static struct dbt_block *dbt_translate(size_t pc, struct syscall_context *contex
 done_prefix:
 
 		/* Extract instruction descriptor */
-		ins.escape_0x0f = 0;
+		ins.escape_0x0f = false;
 		ins.escape_byte2 = 0;
 
 		if (ins.opcode == 0x0F)
 		{
-			ins.escape_0x0f = 1;
+			ins.escape_0x0f = true;
 			ins.opcode = parse_byte(&code);
 			if (ins.opcode == 0x38)
 			{
@@ -1396,56 +1408,86 @@ done_prefix:
 		}
 		else
 			ins.desc = &one_byte_inst[ins.opcode];
-
-	inst_mandatory_reentry:
-		if (ins.desc->has_modrm)
-			parse_modrm(&code, &ins.r, &ins.rm);
 		
-	inst_extension_reentry:
-		ins.imm_bytes = ins.desc->imm_bytes;
-		if (ins.imm_bytes == PREFIX_OPERAND_SIZE)
-			ins.imm_bytes = ins.opsize_prefix? 2: 4;
-		else if (ins.imm_bytes == PREFIX_ADDRESS_SIZE)
-			ins.imm_bytes = 4;
-
-		if (ins.desc->require_0x66 && !ins.opsize_prefix)
+		/* Follow extension tables */
+		ins.has_modrm = false;
+		while (ins.desc->type <= INST_TYPE_MAX)
 		{
-			log_error("Unknown opcode.");
-			__debugbreak();
+			switch (ins.desc->type)
+			{
+			case INST_TYPE_UNKNOWN: log_error("Unknown opcode."); dbt_log_opcode(&ins); __debugbreak(); break;
+			case INST_TYPE_INVALID: log_error("Invalid opcode."); dbt_log_opcode(&ins); __debugbreak(); break;
+			case INST_TYPE_UNSUPPORTED: log_error("Unsupported opcode."); dbt_log_opcode(&ins); __debugbreak(); break;
+
+			case INST_TYPE_MANDATORY:
+			{
+				if (!ins.escape_0x0f)
+				{
+					log_error("Invalid opcode.");
+					__debugbreak();
+				}
+				if (ins.opsize_prefix)
+					ins.desc = &ins.desc->extension_table[MANDATORY_0x66];
+				else if (ins.rep_prefix == 0xF3)
+					ins.desc = &ins.desc->extension_table[MANDATORY_0xF3];
+				else if (ins.rep_prefix == 0xF2)
+					ins.desc = &ins.desc->extension_table[MANDATORY_0xF2];
+				else
+					ins.desc = &ins.desc->extension_table[MANDATORY_NONE];
+				break;
+			}
+
+			case INST_TYPE_EXTENSION:
+			{
+				if (!ins.has_modrm)
+				{
+					parse_modrm(&code, &ins.r, &ins.rm);
+					ins.has_modrm = true;
+				}
+				ins.desc = &ins.desc->extension_table[ins.r];
+				break;
+			}
+
+			case INST_TYPE_MODRM_MOD:
+			{
+				if (!ins.has_modrm)
+				{
+					parse_modrm(&code, &ins.r, &ins.rm);
+					ins.has_modrm = true;
+				}
+				if (modrm_rm_is_r(ins.rm))
+					ins.desc = &ins.desc->extension_table[MODRM_MOD_R];
+				else
+					ins.desc = &ins.desc->extension_table[MODRM_MOD_M];
+				break;
+			}
+			}
 		}
+
+		/* ins.desc now points to the correct instruction description */
+		if (!ins.has_modrm)
+		{
+			/* Do we need modrm? */
+			if (FROM_MODRM(ins.desc->op1) || FROM_MODRM(ins.desc->op2) || FROM_MODRM(ins.desc->op3))
+			{
+				parse_modrm(&code, &ins.r, &ins.rm);
+				ins.has_modrm = true;
+			}
+		}
+
+		/* Calculate number of immediate bytes */
+		ins.imm_bytes = get_imm_bytes(ins.desc->op1, ins.opsize_prefix, false)
+			+ get_imm_bytes(ins.desc->op2, ins.opsize_prefix, false)
+			+ get_imm_bytes(ins.desc->op3, ins.opsize_prefix, false);
+
+		uint8_t handler_type = ins.desc->handler_type;
+		if ((handler_type & HANDLER_NORMAL) == HANDLER_NORMAL)
+			handler_type = HANDLER_NORMAL;
 
 		/* Translate instruction */
-		switch (ins.desc->type)
+		switch (handler_type)
 		{
-		case INST_TYPE_UNKNOWN: log_error("Unknown opcode."); dbt_log_opcode(&ins); __debugbreak(); break;
-		case INST_TYPE_INVALID: log_error("Invalid opcode."); dbt_log_opcode(&ins); __debugbreak(); break;
-		case INST_TYPE_UNSUPPORTED: log_error("Unsupported opcode."); dbt_log_opcode(&ins); __debugbreak(); break;
-
-		case INST_TYPE_EXTENSION:
-		{
-			ins.desc = &ins.desc->extension_table[ins.r];
-			goto inst_extension_reentry;
-		}
-
-		case INST_TYPE_MANDATORY:
-		{
-			if (!ins.escape_0x0f)
-			{
-				log_error("Invalid opcode.");
-				__debugbreak();
-			}
-			if (ins.opsize_prefix)
-				ins.desc = &ins.desc->extension_table[MANDATORY_0x66];
-			else if (ins.rep_prefix == 0xF3)
-				ins.desc = &ins.desc->extension_table[MANDATORY_0xF3];
-			else if (ins.rep_prefix == 0xF2)
-				ins.desc = &ins.desc->extension_table[MANDATORY_0xF2];
-			else
-				ins.desc = &ins.desc->extension_table[MANDATORY_NONE];
-			goto inst_mandatory_reentry;
-		}
-
-		case INST_TYPE_X87:
+		case HANDLER_X87:
 		{
 			/* A very simplistic way to handle x87 escape opcode */
 			uint8_t modrm = *code; /* Peek potential ModR/M byte */
@@ -1458,14 +1500,13 @@ done_prefix:
 				break;
 			}
 			/* An escape opcode with ModR/M, properly parse ModR/M */
-			ins.desc = &x87_desc;
+			ins.has_modrm = true;
 			parse_modrm(&code, &ins.r, &ins.rm);
 			/* Fall through */
 		}
-
-		case INST_TYPE_NORMAL:
+		case HANDLER_NORMAL:
 		{
-			if (ins.segment_prefix == PREFIX_GS && ins.desc->has_modrm && modrm_rm_is_m(ins.rm)
+			if (ins.segment_prefix == PREFIX_GS && ins.has_modrm && modrm_rm_is_m(ins.rm)
 				&& !(!ins.escape_0x0f && ins.opcode == 0x8D)) /* LEA */
 			{
 				/* Instruction with effective gs segment override */
@@ -1508,18 +1549,19 @@ done_prefix:
 			}
 			else /* If nothing special, directly copy instruction */
 				dbt_copy_instruction(&out, &code, &ins);
-
-			if (ins.desc->is_privileged)
-			{
-				/* We have to support translate privileged opcodes because e.g. glibc uses HLT as
-				 * a backup program terminator. */
-				/* The instructions following it won't be executed and could be crap so we stop here */
-				goto end_block;
-			}
 			break;
 		}
 
-		case INST_MOV_MOFFSET:
+		case HANDLER_PRIVILEGED:
+		{
+			/* We have to support translate privileged opcodes because e.g. glibc uses HLT as
+			 * a backup program terminator. */
+			dbt_copy_instruction(&out, &code, &ins);
+			/* The instructions following it won't be executed and could be crap so we stop here */
+			goto end_block;
+		}
+
+		case HANDLER_MOV_MOFFSET:
 		{
 			if (ins.segment_prefix == PREFIX_GS)
 			{
@@ -1572,7 +1614,7 @@ done_prefix:
 			break;
 		}
 
-		case INST_CALL_DIRECT:
+		case HANDLER_CALL_DIRECT:
 		{
 			int32_t rel = parse_rel(&code, ins.imm_bytes);
 			size_t dest = (size_t)code + rel;
@@ -1594,7 +1636,7 @@ done_prefix:
 			break;
 		}
 
-		case INST_CALL_INDIRECT:
+		case HANDLER_CALL_INDIRECT:
 		{
 			/* TODO: Bad codegen for `call esp', although should never be used in practice */
 			gen_push_imm32(&out, (size_t)code);
@@ -1607,7 +1649,7 @@ done_prefix:
 			if (ins.rm.base == ESP) /* ESP-related address */
 				ins.rm.disp += ESP;
 
-			if (ins.segment_prefix == PREFIX_GS && ins.desc->has_modrm && modrm_rm_is_m(ins.rm))
+			if (ins.segment_prefix == PREFIX_GS && ins.has_modrm && modrm_rm_is_m(ins.rm))
 			{
 				/* call with effective gs segment override */
 				int temp_reg = find_unused_register(&ins);
@@ -1637,13 +1679,13 @@ done_prefix:
 			break;
 		}
 
-		case INST_RET:
+		case HANDLER_RET:
 		{
 			dbt_gen_ret_trampoline(&out, context);
 			goto end_block;
 		}
 
-		case INST_RETN:
+		case HANDLER_RETN:
 		{
 			int count = parse_word(&code);
 			/* pop [esp - 4 + count] */
@@ -1662,7 +1704,7 @@ done_prefix:
 			goto end_block;
 		}
 
-		case INST_JMP_DIRECT:
+		case HANDLER_JMP_DIRECT:
 		{
 			int32_t rel = parse_rel(&code, ins.imm_bytes);
 			size_t dest = (size_t)code + rel;
@@ -1676,9 +1718,9 @@ done_prefix:
 			goto end_block;
 		}
 
-		case INST_JMP_INDIRECT:
+		case HANDLER_JMP_INDIRECT:
 		{
-			if (ins.segment_prefix == PREFIX_GS && ins.desc->has_modrm && modrm_rm_is_m(ins.rm))
+			if (ins.segment_prefix == PREFIX_GS && ins.has_modrm && modrm_rm_is_m(ins.rm))
 			{
 				/* jmp with effective gs segment override */
 				int temp_reg = find_unused_register(&ins);
@@ -1701,24 +1743,9 @@ done_prefix:
 			goto end_block;
 		}
 
-		case INST_JCC + 0:
-		case INST_JCC + 1:
-		case INST_JCC + 2:
-		case INST_JCC + 3:
-		case INST_JCC + 4:
-		case INST_JCC + 5:
-		case INST_JCC + 6:
-		case INST_JCC + 7:
-		case INST_JCC + 8:
-		case INST_JCC + 9:
-		case INST_JCC + 10:
-		case INST_JCC + 11:
-		case INST_JCC + 12:
-		case INST_JCC + 13:
-		case INST_JCC + 14:
-		case INST_JCC + 15:
+		case HANDLER_JCC:
 		{
-			int cond = GET_JCC_COND(ins.desc->type);
+			int cond = ins.opcode & 0x0F;
 			int32_t rel = parse_rel(&code, ins.imm_bytes);
 			size_t dest0 = (size_t)code + rel; /* Branch taken */
 			size_t dest1 = (size_t)code; /* Branch not taken */
@@ -1744,7 +1771,7 @@ done_prefix:
 			goto end_block;
 		}
 
-		case INST_JCC_REL8:
+		case HANDLER_JCC_REL8:
 		{
 			int32_t rel = parse_rel(&code, ins.imm_bytes);
 			size_t dest0 = (size_t)code + rel; /* Branch taken */
@@ -1778,7 +1805,7 @@ done_prefix:
 			goto end_block;
 		}
 
-		case INST_INT:
+		case HANDLER_INT:
 		{
 			uint8_t id = parse_byte(&code);
 			if (id != 0x80)
@@ -1797,7 +1824,7 @@ done_prefix:
 			goto end_block;
 		}
 
-		case INST_MOV_FROM_SEG:
+		case HANDLER_MOV_FROM_SEG:
 		{
 			if (ins.r != 5) /* GS */
 			{
@@ -1836,7 +1863,7 @@ done_prefix:
 			break;
 		}
 
-		case INST_MOV_TO_SEG:
+		case HANDLER_MOV_TO_SEG:
 		{
 			/* TODO: Fix context */
 			if (ins.r != 5) /* GS */
@@ -1888,7 +1915,7 @@ done_prefix:
 			break;
 		}
 		
-		case INST_CPUID:
+		case HANDLER_CPUID:
 		{
 			/* TODO: Fix context */
 			gen_call(&out, &dbt_cpuid_internal);

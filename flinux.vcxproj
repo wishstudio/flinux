@@ -106,6 +106,8 @@
     <ClCompile Include="src\datetime.c" />
     <ClCompile Include="src\dbt\cpuid.c" />
     <ClCompile Include="src\dbt\x86.c" />
+    <ClCompile Include="src\dbt\x86_inst.c" />
+    <ClCompile Include="src\dbt\x86_inst_table.c" />
     <ClCompile Include="src\fs\console.c" />
     <ClCompile Include="src\fs\devfs.c" />
     <ClCompile Include="src\fs\dsp.c" />
