@@ -882,19 +882,34 @@ static const struct instruction_desc mandatory_0F7F[4] =
 	/* F2 */ UNKNOWN()
 };
 
+static const struct instruction_desc modrm_mod_0FAE_5[2] =
+{
+	/* R */ NORMAL("lfence", __, __, __)
+	/* M */ NORMAL_MOREREG("xrstor", M, __, __, REG_AX | REG_DX)
+};
+
+static const struct instruction_desc modrm_mod_0FAE_6[2] =
+{
+	/* R */ NORMAL("mfence", __, __, __)
+	/* M */ NORMAL_MOREREG("xsaveopt", M, __, __, REG_AX | REG_DX)
+};
+
+static const struct instruction_desc modrm_mod_0FAE_7[2] =
+{
+	/* R */ NORMAL("sfence", __, __, __)
+	/* M */ NORMAL("clflush", M8, __, __)
+};
+
 static const struct instruction_desc extension_0FAE[8] =
 {
 	/* 0 */ NORMAL("fsave", M512, __, __)
 	/* 1 */ NORMAL("fxrstor", M512, __, __)
 	/* 2 */ NORMAL("ldmxcsr", M32, __, __)
 	/* 3 */ NORMAL("stmxcsr", M32, __, __)
-	/* 4 */ NORMAL("xsave", M, __, __)
-	/* 5: r: LFENCE (0F AE E8)
-	mem: XRSTOR mem*/ UNSUPPORTED()
-	/* 6: r: MFENCE (0F AE F0)
-	mem: XSAVEOPT mem */ UNSUPPORTED()
-	/* 7: r: SFENCE (0F AE F8)
-	mem: CLFLUSH m8 */ UNSUPPORTED()
+	/* 4 */ NORMAL_MOREREG("xsave", M, __, __, REG_AX | REG_DX)
+	/* 5 */ MODRM_MOD(0FAE_5)
+	/* 6 */ MODRM_MOD(0FAE_6)
+	/* 7 */ MODRM_MOD(0FAE_7)
 };
 
 static const struct instruction_desc mandatory_0FB8[4] =
