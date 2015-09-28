@@ -373,8 +373,13 @@ static __forceinline void gen_popfd(uint8_t **out)
 
 static __forceinline void gen_pop_rm(uint8_t **out, struct modrm_rm_t rm)
 {
-	gen_byte(out, 0x8F);
-	gen_modrm_sib(out, 0, rm);
+	if (modrm_rm_is_r(rm))
+		gen_byte(out, 0x58 + rm.base);
+	else
+	{
+		gen_byte(out, 0x8F);
+		gen_modrm_sib(out, 0, rm);
+	}
 }
 
 static __forceinline void gen_pushfd(uint8_t **out)
@@ -384,8 +389,13 @@ static __forceinline void gen_pushfd(uint8_t **out)
 
 static __forceinline void gen_push_rm(uint8_t **out, struct modrm_rm_t rm)
 {
-	gen_byte(out, 0xFF);
-	gen_modrm_sib(out, 6, rm);
+	if (modrm_rm_is_r(rm))
+		gen_byte(out, 0x50 + rm.base);
+	else
+	{
+		gen_byte(out, 0xFF);
+		gen_modrm_sib(out, 6, rm);
+	}
 }
 
 static __forceinline void gen_push_imm32(uint8_t **out, uint32_t imm)
