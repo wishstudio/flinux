@@ -693,5 +693,5 @@ DEFINE_SYSCALL(sigaltstack, const stack_t *, ss, stack_t *, oss)
 {
 	log_info("sigaltstack(ss=%p, oss=%p)", ss, oss);
 	log_error("sigaltstack() not implemented.");
-	return -L_ENOSYS;
+	return 0;
 }
