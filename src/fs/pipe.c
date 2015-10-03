@@ -60,11 +60,15 @@ static int pipe_get_poll_status(struct file *f)
 		NtSetEvent(pipe->read_event, NULL);
 		r |= LINUX_POLLIN;
 	}
+	else
+		NtClearEvent(pipe->read_event);
 	if (info.WriteQuotaAvailable)
 	{
 		NtSetEvent(pipe->write_event, NULL);
 		r |= LINUX_POLLOUT;
 	}
+	else
+		NtClearEvent(pipe->write_event);
 	if (r == 0 && info.NamedPipeState != FILE_PIPE_CONNECTED_STATE)
 	{
 		log_info("Broken pipe.");
@@ -111,8 +115,12 @@ static void pipe_update_events(struct pipe_file *pipe)
 	}
 	if (info.ReadDataAvailable > 0)
 		NtSetEvent(pipe->read_event, NULL);
+	else
+		NtClearEvent(pipe->read_event);
 	if (info.WriteQuotaAvailable > 0)
 		NtSetEvent(pipe->write_event, NULL);
+	else
+		NtClearEvent(pipe->write_event);
 }
 
 static size_t pipe_read(struct file *f, void *buf, size_t count)
