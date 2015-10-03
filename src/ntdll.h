@@ -88,6 +88,22 @@ typedef struct _OBJECT_ATTRIBUTES {
 	PVOID           SecurityQualityOfService;
 } OBJECT_ATTRIBUTES, *POBJECT_ATTRIBUTES;
 
+#define InitializeObjectAttributes( \
+	_InitializedAttributes, \
+	_ObjectName, \
+	_Attributes, \
+	_RootDirectory, \
+	_SecurityDescriptor) \
+	do \
+	{ \
+		(_InitializedAttributes)->Length = sizeof(OBJECT_ATTRIBUTES); \
+		(_InitializedAttributes)->RootDirectory = _RootDirectory; \
+		(_InitializedAttributes)->Attributes = _Attributes; \
+		(_InitializedAttributes)->ObjectName = _ObjectName; \
+		(_InitializedAttributes)->SecurityDescriptor = _SecurityDescriptor; \
+		(_InitializedAttributes)->SecurityQualityOfService = NULL; \
+	} while (0)
+
 typedef enum _OBJECT_INFORMATION_CLASS {
 	ObjectBasicInformation = 0,
 	ObjectTypeInformation = 2
@@ -107,6 +123,16 @@ NTSYSAPI NTSTATUS NTAPI NtQueryObject(
 	_Out_opt_	PVOID ObjectInformation,
 	_In_		ULONG ObjectInformationLength,
 	_Out_opt_	PULONG ReturnLength
+	);
+
+NTSYSAPI NTSTATUS NTAPI NtDuplicateObject(
+	_In_		HANDLE SourceProcessHandle,
+	_In_		HANDLE SourceHandle,
+	_In_opt_	HANDLE TargetProcessHandle,
+	_Out_opt_	PHANDLE TargetHandle,
+	_In_		ACCESS_MASK DesiredAccess,
+	_In_		ULONG HandleAttributes,
+	_In_		ULONG Options
 	);
 
 NTSYSAPI NTSTATUS NTAPI NtClose(
@@ -182,6 +208,29 @@ NTSYSAPI NTSTATUS NTAPI NtQuerySystemInformation(
 	_Inout_		PVOID SystemInformation,
 	_In_		ULONG SystemInformationLength,
 	_Out_opt_	PULONG ReturnLength
+	);
+
+/* Event objects */
+typedef enum _EVENT_TYPE {
+	NotificationEvent,
+	SynchronizationEvent
+} EVENT_TYPE;
+
+NTSYSAPI NTSTATUS NTAPI NtCreateEvent(
+	_Out_		PHANDLE EventHandle,
+	_In_		ACCESS_MASK DesiredAccess,
+	_In_opt_	POBJECT_ATTRIBUTES ObjectAttributes,
+	_In_		EVENT_TYPE EventType,
+	_In_		BOOLEAN InitialState
+	);
+
+NTSYSAPI NTSTATUS NTAPI NtSetEvent(
+	_In_		HANDLE EventHandle,
+	_Out_opt_	PULONG PreviousState
+	);
+
+NTSYSAPI NTSTATUS NTAPI NtClearEvent(
+	_In_		HANDLE EventHandle
 	);
 
 /* File API */
@@ -336,6 +385,24 @@ typedef struct _FILE_DISPOSITION_INFORMATION {
 typedef struct _FILE_END_OF_FILE_INFORMATION {
 	LARGE_INTEGER EndOfFile;
 } FILE_END_OF_FILE_INFORMATION, *PFILE_END_OF_FILE_INFORMATION;
+
+/* NamedPipeState */
+#define FILE_PIPE_DISCONNECTED_STATE	0x00000001
+#define FILE_PIPE_LISTENING_STATE		0x00000002
+#define FILE_PIPE_CONNECTED_STATE		0x00000003
+#define FILE_PIPE_CLOSING_STATE			0x00000004
+typedef struct _FILE_PIPE_LOCAL_INFORMATION {
+	ULONG NamedPipeType;
+	ULONG NamedPipeConfiguration;
+	ULONG MaximumInstances;
+	ULONG CurrentInstances;
+	ULONG InboundQuota;
+	ULONG ReadDataAvailable;
+	ULONG OutboundQuota;
+	ULONG WriteQuotaAvailable;
+	ULONG NamedPipeState;
+	ULONG NamedPipeEnd;
+} FILE_PIPE_LOCAL_INFORMATION, *PFILE_PIPE_LOCAL_INFORMATION;
 
 typedef struct _FILE_ATTRIBUTE_TAG_INFORMATION {
 	ULONG FileAttributes;
