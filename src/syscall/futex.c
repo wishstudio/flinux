@@ -36,6 +36,7 @@
 struct futex_wait_block
 {
 	struct thread *thread;
+	int *addr;
 	struct list_node list;
 };
 
@@ -82,6 +83,7 @@ int futex_wait(volatile int *addr, int val, DWORD timeout)
 	}
 	/* Append wait block */
 	wait_block.thread = current_thread;
+	wait_block.addr = (int *)addr;
 	list_add(&futex->hash[bucket].wait_list, &wait_block.list);
 	unlock_bucket(bucket);
 	DWORD result = signal_wait(1, &current_thread->wait_event, timeout);
@@ -119,14 +121,26 @@ int futex_wake(int *addr, int count)
 	int bucket = futex_hash((size_t)addr);
 	lock_bucket(bucket);
 	/* Wake up to count threads */
+	struct list_node *prev = NULL;
 	int num_woken = 0;
-	while (num_woken < count && !list_empty(&futex->hash[bucket].wait_list))
+	while (num_woken < count)
 	{
-		struct list_node *node = list_head(&futex->hash[bucket].wait_list);
-		list_remove(&futex->hash[bucket].wait_list, node);
-		struct futex_wait_block *wait_block = list_entry(node, struct futex_wait_block, list);
-		NtSetEvent(wait_block->thread->wait_event, NULL);
-		num_woken++;
+		struct list_node *cur;
+		if (prev == NULL)
+			cur = list_head(&futex->hash[bucket].wait_list);
+		else
+			cur = list_next(prev);
+		if (cur == NULL)
+			break;
+		struct futex_wait_block *wait_block = list_entry(cur, struct futex_wait_block, list);
+		if (wait_block->addr == addr)
+		{
+			list_remove(&futex->hash[bucket].wait_list, cur);
+			NtSetEvent(wait_block->thread->wait_event, NULL);
+			num_woken++;
+		}
+		else
+			prev = cur;
 	}
 	unlock_bucket(bucket);
 	return num_woken;
