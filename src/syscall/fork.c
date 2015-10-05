@@ -143,7 +143,7 @@ void fork_init()
  o CLONE_NEWNS
  o CLONE_SYSVSEM
  * CLONE_SETTLS
- o CLONE_PARENT_SETTID
+ * CLONE_PARENT_SETTID
  o CLONE_CHILD_CLEARTID
  o CLONE_DETACHED
  o CLONE_UNTRACED
@@ -199,6 +199,8 @@ static pid_t fork_process(struct syscall_context *context, unsigned long flags, 
 	NtWriteVirtualMemory(info.hProcess, &fork->pid, &pid, sizeof(pid_t), NULL);
 	if (flags & CLONE_CHILD_SETTID)
 		NtWriteVirtualMemory(info.hProcess, &fork->ctid, &ctid, sizeof(void*), NULL);
+	if (flags & CLONE_PARENT_SETTID)
+		*(pid_t*)ptid = pid;
 
 	/* Copy stack */
 	VirtualAllocEx(info.hProcess, stack_base, STACK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
@@ -232,8 +234,6 @@ static DWORD WINAPI fork_thread_callback(void *data)
 	log_init_thread();
 	dbt_init_thread();
 	process_thread_entry(info->pid);
-	if (info->ctid)
-		*(pid_t *)info->ctid = info->pid;
 	if (info->flags & CLONE_SETTLS)
 		tls_set_thread_area(&info->tls_data);
 	dbt_update_tls(info->gs);
@@ -255,7 +255,9 @@ static pid_t fork_thread(struct syscall_context *context, void *child_stack, uns
 	info->pid = pid;
 	info->flags = flags;
 	if (flags & CLONE_CHILD_SETTID)
-		info->ctid = ctid;
+		*(pid_t *)ctid = pid;
+	if (flags & CLONE_PARENT_SETTID)
+		*(pid_t *)ptid = pid;
 	info->gs = dbt_get_gs();
 	if (flags & CLONE_SETTLS)
 		info->tls_data = *(struct user_desc *)context->esi;
