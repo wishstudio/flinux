@@ -39,6 +39,7 @@ void signal_afterfork_parent();
 void signal_afterfork_child();
 void signal_shutdown();
 void signal_init_thread(struct thread *thread);
+void signal_exit_thread(struct thread *thread);
 int signal_kill(pid_t pid, siginfo_t *siginfo);
 DWORD signal_wait(int count, HANDLE *handles, DWORD milliseconds);
 void signal_before_pwait(const sigset_t *sigmask, sigset_t *oldmask);

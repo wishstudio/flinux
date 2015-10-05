@@ -490,6 +490,12 @@ void signal_init_thread(struct thread *thread)
 	thread->can_accept_signal = true;
 }
 
+void signal_exit_thread(struct thread *thread)
+{
+	CloseHandle(thread->sigevent);
+	thread->can_accept_signal = false;
+}
+
 int signal_kill(pid_t pid, siginfo_t *info)
 {
 	if (pid == GetCurrentProcessId())

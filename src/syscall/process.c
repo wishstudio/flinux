@@ -431,6 +431,22 @@ __declspec(noreturn) void process_exit(int exit_code, int exit_signal)
 	ExitProcess(exit_code);
 }
 
+__declspec(noreturn) void thread_exit(int exit_code, int exit_signal)
+{
+	log_shutdown();
+	signal_exit_thread(current_thread);
+	NtClose(current_thread->wait_event);
+	process_lock_shared();
+	process_shared->processes[current_thread->pid].status = PROCESS_NOTEXIST;
+	process_shared->processes[current_thread->pid].exit_code = exit_code;
+	process_shared->processes[current_thread->pid].exit_signal = exit_signal;
+	process_unlock_shared();
+	if (InterlockedDecrement(&process->thread_count) == 0)
+		process_exit(exit_code, exit_signal);
+	else
+		ExitThread(exit_code);
+}
+
 bool process_pid_exist(pid_t pid)
 {
 	if (pid < 0 || pid >= MAX_PROCESS_COUNT)
@@ -758,16 +774,7 @@ DEFINE_SYSCALL(getgroups, int, size, gid_t *, list)
 DEFINE_SYSCALL(exit, int, status)
 {
 	log_info("exit(%d)", status);
-	log_shutdown();
-	process_lock_shared();
-	process_shared->processes[current_thread->pid].status = PROCESS_NOTEXIST;
-	process_shared->processes[current_thread->pid].exit_code = status;
-	process_shared->processes[current_thread->pid].exit_signal = 0;
-	process_unlock_shared();
-	if (InterlockedDecrement(&process->thread_count) == 0)
-		process_exit(status, 0);
-	else
-		ExitThread(status);
+	thread_exit(status, 0);
 }
 
 DEFINE_SYSCALL(exit_group, int, status)
