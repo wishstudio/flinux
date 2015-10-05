@@ -81,7 +81,7 @@ struct list
 	{ \
 		if ((list)->head == node) \
 			(list)->head = (node)->next; \
-		else if ((list)->tail == node) \
+		if ((list)->tail == node) \
 			(list)->tail = (node)->prev; \
 		if ((node)->prev) \
 			(node)->prev->next = (node)->next; \
