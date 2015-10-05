@@ -88,6 +88,7 @@
     <ClInclude Include="src\str.h" />
     <ClInclude Include="src\syscall\exec.h" />
     <ClInclude Include="src\syscall\fork.h" />
+    <ClInclude Include="src\syscall\futex.h" />
     <ClInclude Include="src\syscall\mm.h" />
     <ClInclude Include="src\syscall\process.h" />
     <ClInclude Include="src\syscall\process_info.h" />

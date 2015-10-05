@@ -20,6 +20,7 @@
 #include <common/errno.h>
 #include <common/futex.h>
 #include <common/time.h>
+#include <syscall/futex.h>
 #include <syscall/process_info.h>
 #include <syscall/sig.h>
 #include <syscall/syscall.h>
@@ -68,7 +69,7 @@ static int futex_hash(size_t addr)
 	return addr % FUTEX_HASH_BUCKETS;
 }
 
-static int futex_wait(volatile int *addr, int val, DWORD timeout)
+int futex_wait(volatile int *addr, int val, DWORD timeout)
 {
 	struct futex_wait_block wait_block;
 	int bucket = futex_hash((size_t)addr);
@@ -113,7 +114,7 @@ static int futex_wait(volatile int *addr, int val, DWORD timeout)
 	}
 }
 
-static int futex_wake(int *addr, int count)
+int futex_wake(int *addr, int count)
 {
 	int bucket = futex_hash((size_t)addr);
 	lock_bucket(bucket);

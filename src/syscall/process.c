@@ -24,6 +24,7 @@
 #include <common/sysinfo.h>
 #include <common/wait.h>
 #include <fs/virtual.h>
+#include <syscall/futex.h>
 #include <syscall/mm.h>
 #include <syscall/process.h>
 #include <syscall/process_info.h>
@@ -435,6 +436,14 @@ __declspec(noreturn) void thread_exit(int exit_code, int exit_signal)
 {
 	log_shutdown();
 	signal_exit_thread(current_thread);
+	if (current_thread->clear_tid)
+	{
+		if (mm_check_write(current_thread->clear_tid, sizeof(pid_t)))
+		{
+			*current_thread->clear_tid = 0;
+			futex_wake(current_thread->clear_tid, 1);
+		}
+	}
 	NtClose(current_thread->wait_event);
 	process_lock_shared();
 	process_shared->processes[current_thread->pid].status = PROCESS_NOTEXIST;

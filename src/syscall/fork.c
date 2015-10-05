@@ -24,6 +24,7 @@
 #include <syscall/fork.h>
 #include <syscall/mm.h>
 #include <syscall/process.h>
+#include <syscall/process_info.h>
 #include <syscall/syscall.h>
 #include <syscall/tls.h>
 #include <heap.h>
@@ -144,7 +145,7 @@ void fork_init()
  o CLONE_SYSVSEM
  * CLONE_SETTLS
  * CLONE_PARENT_SETTID
- o CLONE_CHILD_CLEARTID
+ * CLONE_CHILD_CLEARTID
  o CLONE_DETACHED
  o CLONE_UNTRACED
  * CLONE_CHILD_SETTID
@@ -236,6 +237,10 @@ static DWORD WINAPI fork_thread_callback(void *data)
 	process_thread_entry(info->pid);
 	if (info->flags & CLONE_SETTLS)
 		tls_set_thread_area(&info->tls_data);
+	if (info->flags & CLONE_CHILD_CLEARTID)
+		current_thread->clear_tid = info->ctid;
+	else
+		current_thread->clear_tid = NULL;
 	dbt_update_tls(info->gs);
 	struct syscall_context context = info->context;
 	context.eax = 0;
@@ -253,6 +258,7 @@ static pid_t fork_thread(struct syscall_context *context, void *child_stack, uns
 	info->context = *context;
 	info->context.esp = (DWORD)child_stack;
 	info->pid = pid;
+	info->ctid = ctid;
 	info->flags = flags;
 	if (flags & CLONE_CHILD_SETTID)
 		*(pid_t *)ctid = pid;
