@@ -37,7 +37,7 @@ void process_shutdown();
 void *process_get_stack_base();
 pid_t process_init_child(DWORD win_pid, DWORD win_tid, HANDLE process_handle);
 void process_thread_entry(pid_t tid);
-pid_t process_init_thread(DWORD win_tid);
+pid_t process_create_thread(DWORD win_tid);
 
 __declspec(noreturn) void process_exit(int exit_code, int exit_signal);
 bool process_pid_exist(pid_t pid);

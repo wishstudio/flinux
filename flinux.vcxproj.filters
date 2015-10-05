@@ -348,6 +348,9 @@
     <ClCompile Include="src\dbt\x86_inst.c">
       <Filter>dbt</Filter>
     </ClCompile>
+    <ClCompile Include="src\syscall\futex.c">
+      <Filter>syscall</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <MASM Include="src\syscall\stubs64.asm">

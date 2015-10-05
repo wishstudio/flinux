@@ -23,6 +23,7 @@
 #include <lib/list.h>
 #include <lib/slist.h>
 
+#include <stdbool.h>
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
@@ -45,6 +46,8 @@ struct thread
 	HANDLE handle;
 	/* Stack base of the thread */
 	void *stack_base;
+	/*********** For futex() ***********/
+	HANDLE wait_event;
 	/*********** Signal related information ***********/
 	/* Signal mask */
 	sigset_t sigmask;

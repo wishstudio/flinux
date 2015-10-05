@@ -167,6 +167,7 @@ void process_init()
 	struct thread *thread = thread_alloc();
 	DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &thread->handle,
 		0, FALSE, DUPLICATE_SAME_ACCESS);
+	NtCreateEvent(&thread->wait_event, EVENT_ALL_ACCESS, NULL, SynchronizationEvent, FALSE);
 	signal_init_thread(thread);
 	current_thread = thread;
 	current_thread->stack_base = VirtualAlloc(NULL, STACK_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
@@ -185,6 +186,7 @@ void process_afterfork_child(void *stack_base, pid_t pid)
 	struct thread *thread = thread_alloc();
 	DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &thread->handle,
 		0, FALSE, DUPLICATE_SAME_ACCESS);
+	NtCreateEvent(&thread->wait_event, EVENT_ALL_ACCESS, NULL, SynchronizationEvent, FALSE);
 	signal_init_thread(thread);
 	current_thread = thread;
 	current_thread->stack_base = stack_base;
@@ -207,6 +209,7 @@ void process_thread_entry(pid_t tid)
 	ReleaseSRWLockExclusive(&process->rw_lock);
 	DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &thread->handle,
 		0, FALSE, DUPLICATE_SAME_ACCESS);
+	NtCreateEvent(&thread->wait_event, EVENT_ALL_ACCESS, NULL, SynchronizationEvent, FALSE);
 	signal_init_thread(thread);
 	current_thread = thread;
 	/* TODO: stack_base */
@@ -253,7 +256,7 @@ pid_t process_init_child(DWORD win_pid, DWORD win_tid, HANDLE process_handle)
 	return pid;
 }
 
-pid_t process_init_thread(DWORD win_tid)
+pid_t process_create_thread(DWORD win_tid)
 {
 	AcquireSRWLockExclusive(&process->rw_lock);
 	/* Allocate a new process table entry */
@@ -997,46 +1000,4 @@ DEFINE_SYSCALL(set_tid_address, int *, tidptr)
 	log_info("set_tid_address(tidptr=%p)", tidptr);
 	log_error("clear_child_tid not supported.");
 	return GetCurrentThreadId();
-}
-
-#pragma comment(lib, "synchronization.lib")
-DEFINE_SYSCALL(futex, int *, uaddr, int, op, int, val, const struct timespec *, timeout, int *, uaddr2, int, val3)
-{
-	log_info("futex(%p, %d, %d, %p, %p, %d)", uaddr, op, val, timeout, uaddr2, val3);
-	if (!mm_check_write(uaddr, sizeof(int)))
-		return -L_EACCES;
-	switch (op & FUTEX_CMD_MASK)
-	{
-	case FUTEX_WAIT:
-	{
-		if (timeout && !mm_check_read(timeout, sizeof(struct timespec)))
-			return -L_EFAULT;
-		DWORD time = timeout ? timeout->tv_sec * 1000 + timeout->tv_nsec / 1000000 : INFINITE;
-		if (WaitOnAddress((volatile void *)uaddr, &val, sizeof(int), time))
-			return 0;
-		else
-			return -L_ETIMEDOUT;
-	}
-
-	case FUTEX_WAKE:
-		/* Wake up at most val processes waiting on this futex address */
-		/* TODO: Check whether the logic and return value is correct */
-		val = min(val, process->thread_count);
-		for (int i = 0; i < val; i++)
-			WakeByAddressSingle(uaddr);
-		return val;
-
-	default:
-		log_error("Unsupported futex operation, returning -ENOSYS");
-		return -L_ENOSYS;
-	}
-}
-
-DEFINE_SYSCALL(set_robust_list, struct robust_list_head *, head, int, len)
-{
-	log_info("set_robust_list(head=%p, len=%d)", head, len);
-	if (len != sizeof(struct robust_list_head))
-		log_error("len (%d) != sizeof(struct robust_list_head)", len);
-	log_error("set_robust_list() not supported.");
-	return 0;
 }

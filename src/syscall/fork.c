@@ -249,7 +249,7 @@ static pid_t fork_thread(struct syscall_context *context, void *child_stack, uns
 	struct fork_info *info = VirtualAlloc(NULL, sizeof(struct fork_info), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 	DWORD win_tid;
 	HANDLE handle = CreateThread(NULL, 0, fork_thread_callback, info, CREATE_SUSPENDED, &win_tid);
-	pid_t pid = process_init_thread(win_tid);
+	pid_t pid = process_create_thread(win_tid);
 	info->context = *context;
 	info->context.esp = (DWORD)child_stack;
 	info->pid = pid;

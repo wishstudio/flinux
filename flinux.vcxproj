@@ -129,6 +129,7 @@
     <ClCompile Include="src\str.c" />
     <ClCompile Include="src\syscall\exec.c" />
     <ClCompile Include="src\syscall\fork.c" />
+    <ClCompile Include="src\syscall\futex.c" />
     <ClCompile Include="src\syscall\mm.c" />
     <ClCompile Include="src\syscall\process.c" />
     <ClCompile Include="src\syscall\sig.c" />
