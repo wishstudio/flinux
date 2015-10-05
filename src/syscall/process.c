@@ -166,6 +166,7 @@ void process_init()
 	process->pid = pid;
 	/* Allocate structure for main thread */
 	struct thread *thread = thread_alloc();
+	thread->pid = pid;
 	DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &thread->handle,
 		0, FALSE, DUPLICATE_SAME_ACCESS);
 	NtCreateEvent(&thread->wait_event, EVENT_ALL_ACCESS, NULL, SynchronizationEvent, FALSE);
@@ -185,6 +186,7 @@ void process_afterfork_child(void *stack_base, pid_t pid)
 	process_shared->processes[pid].sigwrite = signal_get_process_sigwrite();
 	/* Allocate structure for main thread */
 	struct thread *thread = thread_alloc();
+	thread->pid = pid;
 	DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &thread->handle,
 		0, FALSE, DUPLICATE_SAME_ACCESS);
 	NtCreateEvent(&thread->wait_event, EVENT_ALL_ACCESS, NULL, SynchronizationEvent, FALSE);
@@ -207,6 +209,7 @@ void process_thread_entry(pid_t tid)
 {
 	AcquireSRWLockExclusive(&process->rw_lock);
 	struct thread *thread = thread_alloc();
+	thread->pid = tid;
 	ReleaseSRWLockExclusive(&process->rw_lock);
 	DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &thread->handle,
 		0, FALSE, DUPLICATE_SAME_ACCESS);
@@ -434,7 +437,6 @@ __declspec(noreturn) void process_exit(int exit_code, int exit_signal)
 
 __declspec(noreturn) void thread_exit(int exit_code, int exit_signal)
 {
-	log_shutdown();
 	signal_exit_thread(current_thread);
 	if (current_thread->clear_tid)
 	{
@@ -450,6 +452,7 @@ __declspec(noreturn) void thread_exit(int exit_code, int exit_signal)
 	process_shared->processes[current_thread->pid].exit_code = exit_code;
 	process_shared->processes[current_thread->pid].exit_signal = exit_signal;
 	process_unlock_shared();
+	log_shutdown();
 	if (InterlockedDecrement(&process->thread_count) == 0)
 		process_exit(exit_code, exit_signal);
 	else
