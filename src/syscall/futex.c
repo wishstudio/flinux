@@ -64,6 +64,21 @@ static void unlock_bucket(int bucket)
 	futex->hash[bucket].spin_lock = 0;
 }
 
+/* Lock two buckets in deterministic order to avoid dead lock */
+static void lock_buckets(int bucket1, int bucket2)
+{
+	if (bucket1 < bucket2)
+	{
+		lock_bucket(bucket1);
+		lock_bucket(bucket2);
+	}
+	else
+	{
+		lock_bucket(bucket2);
+		lock_bucket(bucket1);
+	}
+}
+
 static int futex_hash(size_t addr)
 {
 	/* TODO: Improve this silly hash function */
@@ -116,15 +131,37 @@ int futex_wait(volatile int *addr, int val, DWORD timeout)
 	}
 }
 
-int futex_wake(int *addr, int count)
+static int futex_wake_requeue(int *addr, int count, int *requeue_addr, int *requeue_val)
 {
 	int bucket = futex_hash((size_t)addr);
-	lock_bucket(bucket);
+	int bucket2;
+	if (requeue_addr)
+	{
+		bucket2 = futex_hash((size_t)requeue_addr);
+		if (bucket == bucket2) /* Lucky! */
+			lock_bucket(bucket);
+		else
+			lock_buckets(bucket, bucket2);
+	}
+	else
+		lock_bucket(bucket);
+	if (requeue_addr && requeue_val)
+	{
+		if (*addr != *requeue_val)
+		{
+			/* The value changed */
+			unlock_bucket(bucket);
+			unlock_bucket(bucket2);
+			return -EAGAIN;
+		}
+	}
 	/* Wake up to count threads */
 	struct list_node *prev = NULL;
 	int num_woken = 0;
-	while (num_woken < count)
+	for (;;)
 	{
+		if (requeue_addr == NULL && num_woken == count)
+			break;
 		struct list_node *cur;
 		if (prev == NULL)
 			cur = list_head(&futex->hash[bucket].wait_list);
@@ -135,21 +172,52 @@ int futex_wake(int *addr, int count)
 		struct futex_wait_block *wait_block = list_entry(cur, struct futex_wait_block, list);
 		if (wait_block->addr == addr)
 		{
-			list_remove(&futex->hash[bucket].wait_list, cur);
-			NtSetEvent(wait_block->thread->wait_event, NULL);
-			num_woken++;
+			if (num_woken == count && requeue_addr)
+			{
+				wait_block->addr = requeue_addr;
+				if (bucket == bucket2)
+				{
+					/* We're lucky! The two addresses are in the same hash bucket. */
+					prev = cur; /* Continue to handle next wait block */
+				}
+				else
+				{
+					/* Move this wait block to destination bucket */
+					list_remove(&futex->hash[bucket].wait_list, cur);
+					list_add(&futex->hash[bucket2].wait_list, cur);
+				}
+			}
+			else
+			{
+				/* Remove current wait block and notify corresponding thread */
+				list_remove(&futex->hash[bucket].wait_list, cur);
+				NtSetEvent(wait_block->thread->wait_event, NULL);
+				num_woken++;
+			}
 		}
 		else
-			prev = cur;
+			prev = cur; /* Continue to handle next wait block */
 	}
 	unlock_bucket(bucket);
+	if (requeue_addr && bucket != bucket2)
+		unlock_bucket(bucket2);
 	return num_woken;
+}
+
+int futex_wake(int *addr, int count)
+{
+	return futex_wake_requeue(addr, count, NULL, NULL);
+}
+
+int futex_requeue(int *addr, int count, int *requeue_addr, int *requeue_val)
+{
+	return futex_wake_requeue(addr, count, requeue_addr, requeue_val);
 }
 
 DEFINE_SYSCALL(futex, int *, uaddr, int, op, int, val, const struct timespec *, timeout, int *, uaddr2, int, val3)
 {
 	log_info("futex(%p, %d, %d, %p, %p, %d)", uaddr, op, val, timeout, uaddr2, val3);
-	if (!mm_check_write(uaddr, sizeof(int)))
+	if (!mm_check_read(uaddr, sizeof(int)))
 		return -L_EACCES;
 	switch (op & FUTEX_CMD_MASK)
 	{
@@ -163,6 +231,20 @@ DEFINE_SYSCALL(futex, int *, uaddr, int, op, int, val, const struct timespec *, 
 
 	case FUTEX_WAKE:
 		return futex_wake(uaddr, val);
+
+	case FUTEX_REQUEUE:
+	{
+		if (!mm_check_read(uaddr2, sizeof(int)))
+			return -L_EACCES;
+		return futex_requeue(uaddr, val, uaddr2, NULL);
+	}
+
+	case FUTEX_CMP_REQUEUE:
+	{
+		if (!mm_check_read(uaddr2, sizeof(int)))
+			return -L_EACCES;
+		return futex_requeue(uaddr, val, uaddr2, &val3);
+	}
 
 	default:
 		log_error("Unsupported futex operation, returning ENOSYS");

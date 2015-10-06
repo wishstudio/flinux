@@ -24,3 +24,4 @@
 
 int futex_wait(volatile int *addr, int val, DWORD timeout);
 int futex_wake(int *addr, int count);
+int futex_requeue(int *addr, int count, int *requeue_addr, int *requeue_val);
