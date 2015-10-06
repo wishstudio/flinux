@@ -2183,6 +2183,7 @@ static int vfs_ppoll(struct linux_pollfd *fds, int nfds, int timeout, const sigs
 			files[i] = NULL;
 			continue;
 		}
+		log_info("FD: %d EVENTS: %x", fds[i].fd, fds[i].events);
 		struct file *f = files[i] = vfs_get(fds[i].fd);
 		/* TODO: Support for regular files */
 		if (!f)

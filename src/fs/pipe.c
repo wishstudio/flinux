@@ -55,24 +55,28 @@ static int pipe_get_poll_status(struct file *f)
 		return LINUX_POLLERR;
 	}
 	int r = 0;
-	if (info.ReadDataAvailable)
+	if ((pipe->is_read && info.ReadDataAvailable) || (!pipe->is_read && info.WriteQuotaAvailable < info.OutboundQuota))
 	{
 		NtSetEvent(pipe->read_event, NULL);
-		r |= LINUX_POLLIN;
+		if (pipe->is_read)
+			r |= LINUX_POLLIN;
 	}
 	else
 		NtClearEvent(pipe->read_event);
-	if (info.WriteQuotaAvailable)
+	if ((pipe->is_read && info.ReadDataAvailable < info.InboundQuota) || (!pipe->is_read && info.WriteQuotaAvailable))
 	{
 		NtSetEvent(pipe->write_event, NULL);
-		r |= LINUX_POLLOUT;
+		if (!pipe->is_read)
+			r |= LINUX_POLLOUT;
 	}
 	else
 		NtClearEvent(pipe->write_event);
-	if (r == 0 && info.NamedPipeState != FILE_PIPE_CONNECTED_STATE)
+	if (info.NamedPipeState != FILE_PIPE_CONNECTED_STATE)
 	{
 		log_info("Broken pipe.");
-		return LINUX_POLLHUP;
+		NtSetEvent(pipe->read_event, NULL);
+		NtSetEvent(pipe->write_event, NULL);
+		return LINUX_POLLIN | LINUX_POLLOUT && LINUX_POLLHUP;
 	}
 	return r;
 }
@@ -113,14 +117,19 @@ static void pipe_update_events(struct pipe_file *pipe)
 		log_error("NtQueryInformationFile() failed, status: %x", status);
 		return;
 	}
-	if (info.ReadDataAvailable > 0)
+	if ((pipe->is_read && info.ReadDataAvailable) || (!pipe->is_read && info.WriteQuotaAvailable < info.OutboundQuota))
 		NtSetEvent(pipe->read_event, NULL);
 	else
 		NtClearEvent(pipe->read_event);
-	if (info.WriteQuotaAvailable > 0)
+	if ((pipe->is_read && info.ReadDataAvailable < info.InboundQuota) || (!pipe->is_read && info.WriteQuotaAvailable))
 		NtSetEvent(pipe->write_event, NULL);
 	else
 		NtClearEvent(pipe->write_event);
+	if (info.NamedPipeState != FILE_PIPE_CONNECTED_STATE)
+	{
+		NtSetEvent(pipe->read_event, NULL);
+		NtSetEvent(pipe->write_event, NULL);
+	}
 }
 
 static size_t pipe_read(struct file *f, void *buf, size_t count)
@@ -189,7 +198,7 @@ static size_t pipe_write(struct file *f, const void *buf, size_t count)
 			r = -L_EIO;
 			goto out;
 		}
-		if (info.WriteQuotaAvailable == 0 && info.NamedPipeState != FILE_PIPE_CONNECTED_STATE)
+		if (info.NamedPipeState != FILE_PIPE_CONNECTED_STATE)
 		{
 			log_info("Write failed: broken pipe.");
 			/* TODO: Send SIGPIPE signal */
@@ -287,13 +296,13 @@ int pipe_alloc(struct file **fread, struct file **fwrite, int flags)
 	HANDLE read_event, write_event;
 	NTSTATUS status;
 	InitializeObjectAttributes(&oa, NULL, OBJ_INHERIT, NULL, NULL);
-	status = NtCreateEvent(&read_event, EVENT_ALL_ACCESS, &oa, SynchronizationEvent, FALSE);
+	status = NtCreateEvent(&read_event, EVENT_ALL_ACCESS, &oa, NotificationEvent, FALSE);
 	if (!NT_SUCCESS(status))
 	{
 		log_error("NtCreateEvent() failed, status: %x", status);
 		return -L_ENOMEM;
 	}
-	status = NtCreateEvent(&write_event, EVENT_ALL_ACCESS, &oa, SynchronizationEvent, FALSE);
+	status = NtCreateEvent(&write_event, EVENT_ALL_ACCESS, &oa, NotificationEvent, FALSE);
 	if (!NT_SUCCESS(status))
 	{
 		log_error("NtCreateEvent() failed, status: %x", status);
