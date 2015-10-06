@@ -34,6 +34,7 @@ void signal_init_child(struct child_process *proc);
 void signal_setup_handler(struct syscall_context *context);
 
 void signal_init();
+void signal_reset();
 int signal_fork(HANDLE process);
 void signal_afterfork_parent();
 void signal_afterfork_child();

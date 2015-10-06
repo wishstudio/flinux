@@ -443,6 +443,12 @@ void signal_init()
 {
 	/* Initialize signal structures */
 	signal = mm_static_alloc(sizeof(struct signal_data));
+	signal_reset();
+	signal_init_private();
+}
+
+void signal_reset()
+{
 	for (int i = 0; i < _NSIG; i++)
 	{
 		signal->actions[i].sa_sigaction = NULL;
@@ -450,7 +456,6 @@ void signal_init()
 		signal->actions[i].sa_flags = 0;
 		signal->actions[i].sa_restorer = NULL;
 	}
-	signal_init_private();
 }
 
 void signal_afterfork_child()

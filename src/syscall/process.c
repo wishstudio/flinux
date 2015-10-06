@@ -303,13 +303,19 @@ static pid_t process_wait(pid_t pid, int *status, int options, struct rusage *ru
 				if (options & WNOHANG)
 				{
 					if (!proc->terminated)
+					{
+						log_warning("Child not terminated yet.");
 						return -L_ECHILD;
+					}
 				}
 				else
 				{
 					DWORD result = signal_wait(1, &proc->hProcess, INFINITE);
 					if (result == WAIT_INTERRUPTED)
+					{
+						log_warning("Interrupted by signal.");
 						return -L_EINTR;
+					}
 				}
 				/* Decrement semaphore */
 				WaitForSingleObject(signal_get_process_wait_semaphore(), INFINITE);

@@ -26,6 +26,7 @@
 #include <syscall/exec.h>
 #include <syscall/mm.h>
 #include <syscall/process.h>
+#include <syscall/sig.h>
 #include <syscall/syscall.h>
 #include <syscall/tls.h>
 #include <syscall/vfs.h>
@@ -400,6 +401,7 @@ extern char *startup;
 
 static void execve_initialize_routine()
 {
+	signal_reset();
 	vfs_reset();
 	mm_reset();
 	tls_reset();
