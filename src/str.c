@@ -17,6 +17,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <fs/console.h>
 #include <str.h>
 #include <vsprintf.h>
 #include <vsscanf.h>
@@ -33,10 +34,7 @@ int kprintf(const char *format, ...)
 	va_list ap;
 	va_start(ap, format);
 	int size = kvsprintf(buffer, format, ap);
-	HANDLE handle = GetStdHandle(STD_OUTPUT_HANDLE);
-	WriteFile(handle, buffer, size, NULL, NULL);
-	FlushFileBuffers(handle);
-	return size;
+	return console_write(buffer, size);
 }
 
 int ksprintf(char *buf, const char *format, ...)

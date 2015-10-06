@@ -1332,11 +1332,9 @@ static int console_close(struct file *f)
 	return 0;
 }
 
-static size_t console_read(struct file *f, void *b, size_t count)
+static size_t console_file_read(struct file *f, void *b, size_t count)
 {
 	char *buf = (char *)b;
-	struct console_file *console_file = (struct console_file *)f;
-
 	console_lock();
 	console_retrieve_state();
 
@@ -1534,11 +1532,14 @@ read_done:
 	return bytes_read;
 }
 
-static size_t console_write(struct file *f, const void *b, size_t count)
+size_t console_read(void *b, size_t count)
+{
+	return console_file_read(NULL, b, count);
+}
+
+static size_t console_file_write(struct file *f, const void *b, size_t count)
 {
 	const char *buf = (const char *)b;
-	struct console_file *console_file = (struct console_file *)f;
-
 	console_lock();
 	console_retrieve_state();
 	#define OUTPUT() \
@@ -1620,6 +1621,11 @@ static size_t console_write(struct file *f, const void *b, size_t count)
 	log_debug(str);
 #endif
 	return count;
+}
+
+size_t console_write(const void *buf, size_t b)
+{
+	return console_file_write(NULL, buf, b);
 }
 
 static void console_update_termios()
@@ -1704,8 +1710,8 @@ static const struct file_ops console_ops = {
 	.get_poll_status = console_get_poll_status,
 	.get_poll_handle = console_get_poll_handle,
 	.close = console_close,
-	.read = console_read,
-	.write = console_write,
+	.read = console_file_read,
+	.write = console_file_write,
 	.stat = virtualfs_custom_stat,
 	.ioctl = console_ioctl,
 };
