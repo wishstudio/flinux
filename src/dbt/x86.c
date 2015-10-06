@@ -1348,6 +1348,13 @@ static struct dbt_block *dbt_translate(size_t pc, struct syscall_context *contex
 			context->eip = current_ip;
 			goto end_block;
 		}
+		if (dbt->end - out < DBT_BLOCK_MAXSIZE)
+		{
+			/* No enough space for code generation, emit a temporary trampoline and give up */
+			size_t patch_addr = (size_t)out + 1;
+			gen_jmp(&out, dbt_get_direct_trampoline((size_t)code, patch_addr));
+			goto end_block;
+		}
 		struct instruction_t ins;
 		ins.rep_prefix = 0;
 		ins.segment_prefix = 0;
