@@ -25,6 +25,7 @@ struct _flags
 {
 	/* DBT flags */
 	bool dbt_trace;
+	bool dbt_trace_all;
 };
 
 extern struct _flags *session_flags;

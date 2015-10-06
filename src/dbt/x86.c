@@ -1644,7 +1644,10 @@ done_prefix:
 			size_t dest = (size_t)code + rel;
 			gen_push_imm32(&out, (size_t)code);
 			gen_mov_rm_imm32(&out, modrm_rm_disp((int32_t)&dbt->return_cache[RETURN_CACHE_HASH((size_t)code)]), 0);
-			*(size_t*)(out - 4) = (size_t)out + 5;
+			if (session_flags->dbt_trace_all) /* Do not do any optimizations */
+				*(size_t*)(out - 4) = (size_t)&dbt_sieve_fallback;
+			else
+				*(size_t*)(out - 4) = (size_t)out + 5;
 			if (context && context->eip <= (DWORD)out)
 			{
 				context->esp += 4;
@@ -1690,7 +1693,10 @@ done_prefix:
 				gen_push_rm(&out, ins.rm);
 			}
 			gen_mov_rm_imm32(&out, modrm_rm_disp((int32_t)&dbt->return_cache[RETURN_CACHE_HASH((size_t)code)]), 0);
-			*(size_t*)(out - 4) = (size_t)out + 5;
+			if (session_flags->dbt_trace_all) /* Do not do any optimizations */
+				*(size_t*)(out - 4) = (size_t)&dbt_sieve_fallback;
+			else
+				*(size_t*)(out - 4) = (size_t)out + 5;
 			if (context && context->eip <= (DWORD)out)
 			{
 				context->esp += 8;
@@ -1963,7 +1969,15 @@ static uint8_t *dbt_find(size_t pc)
 	{
 		struct dbt_block *block = slist_entry(cur, struct dbt_block, list);
 		if (block->pc == pc)
+		{
+			if (session_flags->dbt_trace_all)
+			{
+				dbt_save_simd_state();
+				log_debug("dbt_find: block pc: %p, translated pc: %p", block->pc, block->start);
+				dbt_restore_simd_state();
+			}
 			return block->start;
+		}
 	}
 
 	/* Block not found, translate it now */
@@ -1982,6 +1996,12 @@ void dbt_find_next_sieve(size_t pc)
 	uint8_t *target = dbt_find(pc);
 	uint8_t *sieve = dbt_gen_sieve(pc, target);
 
+	if (session_flags->dbt_trace_all)
+	{
+		/* Do not do any optimizations */
+		dbt_set_return_addr(pc, (size_t)target);
+		return;
+	}
 	/* Patch sieve table */
 	int hash = SIEVE_HASH(pc);
 	if (dbt->sieve_table[hash] == (void*)&dbt_sieve_fallback)
@@ -2008,7 +2028,7 @@ void dbt_find_direct(size_t pc, size_t patch_addr)
 	/* Translate or generate the block */
 	dbt_flushed = false;
 	size_t block_start = (size_t)dbt_find(pc);
-	if (!dbt_flushed)
+	if (!dbt_flushed && !session_flags->dbt_trace_all)
 	{
 		/* Patch the jmp/call address so we don't need to repeat work again */
 		*(size_t*)patch_addr = (intptr_t)(block_start - (patch_addr + 4)); /* Relative address */

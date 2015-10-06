@@ -75,7 +75,7 @@ static void print_help()
 	kprintf("\n");
 	kprintf("Debug options:\n");
 	kprintf("  --dbt-trace       Trace dbt basic block generation.\n");
-	kprintf("  --no-dbt-trace    Don't trace dbt basic block generation (default).\n");
+	kprintf("  --dbt-trace-all   Full trace of dbt execution. (massive performance drop)\n");
 }
 
 /*
@@ -184,8 +184,11 @@ void main()
 		}
 		else if (!strcmp(argv[i], "--dbt-trace"))
 			session_flags->dbt_trace = true;
-		else if (!strcmp(argv[i], "--no-dbt-trace"))
-			session_flags->dbt_trace = false;
+		else if (!strcmp(argv[i], "--dbt-trace-all"))
+		{
+			session_flags->dbt_trace = true;
+			session_flags->dbt_trace_all = true;
+		}
 		else if (!filename)
 		{
 			filename = argv[i];
