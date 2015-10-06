@@ -26,6 +26,7 @@
 #include <syscall/sig.h>
 #include <syscall/tls.h>
 #include <syscall/vfs.h>
+#include <flags.h>
 #include <log.h>
 #include <heap.h>
 #include <str.h>
@@ -45,7 +46,7 @@
 
 static void print_usage()
 {
-	kprintf("Usage: flinux <executable> [options]\n");
+	kprintf("Usage: flinux [options] <executable>\n");
 	kprintf("Use with --help option to print a list of all available options.\n");
 }
 
@@ -63,14 +64,18 @@ static void print_help()
 {
 	kprintf("Foreign LINUX: Run Linux userspace application.\n");
 	kprintf("\n");
-	kprintf("Usage: flinux <executable> [options]\n");
+	kprintf("Usage: flinux [options] <executable>\n");
 	kprintf("Use the current directory as the root directory.\n");
 	kprintf("<executable> is the executable path relative to the root directory.\n");
 	kprintf("\n");
-	kprintf("Supported options:\n");
+	kprintf("Misc options:\n");
 	kprintf("  --help, -h        Print this help message.\n");
 	kprintf("  --usage           Print basic usage.\n");
 	kprintf("  --version, -v     Print version.\n");
+	kprintf("\n");
+	kprintf("Debug options:\n");
+	kprintf("  --dbt-trace       Trace dbt basic block generation.\n");
+	kprintf("  --no-dbt-trace    Don't trace dbt basic block generation (default).\n");
 }
 
 /*
@@ -95,6 +100,7 @@ void main()
 
 	mm_init();
 	install_syscall_handler();
+	flags_init();
 	heap_init();
 	signal_init();
 	process_init();
@@ -158,6 +164,7 @@ void main()
 	char *buffer_base = (char*)(envp + env_size + 1);
 
 	const char *filename = NULL;
+	int arg_start;
 	for (int i = 1; i < argc; i++)
 	{
 		if (!strcmp(argv[i], "--help"), !strcmp(argv[i], "-h"))
@@ -175,12 +182,19 @@ void main()
 			print_version();
 			process_exit(1, 0);
 		}
+		else if (!strcmp(argv[i], "--dbt-trace"))
+			session_flags->dbt_trace = true;
+		else if (!strcmp(argv[i], "--no-dbt-trace"))
+			session_flags->dbt_trace = false;
 		else if (!filename)
+		{
 			filename = argv[i];
+			arg_start = i;
+		}
 	}
 	if (filename)
 	{
-		int r = do_execve(filename, argc - 1, argv + 1, env_size, envp, buffer_base, NULL);
+		int r = do_execve(filename, argc - arg_start, argv + arg_start, env_size, envp, buffer_base, NULL);
 		if (r == -L_ENOENT)
 		{
 			kprintf("Executable not found.");

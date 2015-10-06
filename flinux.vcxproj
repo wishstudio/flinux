@@ -62,6 +62,7 @@
     <ClInclude Include="src\dbt\cpuid.h" />
     <ClInclude Include="src\dbt\x86.h" />
     <ClInclude Include="src\dbt\x86_inst.h" />
+    <ClInclude Include="src\flags.h" />
     <ClInclude Include="src\fs\console.h" />
     <ClInclude Include="src\fs\devfs.h" />
     <ClInclude Include="src\fs\dsp.h" />
@@ -110,6 +111,7 @@
     <ClCompile Include="src\dbt\x86.c" />
     <ClCompile Include="src\dbt\x86_inst.c" />
     <ClCompile Include="src\dbt\x86_inst_table.c" />
+    <ClCompile Include="src\flags.c" />
     <ClCompile Include="src\fs\console.c" />
     <ClCompile Include="src\fs\devfs.c" />
     <ClCompile Include="src\fs\dsp.c" />

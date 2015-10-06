@@ -255,6 +255,7 @@
       <Filter>syscall</Filter>
     </ClInclude>
     <ClInclude Include="src\version.h" />
+    <ClInclude Include="src\flags.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
@@ -355,6 +356,7 @@
     <ClCompile Include="src\syscall\futex.c">
       <Filter>syscall</Filter>
     </ClCompile>
+    <ClCompile Include="src\flags.c" />
   </ItemGroup>
   <ItemGroup>
     <MASM Include="src\syscall\stubs64.asm">

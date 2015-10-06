@@ -24,6 +24,7 @@
 #include <syscall/mm.h>
 #include <syscall/sig.h>
 #include <syscall/tls.h>
+#include <flags.h>
 #include <log.h>
 
 #include <stdbool.h>
@@ -31,6 +32,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <ntdll.h>
+#include <immintrin.h>
 
 #define GET_MODRM_MOD(c)	(((c) >> 6) & 7)
 #define GET_MODRM_R(c)		(((c) >> 3) & 7)
@@ -529,11 +531,20 @@ extern void dbt_find_direct_internal();
 extern void dbt_find_indirect_internal();
 extern void dbt_sieve_fallback();
 
-extern void dbt_save_simd_state();
-extern void dbt_restore_simd_state();
-
 extern void dbt_cpuid_internal();
 extern void syscall_handler();
+
+static __declspec(thread, align(16)) char dbt_simd_state[512];
+
+static void dbt_save_simd_state()
+{
+	_fxsave(dbt_simd_state);
+}
+
+static void dbt_restore_simd_state()
+{
+	_fxrstor(dbt_simd_state);
+}
 
 static __declspec(thread) struct dbt_data *dbt;
 /* A helper flag which will be set to true in dbt_flush().
@@ -1311,10 +1322,13 @@ static struct dbt_block *dbt_translate(size_t pc, struct syscall_context *contex
 		rb_add(&dbt->tree, &block->tree, tree_cmp);
 		rb_add(&dbt->cache_tree, &block->cache_tree, cache_tree_cmp);
 	}
-
-	//dbt_save_simd_state();
-	//log_debug("block id: %d, pc: %p, block start: %p", dbt->blocks_count, block->pc, block->start);
-	//dbt_restore_simd_state();
+	
+	if (session_flags->dbt_trace)
+	{
+		dbt_save_simd_state();
+		log_debug("dbt_translate: id: %d, pc: %p, translated pc: %p", dbt->blocks_count, block->pc, block->start);
+		dbt_restore_simd_state();
+	}
 
 	uint8_t *code = (uint8_t *)pc;
 	uint8_t *out = block->start;
