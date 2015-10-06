@@ -342,7 +342,7 @@ int utf8_to_utf16_filename(const char *data, int srclen, uint16_t *outdata, int 
 			uint32_t codepoint = utf8_read_increment(&data, last);
 			if (codepoint == -1)
 				return -1;
-			if (codepoint <= 0x80)
+			if (codepoint <= 0x7F)
 				codepoint = filename_transform_chars[codepoint];
 			outlen += utf16_count_len(codepoint);
 		}
