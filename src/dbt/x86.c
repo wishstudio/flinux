@@ -522,6 +522,7 @@ struct dbt_data
 	uint8_t *sieve_indirect_call_dispatch_trampoline;
 	/* Return cache */
 	uint8_t **return_cache;
+	uint8_t *return_fallback_trampoline;
 	/* Information of current signal to be delivered */
 	bool signal_pending;
 	bool signal_need_fixup;
@@ -756,7 +757,7 @@ static void dbt_gen_tables()
 	dbt->internal_trampoline_end = dbt->out;
 	dbt_gen_sieve_dispatch();
 	for (int i = 0; i < DBT_RETURN_CACHE_ENTRIES; i++)
-		dbt->return_cache[i] = (uint8_t*)&dbt_sieve_fallback;
+		dbt->return_cache[i] = dbt->return_fallback_trampoline;
 }
 
 void dbt_init_thread()
@@ -858,6 +859,8 @@ static void dbt_gen_sieve_dispatch()
 	/* The destination address should be pushed on the stack */
 	/* push ecx (1 byte) */
 	gen_byte(&out, 0x51);
+	dbt->return_fallback_trampoline = out;
+
 	/* movzx ecx, word ptr [esp+4] (5 bytes) */
 	gen_byte(&out, 0x0F); gen_byte(&out, 0xB7); gen_byte(&out, 0x4C);
 	gen_byte(&out, 0x24); gen_byte(&out, 0x04);
@@ -1312,8 +1315,12 @@ static struct dbt_block *dbt_translate(size_t pc, struct syscall_context *contex
 		block = alloc_block();
 		if (!block) /* The cache is full */
 		{
-			log_info("dbt cache is full, flushing code cache...");
-			/* TODO: We may need to check this flush-all-on-full semantic when we add signal handling */
+			if (session_flags->dbt_trace)
+			{
+				dbt_save_simd_state();
+				log_debug("dbt cache is full, flushing code cache... (current pc = %p)", pc);
+				dbt_restore_simd_state();
+			}
 			dbt_flush();
 			block = alloc_block(); /* We won't fail again */
 		}
@@ -1326,7 +1333,7 @@ static struct dbt_block *dbt_translate(size_t pc, struct syscall_context *contex
 	if (session_flags->dbt_trace)
 	{
 		dbt_save_simd_state();
-		log_debug("dbt_translate: id: %d, pc: %p, translated pc: %p", dbt->blocks_count, block->pc, block->start);
+		log_debug("dbt_translate: id: %d, pc: %p, translated pc: %p, end: %p", dbt->blocks_count, block->pc, block->start, dbt->end);
 		dbt_restore_simd_state();
 	}
 
@@ -1432,7 +1439,7 @@ done_prefix:
 		}
 		else
 			ins.desc = &one_byte_inst[ins.opcode];
-		
+
 		/* Follow extension tables */
 		ins.has_modrm = false;
 		while (ins.desc->type <= INST_TYPE_MAX)
@@ -1645,7 +1652,7 @@ done_prefix:
 			gen_push_imm32(&out, (size_t)code);
 			gen_mov_rm_imm32(&out, modrm_rm_disp((int32_t)&dbt->return_cache[RETURN_CACHE_HASH((size_t)code)]), 0);
 			if (session_flags->dbt_trace_all) /* Do not do any optimizations */
-				*(size_t*)(out - 4) = (size_t)&dbt_sieve_fallback;
+				*(size_t*)(out - 4) = (size_t)dbt->return_fallback_trampoline;
 			else
 				*(size_t*)(out - 4) = (size_t)out + 5;
 			if (context && context->eip <= (DWORD)out)
@@ -1694,7 +1701,7 @@ done_prefix:
 			}
 			gen_mov_rm_imm32(&out, modrm_rm_disp((int32_t)&dbt->return_cache[RETURN_CACHE_HASH((size_t)code)]), 0);
 			if (session_flags->dbt_trace_all) /* Do not do any optimizations */
-				*(size_t*)(out - 4) = (size_t)&dbt_sieve_fallback;
+				*(size_t*)(out - 4) = (size_t)dbt->return_fallback_trampoline;
 			else
 				*(size_t*)(out - 4) = (size_t)out + 5;
 			if (context && context->eip <= (DWORD)out)
@@ -1923,7 +1930,7 @@ done_prefix:
 			gen_push_rm(&out, modrm_rm_reg(2));
 			gen_push_rm(&out, modrm_rm_reg(temp_reg));
 			gen_call(&out, &tls_user_entry_to_offset);
-			
+
 			/* mov temp_reg, fs:eax */
 			gen_fs_prefix(&out);
 			gen_mov_r_rm_32(&out, temp_reg, modrm_rm_mreg(0, 0));
@@ -1944,7 +1951,7 @@ done_prefix:
 			gen_mov_r_rm_32(&out, temp_reg, modrm_rm_disp(dbt_global->tls_scratch_offset));
 			break;
 		}
-		
+
 		case HANDLER_CPUID:
 		{
 			/* TODO: Fix context */
@@ -1973,7 +1980,7 @@ static uint8_t *dbt_find(size_t pc)
 			if (session_flags->dbt_trace_all)
 			{
 				dbt_save_simd_state();
-				log_debug("dbt_find: block pc: %p, translated pc: %p", block->pc, block->start);
+				log_debug("dbt_find: block pc: %p, translated pc: %p, end: %p", block->pc, block->start, dbt->end);
 				dbt_restore_simd_state();
 			}
 			return block->start;
@@ -1994,14 +2001,13 @@ void dbt_find_next(size_t pc)
 void dbt_find_next_sieve(size_t pc)
 {
 	uint8_t *target = dbt_find(pc);
-	uint8_t *sieve = dbt_gen_sieve(pc, target);
-
 	if (session_flags->dbt_trace_all)
 	{
 		/* Do not do any optimizations */
 		dbt_set_return_addr(pc, (size_t)target);
 		return;
 	}
+	uint8_t *sieve = dbt_gen_sieve(pc, target);
 	/* Patch sieve table */
 	int hash = SIEVE_HASH(pc);
 	if (dbt->sieve_table[hash] == (void*)&dbt_sieve_fallback)
