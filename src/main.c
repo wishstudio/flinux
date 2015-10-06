@@ -51,8 +51,8 @@ char *startup;
 
 #define ENV(x) \
 	do { \
-		memcpy(envbuf, x, sizeof(x) + 1); \
-		envbuf += sizeof(x) + 1; \
+		memcpy(envbuf, x, sizeof(x)); \
+		envbuf += sizeof(x); \
 	} while (0)
 
 void main()
