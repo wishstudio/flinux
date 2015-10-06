@@ -3,6 +3,7 @@
 
 *.log
 *.exe
+src/version.h
 test/*
 
 # User-specific files

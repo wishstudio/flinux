@@ -18,6 +18,7 @@
  */
 
 #include <common/auxvec.h>
+#include <common/errno.h>
 #include <syscall/exec.h>
 #include <syscall/fork.h>
 #include <syscall/mm.h>
@@ -28,6 +29,7 @@
 #include <log.h>
 #include <heap.h>
 #include <str.h>
+#include <version.h>
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
@@ -40,6 +42,36 @@
 #else
 #pragma comment(lib,"libucrt")
 #endif
+
+static void print_usage()
+{
+	kprintf("Usage: flinux <executable> [options]\n");
+	kprintf("Use with --help option to print a list of all available options.\n");
+}
+
+static void print_version()
+{
+	kprintf("Foreign LINUX " GIT_VERSION "\n");
+	kprintf("\n");
+	kprintf("This program is distributed in the hope that it will be useful,\n");
+	kprintf("but WITHOUT ANY WARRANTY; without even the implied warranty of\n");
+	kprintf("MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the\n");
+	kprintf("GNU General Public License for more details.\n");
+}
+
+static void print_help()
+{
+	kprintf("Foreign LINUX: Run Linux userspace application.\n");
+	kprintf("\n");
+	kprintf("Usage: flinux <executable> [options]\n");
+	kprintf("Use the current directory as the root directory.\n");
+	kprintf("<executable> is the executable path relative to the root directory.\n");
+	kprintf("\n");
+	kprintf("Supported options:\n");
+	kprintf("  --help, -h        Print this help message.\n");
+	kprintf("  --usage           Print basic usage.\n");
+	kprintf("  --version, -v     Print version.\n");
+}
 
 /*
  * Startup data is divided into two parts
@@ -128,14 +160,33 @@ void main()
 	const char *filename = NULL;
 	for (int i = 1; i < argc; i++)
 	{
-		if (argv[i][0] == '-')
+		if (!strcmp(argv[i], "--help"), !strcmp(argv[i], "-h"))
 		{
+			print_help();
+			process_exit(1, 0);
+		}
+		else if (!strcmp(argv[i], "--usage"))
+		{
+			print_usage();
+			process_exit(1, 0);
+		}
+		else if (!strcmp(argv[i], "--version"), !strcmp(argv[i], "-v"))
+		{
+			print_version();
+			process_exit(1, 0);
 		}
 		else if (!filename)
 			filename = argv[i];
 	}
 	if (filename)
-		do_execve(filename, argc - 1, argv + 1, env_size, envp, buffer_base, NULL);
-	kprintf("Usage: flinux <executable> [arguments]\n");
+	{
+		int r = do_execve(filename, argc - 1, argv + 1, env_size, envp, buffer_base, NULL);
+		if (r == -L_ENOENT)
+		{
+			kprintf("Executable not found.");
+			process_exit(1, 0);
+		}
+	}
+	print_usage();
 	process_exit(1, 0);
 }

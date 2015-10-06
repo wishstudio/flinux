@@ -100,6 +100,7 @@
     <ClInclude Include="src\syscall\timer.h" />
     <ClInclude Include="src\syscall\tls.h" />
     <ClInclude Include="src\syscall\vfs.h" />
+    <ClInclude Include="src\version.h" />
     <ClInclude Include="src\vsprintf.h" />
     <ClInclude Include="src\vsscanf.h" />
   </ItemGroup>
@@ -230,6 +231,12 @@
       <AdditionalOptions>/delayload:advapi32.dll /delayload:ws2_32.dll /delayload:winmm.dll %(AdditionalOptions)</AdditionalOptions>
       <AdditionalDependencies>ntdll.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PreBuildEvent>
+      <Command>$(ProjectDir)\gen_git_version.cmd</Command>
+    </PreBuildEvent>
+    <PreBuildEvent>
+      <Message>Generating git_version.h...</Message>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -245,6 +252,12 @@
       </MinimumRequiredVersion>
       <AdditionalDependencies>ntdll.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PreBuildEvent>
+      <Command>$(ProjectDir)\gen_git_version.cmd</Command>
+    </PreBuildEvent>
+    <PreBuildEvent>
+      <Message>Generating git_version.h...</Message>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
@@ -266,6 +279,12 @@
       <AdditionalOptions>/delayload:advapi32.dll /delayload:ws2_32.dll /delayload:winmm.dll %(AdditionalOptions)</AdditionalOptions>
       <AdditionalDependencies>ntdll.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PreBuildEvent>
+      <Command>$(ProjectDir)\gen_git_version.cmd</Command>
+    </PreBuildEvent>
+    <PreBuildEvent>
+      <Message>Generating git_version.h...</Message>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -286,6 +305,12 @@
       </MinimumRequiredVersion>
       <AdditionalDependencies>ntdll.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PreBuildEvent>
+      <Command>$(ProjectDir)\gen_git_version.cmd</Command>
+    </PreBuildEvent>
+    <PreBuildEvent>
+      <Message>Generating git_version.h...</Message>
+    </PreBuildEvent>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

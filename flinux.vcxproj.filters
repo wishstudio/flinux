@@ -254,6 +254,7 @@
     <ClInclude Include="src\syscall\futex.h">
       <Filter>syscall</Filter>
     </ClInclude>
+    <ClInclude Include="src\version.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
