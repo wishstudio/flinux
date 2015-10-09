@@ -104,6 +104,7 @@
     <ClInclude Include="src\version.h" />
     <ClInclude Include="src\vsprintf.h" />
     <ClInclude Include="src\vsscanf.h" />
+    <ClInclude Include="src\win7compat.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\datetime.c" />
@@ -145,6 +146,7 @@
     <ClCompile Include="src\vsprintf.c" />
     <ClCompile Include="src\vsscanf.c" />
     <ClCompile Include="src\wcwidth.c" />
+    <ClCompile Include="src\win7compat.c" />
   </ItemGroup>
   <ItemGroup>
     <MASM Include="src\dbt\x86_trampoline.asm" />

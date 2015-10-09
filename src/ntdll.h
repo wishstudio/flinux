@@ -679,6 +679,11 @@ NTSYSAPI NTSTATUS NTAPI RtlIntegerToUnicodeString(
 	_Inout_		PUNICODE_STRING String
 	);
 
+NTSYSAPI NTSTATUS NTAPI RtlInitAnsiString(
+	_Out_		PANSI_STRING DestinationString,
+	_In_opt_	PCSTR SourceString
+	);
+
 /* Helper routines */
 /* Initialize an empty unicode string given buffer and size */
 _inline void RtlInitEmptyUnicodeString(
@@ -730,3 +735,18 @@ _inline NTSTATUS RtlAppendIntegerToString(
 	RtlIntegerToUnicodeString(Value, Base, &str);
 	return RtlAppendUnicodeStringToString(String, &str);
 }
+
+/* Ldr Functions */
+NTSYSAPI NTSTATUS NTAPI LdrLoadDll(
+	_In_opt_	PWCHAR PathToFile,
+	_In_		PWSTR Flags,
+	_In_		PUNICODE_STRING ModuleFileName,
+	_Out_		PHANDLE ModuleHandle
+	);
+
+NTSYSAPI NTSTATUS NTAPI LdrGetProcedureAddress(
+	_In_		HANDLE ModuleHandle,
+	_In_opt_	PANSI_STRING FunctionName,
+	_In_		WORD Ordinal,
+	_Out_		PVOID *FunctionAddress
+	);

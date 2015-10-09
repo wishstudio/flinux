@@ -23,6 +23,7 @@
 #include <syscall/timer.h>
 #include <datetime.h>
 #include <log.h>
+#include <win7compat.h>
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
@@ -49,7 +50,7 @@ DEFINE_SYSCALL(gettimeofday, struct timeval *, tv, struct timezone *, tz)
 	if (tv)
 	{
 		FILETIME system_time;
-		GetSystemTimePreciseAsFileTime(&system_time);
+		win7compat_GetSystemTimePreciseAsFileTime(&system_time);
 		filetime_to_unix_timeval(&system_time, tv);
 	}
 	return 0;
@@ -76,7 +77,7 @@ DEFINE_SYSCALL(clock_gettime, int, clk_id, struct timespec *, tp)
 	case CLOCK_REALTIME:
 	{
 		FILETIME system_time;
-		GetSystemTimePreciseAsFileTime(&system_time);
+		win7compat_GetSystemTimePreciseAsFileTime(&system_time);
 		filetime_to_unix_timespec(&system_time, tp);
 		return 0;
 	}

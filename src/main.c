@@ -31,6 +31,7 @@
 #include <heap.h>
 #include <str.h>
 #include <version.h>
+#include <win7compat.h>
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
@@ -94,6 +95,7 @@ char *startup;
 
 void main()
 {
+	win7compat_init();
 	log_init();
 	fork_init();
 	/* fork_init() will directly jump to restored thread context if we are a fork child */

@@ -256,6 +256,7 @@
     </ClInclude>
     <ClInclude Include="src\version.h" />
     <ClInclude Include="src\flags.h" />
+    <ClInclude Include="src\win7compat.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
@@ -357,6 +358,7 @@
       <Filter>syscall</Filter>
     </ClCompile>
     <ClCompile Include="src\flags.c" />
+    <ClCompile Include="src\win7compat.c" />
   </ItemGroup>
   <ItemGroup>
     <MASM Include="src\syscall\stubs64.asm">
