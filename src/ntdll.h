@@ -634,6 +634,21 @@ NTSYSAPI NTSTATUS NTAPI NtQueryInformationThread(
 	_Out_opt_	PULONG ReturnLength
 	);
 
+/* Token */
+NTSYSAPI NTSTATUS NTAPI NtOpenProcessToken(
+	_In_		HANDLE ProcessHandle,
+	_In_		ACCESS_MASK DesiredAccess,
+	_Out_		PHANDLE TokenHandle
+	);
+
+NTSYSAPI NTSTATUS NTAPI NtQueryInformationToken(
+	_In_		HANDLE TokenHandle,
+	_In_		TOKEN_INFORMATION_CLASS TokenInformationClass,
+	_Out_		PVOID TokenInformation,
+	_In_		ULONG TokenInformationLength,
+	_Out_		PULONG ReturnLength
+	);
+
 /* RTL functions */
 #define HASH_STRING_ALGORITHM_DEFAULT	0
 #define HASH_STRING_ALGORITHM_X65599	1
