@@ -49,21 +49,27 @@ struct winfs_file
 /* Convert an utf-8 file name to NT file name, return converted name length in characters, no NULL terminator is appended */
 static int filename_to_nt_pathname(const char *filename, WCHAR *buf, int buf_size)
 {
-	if (buf_size < 4)
+	HANDLE basedir_handle = CreateFileW(L".", 0, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
+		OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+	if (basedir_handle == INVALID_HANDLE_VALUE)
 		return 0;
-	buf[0] = L'\\';
-	buf[1] = L'?';
-	buf[2] = L'?';
-	buf[3] = L'\\';
-	buf += 4;
-	buf_size -= 4;
-	int out_size = 4;
-	int len = (DWORD)GetCurrentDirectoryW(buf_size, buf);
-	buf += len;
-	out_size += len;
-	buf_size -= len;
+	WCHAR basedir[PATH_MAX];
+	DWORD basedir_len = GetFinalPathNameByHandleW(basedir_handle, basedir, PATH_MAX, FILE_NAME_NORMALIZED);
+	CloseHandle(basedir_handle);
+	if (basedir_len > PATH_MAX)
+		return 0;
+	basedir[1] = L'?';
+
+	if (buf_size < basedir_len)
+		return 0;
+	memcpy(buf, basedir, basedir_len * sizeof(WCHAR));
+	buf += basedir_len;
+	int out_size = basedir_len;
+	buf_size -= basedir_len;
 	if (filename[0] == 0)
 		return out_size;
+	if (buf_size < 1)
+		return 0;
 	*buf++ = L'\\';
 	out_size++;
 	buf_size--;
@@ -701,25 +707,37 @@ static struct file_ops winfs_ops =
 
 static int winfs_symlink(struct file_system *fs, const char *target, const char *linkpath)
 {
-	HANDLE handle;
 	WCHAR wlinkpath[PATH_MAX];
-
-	if (utf8_to_utf16_filename(linkpath, strlen(linkpath) + 1, wlinkpath, PATH_MAX) <= 0)
+	int len = filename_to_nt_pathname(linkpath, wlinkpath, PATH_MAX);
+	if (len <= 0)
 		return -L_ENOENT;
 
-	log_info("CreateFileW(): %s", linkpath);
-	handle = CreateFileW(wlinkpath, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, CREATE_NEW, FILE_ATTRIBUTE_SYSTEM, NULL);
-	if (handle == INVALID_HANDLE_VALUE)
+	UNICODE_STRING pathname;
+	RtlInitCountedUnicodeString(&pathname, wlinkpath, len * sizeof(WCHAR));
+	IO_STATUS_BLOCK status_block;
+	OBJECT_ATTRIBUTES attr;
+	attr.Length = sizeof(OBJECT_ATTRIBUTES);
+	attr.RootDirectory = NULL;
+	attr.ObjectName = &pathname;
+	attr.Attributes = 0;
+	attr.SecurityDescriptor = NULL;
+	attr.SecurityQualityOfService = NULL;
+	HANDLE handle;
+	NTSTATUS status = NtCreateFile(&handle, SYNCHRONIZE | FILE_WRITE_DATA, &attr, &status_block, NULL,
+		FILE_ATTRIBUTE_SYSTEM, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, FILE_CREATE,
+		FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT, NULL, 0);
+
+	if (!NT_SUCCESS(status))
 	{
-		DWORD err = GetLastError();
-		if (err == ERROR_FILE_EXISTS || err == ERROR_ALREADY_EXISTS)
+		if (status == STATUS_OBJECT_NAME_EXISTS || status == STATUS_OBJECT_NAME_COLLISION)
 		{
 			log_warning("File already exists.");
 			return -L_EEXIST;
 		}
-		log_warning("CreateFileW() failed, error code: %d.", GetLastError());
+		log_warning("NtCreateFile() failed, status: %x", status);
 		return -L_ENOENT;
 	}
+
 	DWORD num_written;
 	if (!WriteFile(handle, WINFS_SYMLINK_HEADER, WINFS_SYMLINK_HEADER_LEN, &num_written, NULL) || num_written < WINFS_SYMLINK_HEADER_LEN)
 	{
@@ -734,7 +752,7 @@ static int winfs_symlink(struct file_system *fs, const char *target, const char 
 		CloseHandle(handle);
 		return -L_EIO;
 	}
-	CloseHandle(handle);
+	NtClose(handle);
 	return 0;
 }
 
