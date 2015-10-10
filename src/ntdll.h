@@ -233,6 +233,19 @@ NTSYSAPI NTSTATUS NTAPI NtClearEvent(
 	_In_		HANDLE EventHandle
 	);
 
+/* Mutant objects */
+NTSYSAPI NTSTATUS NTAPI NtCreateMutant(
+	_Out_		PHANDLE MutantHandle,
+	_In_		ACCESS_MASK DesiredAccess,
+	_In_		POBJECT_ATTRIBUTES ObjectAttributes,
+	_In_		BOOLEAN InitialOwner
+	);
+
+NTSYSAPI NTSTATUS NTAPI NtReleaseMutant(
+	_In_		HANDLE MutantHandle,
+	_Out_opt_	PULONG PreviousState
+	);
+
 /* File API */
 /* Create disposition flags */
 #define FILE_SUPERSEDE                  0x00000000
@@ -441,6 +454,19 @@ NTSYSAPI NTSTATUS NTAPI NtSetInformationFile(
 	_In_		FILE_INFORMATION_CLASS FileInformationClass
 	);
 
+/* Directory */
+#define DIRECTORY_QUERY					0x0001
+#define DIRECTORY_TRAVERSE				0x0002
+#define DIRECTORY_CREATE_OBJECT			0x0004
+#define DIRECTORY_CREATE_SUBDIRECTORY	0x0008
+#define DIRECTORY_ALL_ACCESS			(STANDARD_RIGHTS_REQUIRED | 0xF)
+
+NTSYSAPI NTSTATUS NTAPI NtCreateDirectoryObject(
+	_Out_		PHANDLE DirectoryHandle,
+	_In_		ACCESS_MASK DesiredAccess,
+	_In_		POBJECT_ATTRIBUTES ObjectAttributes
+	);
+
 NTSYSAPI NTSTATUS NTAPI NtQueryDirectoryFile(
 	_In_		HANDLE FileHandle,
 	_In_opt_	HANDLE Event,
@@ -632,6 +658,12 @@ NTSYSAPI NTSTATUS NTAPI NtQueryInformationThread(
 	_Inout_		PVOID ThreadInformation,
 	_In_		ULONG ThreadInformationLength,
 	_Out_opt_	PULONG ReturnLength
+	);
+
+/* Process */
+NTSYSAPI NTSTATUS NTAPI NtTerminateProcess(
+	_In_opt_	HANDLE ProcessHandle,
+	_In_		NTSTATUS ExitStatus
 	);
 
 /* Token */

@@ -1,7 +1,7 @@
 /*
  * This file is part of Foreign Linux.
  *
- * Copyright (C) 2014, 2015 Xiangyan Sun <wishstudio@gmail.com>
+ * Copyright (C) 2015 Xiangyan Sun <wishstudio@gmail.com>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,22 +17,23 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <syscall/mm.h>
-#include <flags.h>
+#pragma once
 
-struct _flags *cmdline_flags;
+#include <stdbool.h>
 
-void flags_init()
-{
-	cmdline_flags = (struct _flags *)mm_static_alloc(sizeof(struct _flags));
-	strcpy(cmdline_flags->global_session_id, DEFAULT_SESSION_ID);
-}
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
+#include <ntdll.h>
 
-void flags_afterfork_parent()
-{
-}
+HANDLE shared_get_object_directory();
+void shared_init();
+bool shared_fork(HANDLE child);
+void shared_afterfork_parent();
+void shared_afterfork_child();
 
-void flags_afterfork_child()
-{
-	cmdline_flags = (struct _flags *)mm_static_alloc(sizeof(struct _flags));
-}
+/* Static allocation for globally shared area
+ * Currently the users of this API should make sure to work with zero initialization
+ * Because they do not have any chance of manually initialize their shared data area
+ */
+#define SHARED_ALLOC_SIZE		3 * BLOCK_SIZE
+void *shared_alloc(size_t size);

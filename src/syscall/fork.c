@@ -30,6 +30,7 @@
 #include <flags.h>
 #include <heap.h>
 #include <log.h>
+#include <shared.h>
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
@@ -62,6 +63,7 @@ __declspec(noreturn) static void fork_child()
 	install_syscall_handler();
 	mm_afterfork_child();
 	flags_afterfork_child();
+	shared_afterfork_child();
 	heap_afterfork_child();
 	signal_afterfork_child();
 	process_afterfork_child(fork->stack_base, fork->pid);
@@ -178,6 +180,9 @@ static pid_t fork_process(struct syscall_context *context, unsigned long flags, 
 	if (!mm_fork(info.hProcess))
 		goto fail;
 
+	if (!shared_fork(info.hProcess))
+		goto fail;
+
 	if (!heap_fork(info.hProcess))
 		goto fail;
 
@@ -218,6 +223,7 @@ static pid_t fork_process(struct syscall_context *context, unsigned long flags, 
 	process_afterfork_parent();
 	signal_afterfork_parent();
 	heap_afterfork_parent();
+	shared_afterfork_parent();
 	flags_afterfork_parent();
 	mm_afterfork_parent();
 

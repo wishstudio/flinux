@@ -257,6 +257,7 @@
     <ClInclude Include="src\version.h" />
     <ClInclude Include="src\flags.h" />
     <ClInclude Include="src\win7compat.h" />
+    <ClInclude Include="src\shared.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
@@ -359,6 +360,7 @@
     </ClCompile>
     <ClCompile Include="src\flags.c" />
     <ClCompile Include="src\win7compat.c" />
+    <ClCompile Include="src\shared.c" />
   </ItemGroup>
   <ItemGroup>
     <MASM Include="src\syscall\stubs64.asm">

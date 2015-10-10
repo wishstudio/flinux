@@ -59,6 +59,7 @@
 #define BLOCK_ALIGNED(flag)			((flag & INTERNAL_MAP_VIRTUALALLOC) || (flag & INTERNAL_MAP_SHARED))
 
 void mm_init();
+void mm_init_global_shared();
 void mm_reset();
 void mm_shutdown();
 void mm_update_brk(void *brk);
@@ -97,10 +98,3 @@ void mm_populate(void *addr);
  */
 #define MM_STATIC_ALLOC_SIZE	3 * BLOCK_SIZE	/* The total size */
 void *mm_static_alloc(size_t size);
-
-/* Static allocation for globally shared area
- * Currently the users of this API should make sure to work with zero initialization
- * Because they do not have any chance of manually initialize their shared data area
- */
-#define MM_GLOBAL_SHARED_ALLOC_SIZE		3 * BLOCK_SIZE
-void *mm_global_shared_alloc(size_t size);

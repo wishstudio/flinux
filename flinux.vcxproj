@@ -86,6 +86,7 @@
     <ClInclude Include="src\log.h" />
     <ClInclude Include="src\ntdll.h" />
     <ClInclude Include="src\platform.h" />
+    <ClInclude Include="src\shared.h" />
     <ClInclude Include="src\str.h" />
     <ClInclude Include="src\syscall\exec.h" />
     <ClInclude Include="src\syscall\fork.h" />
@@ -131,6 +132,7 @@
     <ClCompile Include="src\lib\rbtree.c" />
     <ClCompile Include="src\log.c" />
     <ClCompile Include="src\main.c" />
+    <ClCompile Include="src\shared.c" />
     <ClCompile Include="src\str.c" />
     <ClCompile Include="src\syscall\exec.c" />
     <ClCompile Include="src\syscall\fork.c" />

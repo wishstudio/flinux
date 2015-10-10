@@ -1315,7 +1315,7 @@ static struct dbt_block *dbt_translate(size_t pc, struct syscall_context *contex
 		block = alloc_block();
 		if (!block) /* The cache is full */
 		{
-			if (session_flags->dbt_trace)
+			if (cmdline_flags->dbt_trace)
 			{
 				dbt_save_simd_state();
 				log_debug("dbt cache is full, flushing code cache... (current pc = %p)", pc);
@@ -1330,7 +1330,7 @@ static struct dbt_block *dbt_translate(size_t pc, struct syscall_context *contex
 		rb_add(&dbt->cache_tree, &block->cache_tree, cache_tree_cmp);
 	}
 	
-	if (session_flags->dbt_trace)
+	if (cmdline_flags->dbt_trace)
 	{
 		dbt_save_simd_state();
 		log_debug("dbt_translate: id: %d, pc: %p, translated pc: %p, end: %p", dbt->blocks_count, block->pc, block->start, dbt->end);
@@ -1658,7 +1658,7 @@ done_prefix:
 			size_t dest = (size_t)code + rel;
 			gen_push_imm32(&out, (size_t)code);
 			gen_mov_rm_imm32(&out, modrm_rm_disp((int32_t)&dbt->return_cache[RETURN_CACHE_HASH((size_t)code)]), 0);
-			if (session_flags->dbt_trace_all) /* Do not do any optimizations */
+			if (cmdline_flags->dbt_trace_all) /* Do not do any optimizations */
 				*(size_t*)(out - 4) = (size_t)dbt->return_fallback_trampoline;
 			else
 				*(size_t*)(out - 4) = (size_t)out + 5;
@@ -1707,7 +1707,7 @@ done_prefix:
 				gen_push_rm(&out, ins.rm);
 			}
 			gen_mov_rm_imm32(&out, modrm_rm_disp((int32_t)&dbt->return_cache[RETURN_CACHE_HASH((size_t)code)]), 0);
-			if (session_flags->dbt_trace_all) /* Do not do any optimizations */
+			if (cmdline_flags->dbt_trace_all) /* Do not do any optimizations */
 				*(size_t*)(out - 4) = (size_t)dbt->return_fallback_trampoline;
 			else
 				*(size_t*)(out - 4) = (size_t)out + 5;
@@ -1984,7 +1984,7 @@ static uint8_t *dbt_find(size_t pc)
 		struct dbt_block *block = slist_entry(cur, struct dbt_block, list);
 		if (block->pc == pc)
 		{
-			if (session_flags->dbt_trace_all)
+			if (cmdline_flags->dbt_trace_all)
 			{
 				dbt_save_simd_state();
 				log_debug("dbt_find: block pc: %p, translated pc: %p, end: %p", block->pc, block->start, dbt->end);
@@ -2008,7 +2008,7 @@ void dbt_find_next(size_t pc)
 void dbt_find_next_sieve(size_t pc)
 {
 	uint8_t *target = dbt_find(pc);
-	if (session_flags->dbt_trace_all)
+	if (cmdline_flags->dbt_trace_all)
 	{
 		/* Do not do any optimizations */
 		dbt_set_return_addr(pc, (size_t)target);
@@ -2041,7 +2041,7 @@ void dbt_find_direct(size_t pc, size_t patch_addr)
 	/* Translate or generate the block */
 	dbt_flushed = false;
 	size_t block_start = (size_t)dbt_find(pc);
-	if (!dbt_flushed && !session_flags->dbt_trace_all)
+	if (!dbt_flushed && !cmdline_flags->dbt_trace_all)
 	{
 		/* Patch the jmp/call address so we don't need to repeat work again */
 		*(size_t*)patch_addr = (intptr_t)(block_start - (patch_addr + 4)); /* Relative address */

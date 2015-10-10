@@ -34,6 +34,7 @@
 #include <datetime.h>
 #include <log.h>
 #include <ntdll.h>
+#include <shared.h>
 #include <str.h>
 
 #include <stdbool.h>
@@ -70,12 +71,18 @@ static void process_init_private()
 	for (int i = 0; i < MAX_PROCESS_COUNT; i++)
 		list_add(&process->thread_freelist, &process->threads[i].list);
 	/* Initialize shared process table related data structures */
-	process_shared = (volatile struct process_shared_data *)mm_global_shared_alloc(sizeof(struct process_shared_data));
-	SECURITY_ATTRIBUTES attr;
-	attr.nLength = sizeof(SECURITY_ATTRIBUTES);
-	attr.bInheritHandle = TRUE;
-	attr.lpSecurityDescriptor = NULL;
-	process->shared_mutex = CreateMutexW(&attr, FALSE, L"flinux_process_shared_mutex");
+	process_shared = (volatile struct process_shared_data *)shared_alloc(sizeof(struct process_shared_data));
+	UNICODE_STRING shared_mutex_name;
+	RtlInitUnicodeString(&shared_mutex_name, L"process_shared_mutex");
+	OBJECT_ATTRIBUTES oa;
+	InitializeObjectAttributes(&oa, &shared_mutex_name, OBJ_OPENIF, shared_get_object_directory(), NULL);
+	NTSTATUS status;
+	status = NtCreateMutant(&process->shared_mutex, MUTANT_ALL_ACCESS, &oa, FALSE);
+	if (!NT_SUCCESS(status))
+	{
+		log_info("NtCreateMutant() failed, status: %x", status);
+		NtTerminateProcess(NtCurrentProcess(), 1);
+	}
 }
 
 static void process_lock_shared()
@@ -85,7 +92,7 @@ static void process_lock_shared()
 
 static void process_unlock_shared()
 {
-	ReleaseMutex(process->shared_mutex);
+	NtReleaseMutant(process->shared_mutex, NULL);
 }
 
 /* Allocate a new thread structure in process_data */
