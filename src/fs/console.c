@@ -143,9 +143,9 @@ static BOOL WINAPI console_ctrlc_handler(DWORD dwCtrlType)
 		return FALSE;
 	struct siginfo info;
 	info.si_signo = SIGINT;
-	info.si_code = 0;
+	info.si_code = SI_KERNEL;
 	info.si_errno = 0;
-	signal_kill(GetCurrentProcessId(), &info);
+	signal_kill(process_get_pid(), &info);
 	return TRUE;
 }
 
@@ -378,9 +378,9 @@ static void console_retrieve_state()
 		console->height = new_height;
 		struct siginfo info;
 		info.si_signo = SIGWINCH;
-		info.si_code = 0;
+		info.si_code = SI_KERNEL;
 		info.si_errno = 0;
-		signal_kill(GetCurrentProcessId(), &info);
+		signal_kill(process_get_pid(), &info);
 	}
 	console->buffer_height = info.dwSize.Y;
 	int top_min = max(0, info.dwCursorPosition.Y - console->height + 1);

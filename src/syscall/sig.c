@@ -182,7 +182,7 @@ static void signal_thread_handle_child_terminated(struct child_process *proc)
 	CloseHandle(proc->hPipe);
 	struct siginfo info;
 	info.si_signo = SIGCHLD;
-	info.si_code = 0;
+	info.si_code = SI_KERNEL;
 	info.si_errno = 0;
 	signal_thread_handle_kill(&info);
 	proc->terminated = true;
@@ -504,7 +504,7 @@ void signal_exit_thread(struct thread *thread)
 
 int signal_kill(pid_t pid, siginfo_t *info)
 {
-	if (pid == GetCurrentProcessId())
+	if (pid == process->pid)
 	{
 		struct signal_packet packet;
 		packet.type = SIGNAL_PACKET_KILL;
@@ -605,7 +605,16 @@ DEFINE_SYSCALL(alarm, unsigned int, seconds)
 DEFINE_SYSCALL(kill, pid_t, pid, int, sig)
 {
 	log_info("kill(%d, %d)", pid, sig);
-	log_error("kill() not implemented.");
+	if (pid <= 0)
+		log_error("pid <= 0 not implemented.");
+	else
+	{
+		struct siginfo info;
+		info.si_signo = sig;
+		info.si_code = SI_USER;
+		info.si_errno = 0;
+		signal_kill(pid, &info);
+	}
 	return 0;
 }
 
