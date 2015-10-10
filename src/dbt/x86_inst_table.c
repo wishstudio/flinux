@@ -942,8 +942,8 @@ static const struct instruction_desc mandatory_0FC2[4] =
 
 static const struct instruction_desc modrm_mod_0FC4[2] =
 {
-	/* R */ NORMAL("pinsrw", MM_XMM, RM_R32_64, __)
-	/* M */ NORMAL("pinsrw", MM_XMM, M16, __)
+	/* R */ NORMAL("pinsrw", MM_XMM, RM_R32_64, IMM8)
+	/* M */ NORMAL("pinsrw", MM_XMM, M16, IMM8)
 };
 
 static const struct instruction_desc mandatory_0FC6[4] =
