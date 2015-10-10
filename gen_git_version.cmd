@@ -44,7 +44,7 @@ if errorlevel 1 (
 
 call !GIT! describe --tags > NUL 2> NUL
 if errorlevel 1 (
-	echo Git not found. Cannot update git_version.h file.
+	echo Git not found. Cannot update version.h file.
 	echo Make sure git is in your path or set the GIT environment variable.
 	echo We will now build as an unknown verison.
 	set VERSION=unknown-version

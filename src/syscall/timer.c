@@ -58,7 +58,7 @@ DEFINE_SYSCALL(gettimeofday, struct timeval *, tv, struct timezone *, tz)
 
 DEFINE_SYSCALL(nanosleep, const struct timespec *, req, struct timespec *, rem)
 {
-	log_info("nanospeep(0x%p, 0x%p)", req, rem);
+	log_info("nanosleep(0x%p, 0x%p)", req, rem);
 	if (!mm_check_read(req, sizeof(struct timespec)) || rem && !mm_check_write(rem, sizeof(struct timespec)))
 		return -L_EFAULT;
 	LARGE_INTEGER delay_interval;
