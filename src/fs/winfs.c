@@ -74,6 +74,7 @@ static int filename_to_nt_pathname(const char *filename, WCHAR *buf, int buf_siz
 }
 
 static int cached_sid_initialized;
+static char cached_token_user[256];
 static PSID cached_sid;
 
 /* TODO: This function should be placed in a better place */
@@ -84,11 +85,12 @@ static PSID get_user_sid()
 	else
 	{
 		HANDLE token;
+		NTSTATUS status;
 		NtOpenProcessToken(NtCurrentProcess(), TOKEN_QUERY, &token);
-		TOKEN_USER token_user;
 		DWORD len;
-		NtQueryInformationToken(token, TokenUser, &token_user, sizeof(TOKEN_USER), &len);
-		cached_sid = token_user.User.Sid;
+		NtQueryInformationToken(token, TokenUser, cached_token_user, sizeof(cached_token_user), &len);
+		TOKEN_USER *token_user = (TOKEN_USER *)cached_token_user;
+		cached_sid = token_user->User.Sid;
 		cached_sid_initialized = 1;
 		CloseHandle(token);
 		return cached_sid;
