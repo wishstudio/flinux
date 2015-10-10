@@ -179,6 +179,7 @@ static void signal_thread_handle_kill(struct siginfo *info)
 
 static void signal_thread_handle_child_terminated(struct child_process *proc)
 {
+	CloseHandle(proc->hPipe);
 	struct siginfo info;
 	info.si_signo = SIGCHLD;
 	info.si_code = 0;
