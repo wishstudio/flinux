@@ -105,6 +105,17 @@ int kvsprintf(char *buffer, const char *format, va_list args)
 				continue;
 			}
 
+			case 'S':
+			{
+				format = f;
+				const wchar_t *ch = va_arg(args, const wchar_t *);
+				if (!ch)
+					continue;
+				while (*ch)
+					*buf++ = (char)*ch++;
+				continue;
+			}
+
 			case 'd':
 			{
 				format = f;
