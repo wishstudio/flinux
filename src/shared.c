@@ -40,7 +40,7 @@ HANDLE shared_get_object_directory()
 	return shared->object_directory;
 }
 
-void shared_create_object_directory()
+static void shared_create_object_directory()
 {
 	/* Convert session id to wide string */
 	WCHAR id[MAX_SESSION_ID_LEN];
