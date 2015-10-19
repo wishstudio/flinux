@@ -49,6 +49,40 @@ struct winfs_file
 /* Convert an utf-8 file name to NT file name, return converted name length in characters, no NULL terminator is appended */
 static int filename_to_nt_pathname(struct mount_point *mp, const char *filename, WCHAR *buf, int buf_size)
 {
+	if (mp->mountpoint[0] == '/' && mp->mountpoint[1] == 0)
+	{
+		/* This is root mount point */
+		if (((filename[0] >= 'a' && filename[0] <= 'z') || (filename[0] >= 'A' && filename[0] <= 'Z'))
+			&& (filename[1] == '/' || filename[1] == 0))
+		{
+			/* This is special dos drive mountpoint */
+			if (buf_size < 6)
+				return 0;
+			buf[0] = L'\\';
+			buf[1] = L'?';
+			buf[2] = L'?';
+			buf[3] = L'\\';
+			/* DOS drive letter must be upper case */
+			if (filename[0] >= 'a' && filename[0] <= 'z')
+				buf[4] = filename[0] - 'a' + 'A';
+			else
+				buf[4] = filename[0];
+			buf[5] = L':';
+			buf_size -= 6;
+			buf += 6;
+			int fl = utf8_to_utf16_filename(filename + 1, strlen(filename) - 1, buf, buf_size);
+			if (fl < 0)
+				return 0;
+			if (fl == 0)
+			{
+				if (buf_size < 1)
+					return 0;
+				fl = 1;
+				buf[0] = L'\\';
+			}
+			return 6 + fl;
+		}
+	}
 	if (buf_size < mp->win_path_len)
 		return 0;
 	memcpy(buf, mp->win_path, mp->win_path_len * sizeof(WCHAR));
@@ -63,7 +97,7 @@ static int filename_to_nt_pathname(struct mount_point *mp, const char *filename,
 	out_size++;
 	buf_size--;
 	int fl = utf8_to_utf16_filename(filename, strlen(filename), buf, buf_size);
-	if (fl == 0)
+	if (fl < 0)
 		return 0;
 	return out_size + fl;
 }
@@ -973,7 +1007,7 @@ static int open_file(HANDLE *hFile, struct mount_point *mp, const char *pathname
 	}
 	/* Test if the file is a symlink */
 	int is_symlink = 0;
-	if (attribute_info.FileAttributes & FILE_ATTRIBUTE_SYSTEM)
+	if (!(attribute_info.FileAttributes & FILE_ATTRIBUTE_DIRECTORY) && (attribute_info.FileAttributes & FILE_ATTRIBUTE_SYSTEM))
 	{
 		/* The file has system flag set. A potential symbolic link. */
 		if (!(desired_access & GENERIC_READ))
@@ -984,6 +1018,7 @@ static int open_file(HANDLE *hFile, struct mount_point *mp, const char *pathname
 			if (read_handle == INVALID_HANDLE_VALUE)
 			{
 				log_warning("Reopen symlink file failed, error code %d. Assume not symlink.", GetLastError());
+				*hFile = handle;
 				return 0;
 			}
 			CloseHandle(handle);
