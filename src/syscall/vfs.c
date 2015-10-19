@@ -84,14 +84,26 @@ struct vfs_data
 struct vfs_shared_data
 {
 	volatile int mp_first;
+	volatile int max_key;
+	int root_id; /* ID of root mount point */
 	struct mount_point mounts[MAX_MOUNT_POINTS]; /* Slot 0 is unused */
 };
 
 static struct vfs_data *vfs;
 static struct vfs_shared_data *vfs_shared;
 
+static void copy_mountpoint(const struct mount_point *mp, struct mount_point *out_mp)
+{
+	out_mp->key = mp->key;
+	out_mp->win_path_len = mp->win_path_len;
+	wcscpy(out_mp->win_path, mp->win_path);
+	out_mp->mountpoint_len = mp->mountpoint_len;
+	strcpy(out_mp->mountpoint, mp->mountpoint);
+	out_mp->fs = vfs->fs[mp->fs_id];
+}
+
 /* Internal mount function. Caller should have vfs_mount_write_mutex acquired. */
-static bool vfs_mount_unsafe(int fs_id, bool is_system, const WCHAR *win_path, const char *mount_path)
+static int vfs_mount_unsafe(int fs_id, bool is_system, const WCHAR *win_path, const char *mount_path)
 {
 	//assert(*mount_path == '/');
 	/* Find an empty slot */
@@ -102,6 +114,7 @@ static bool vfs_mount_unsafe(int fs_id, bool is_system, const WCHAR *win_path, c
 			vfs_shared->mounts[i].used = true;
 			vfs_shared->mounts[i].is_system = is_system;
 			vfs_shared->mounts[i].fs_id = fs_id;
+			vfs_shared->mounts[i].key = InterlockedIncrement(&vfs_shared->max_key);
 			if (win_path == NULL)
 			{
 				vfs_shared->mounts[i].win_path_len = 0;
@@ -150,8 +163,26 @@ static bool vfs_mount_unsafe(int fs_id, bool is_system, const WCHAR *win_path, c
 				vfs_shared->mp_first = i;
 			else
 				vfs_shared->mounts[prev].next = i;
+			return i;
+		}
+	return 0;
+}
+
+void vfs_get_root_mountpoint(struct mount_point *mp)
+{
+	copy_mountpoint(&vfs_shared->mounts[vfs_shared->root_id], mp);
+}
+
+bool vfs_get_mountpoint(int key, struct mount_point *mp)
+{
+	for (int i = vfs_shared->mp_first; i; i = vfs_shared->mounts[i].next)
+	{
+		if (vfs_shared->mounts[i].key == key)
+		{
+			copy_mountpoint(&vfs_shared->mounts[i], mp);
 			return true;
 		}
+	}
 	return false;
 }
 
@@ -235,7 +266,7 @@ static void vfs_shared_init()
 	}
 	basedir[1] = L'?';
 	log_info("Root directory: %S", basedir);
-	vfs_mount_unsafe(FS_WINFS, true, basedir, "/");
+	vfs_shared->root_id = vfs_mount_unsafe(FS_WINFS, true, basedir, "/");
 	vfs_mount_unsafe(FS_DEVFS, true, NULL, "/dev");
 	vfs_mount_unsafe(FS_PROCFS, true, NULL, "/proc");
 	vfs_mount_unsafe(FS_SYSFS, true, NULL, "/sys");
@@ -927,7 +958,7 @@ static bool find_mountpoint(const char *path, struct mount_point *out_mp, const 
 {
 	for (int i = vfs_shared->mp_first; i; i = vfs_shared->mounts[i].next)
 	{
-		struct mount_point *mp = &vfs_shared->mounts[i];
+		const struct mount_point *mp = &vfs_shared->mounts[i];
 		const char *p = mp->mountpoint;
 		const char *subpath = path;
 		while (*p && *p == *subpath)
@@ -937,11 +968,7 @@ static bool find_mountpoint(const char *path, struct mount_point *out_mp, const 
 		}
 		if (*p == 0)
 		{
-			out_mp->win_path_len = mp->win_path_len;
-			wcscpy(out_mp->win_path, mp->win_path);
-			out_mp->mountpoint_len = mp->mountpoint_len;
-			strcpy(out_mp->mountpoint, mp->mountpoint);
-			out_mp->fs = vfs->fs[mp->fs_id];
+			copy_mountpoint(mp, out_mp);
 			*out_subpath = subpath;
 			if (**out_subpath == '/')
 				(*out_subpath)++;

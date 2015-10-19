@@ -105,8 +105,9 @@ typedef struct _OBJECT_ATTRIBUTES {
 	} while (0)
 
 typedef enum _OBJECT_INFORMATION_CLASS {
-	ObjectBasicInformation = 0,
-	ObjectTypeInformation = 2
+	ObjectBasicInformation,
+	ObjectNameInformation,
+	ObjectTypeInformation
 } OBJECT_INFORMATION_CLASS;
 
 typedef struct _OBJECT_BASIC_INFORMATION {
@@ -116,6 +117,11 @@ typedef struct _OBJECT_BASIC_INFORMATION {
 	ULONG       PointerCount;
 	ULONG       Reserved[10];
 } OBJECT_BASIC_INFORMATION, *POBJECT_BASIC_INFORMATION;
+
+typedef struct _OBJECT_NAME_INFORMATION {
+	UNICODE_STRING	Name;
+	WCHAR			NameBuffer[0];
+} OBJECT_NAME_INFORMATION, *POBJECT_NAME_INFORMATION;
 
 NTSYSAPI NTSTATUS NTAPI NtQueryObject(
 	_In_opt_	HANDLE Handle,
@@ -376,6 +382,11 @@ typedef enum _FILE_INFORMATION_CLASS {
 typedef struct _FILE_INTERNAL_INFORMATION {
 	LARGE_INTEGER IndexNumber;
 } FILE_INTERNAL_INFORMATION, *PFILE_INTERNAL_INFORMATION;
+
+typedef struct _FILE_NAME_INFORMATION {
+	ULONG FileNameLength;
+	WCHAR FileName[1];
+} FILE_NAME_INFORMATION, *PFILE_NAME_INFORMATION;
 
 typedef struct _FILE_RENAME_INFORMATION {
 	BOOLEAN ReplaceIfExists;

@@ -391,7 +391,9 @@ int utf16_to_utf8_filename(const uint16_t *data, int srclen, char *outdata, int 
 			uint32_t codepoint = utf16_read_increment(&data, last);
 			if (codepoint == -1)
 				return -1;
-			if (filename_transform_chars[codepoint & 0x7F] == codepoint)
+			if (codepoint == '\\')
+				codepoint = '/';
+			else if (filename_transform_chars[codepoint & 0x7F] == codepoint)
 				codepoint &= 0x7F;
 			int r = utf8_write_increment(codepoint, &outdata, outlast);
 			if (r < 0)

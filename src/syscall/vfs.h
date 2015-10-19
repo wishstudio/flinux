@@ -46,3 +46,5 @@ int vfs_openat(int dirfd, const char *pathname, int flags, int mode, struct file
 struct file *vfs_get(int fd);
 void vfs_ref(struct file *f);
 void vfs_release(struct file *f);
+void vfs_get_root_mountpoint(struct mount_point *mp);
+bool vfs_get_mountpoint(int key, struct mount_point *mp);

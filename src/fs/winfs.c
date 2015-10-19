@@ -42,8 +42,8 @@ struct winfs_file
 	HANDLE handle;
 	HANDLE fp_mutex; /* Mutex for guarding file pointer */
 	int restart_scan; /* for getdents() */
-	int pathlen;
-	char pathname[]; /* Not necessary null-terminated */
+	int mp_key; /* Mount point key */
+	char drive_letter; /* DOS drive letter where this file resides in */
 };
 
 /* Convert an utf-8 file name to NT file name, return converted name length in characters, no NULL terminator is appended */
@@ -262,7 +262,7 @@ static int winfs_close(struct file *f)
 	struct winfs_file *winfile = (struct winfs_file *)f;
 	CloseHandle(winfile->handle);
 	CloseHandle(winfile->fp_mutex);
-	kfree(winfile, sizeof(struct winfs_file) + winfile->pathlen);
+	kfree(winfile, sizeof(struct winfs_file));
 	return 0;
 }
 
@@ -270,12 +270,57 @@ static int winfs_getpath(struct file *f, char *buf)
 {
 	AcquireSRWLockShared(&f->rw_lock);
 	struct winfs_file *winfile = (struct winfs_file *)f;
-	buf[0] = '/'; /* the mountpoint */
-	memcpy(buf + 1, winfile->pathname, winfile->pathlen);
-	buf[1 + winfile->pathlen] = 0;
-	int r = winfile->pathlen + 1;
+	char data[PATH_MAX + 128];
+	FILE_NAME_INFORMATION *info = (FILE_NAME_INFORMATION *)data;
+	IO_STATUS_BLOCK status_block;
+	NTSTATUS status;
+	status = NtQueryInformationFile(winfile->handle, &status_block, info, sizeof(data), FileNameInformation);
+	info->FileName[info->FileNameLength / 2] = 0;
+	if (!NT_SUCCESS(status))
+	{
+		log_error("NtQueryInformationFile(FileNameInformation) failed, status: %x", status);
+		__debugbreak();
+	}
+	struct mount_point mp;
+	if (!vfs_get_mountpoint(winfile->mp_key, &mp))
+		vfs_get_root_mountpoint(&mp);
+	int len = 0;
+	WCHAR *relpath;
+	/* Test if the file is in the mount point */
+	/* \??\C:\Windows,  \Windows */
+	if (mp.win_path[4] == winfile->drive_letter && !wcscmp(mp.win_path + 6, info->FileName))
+	{
+		relpath = info->FileName + mp.win_path_len - 6;
+		/* Copy mount point */
+		memcpy(buf, mp.mountpoint, mp.mountpoint_len);
+		len = mp.mountpoint_len;
+		buf += mp.mountpoint_len;
+		if (buf[-1] != '/')
+		{
+			*buf++ = '/';
+			len++;
+		}
+	}
+	else
+	{
+		/* Not inside the point, use dos drive mount points as the last resort */
+		relpath = info->FileName;
+		buf[0] = '/';
+		buf[1] = winfile->drive_letter - 'A' + 'a';
+		buf[2] = '/';
+		buf += 3;
+		len = 3;
+	}
+	int r = utf16_to_utf8_filename(relpath, wcslen(relpath), buf, PATH_MAX); /* TODO: length */
+	if (r < 0)
+	{
+		log_error("utf16_to_utf8_filename() failed.");
+		__debugbreak();
+	}
+	len += r;
+	buf[r] = 0;
 	ReleaseSRWLockShared(&f->rw_lock);
-	return r;
+	return len;
 }
 
 static size_t winfs_read(struct file *f, void *buf, size_t count)
@@ -952,7 +997,7 @@ static int winfs_rmdir(struct mount_point *mp, const char *pathname)
  */
 static int open_file(HANDLE *hFile, struct mount_point *mp, const char *pathname,
 	DWORD desired_access, DWORD create_disposition,
-	int flags, BOOL bInherit, char *target, int buflen)
+	int flags, BOOL bInherit, char *target, int buflen, char *drive_letter)
 {
 	WCHAR buf[PATH_MAX];
 	UNICODE_STRING name;
@@ -960,6 +1005,7 @@ static int open_file(HANDLE *hFile, struct mount_point *mp, const char *pathname
 	name.MaximumLength = name.Length = 2 * filename_to_nt_pathname(mp, pathname, buf, PATH_MAX);
 	if (name.Length == 0)
 		return -L_ENOENT;
+	*drive_letter = buf[4];
 
 	OBJECT_ATTRIBUTES attr;
 	attr.Length = sizeof(OBJECT_ATTRIBUTES);
@@ -1070,7 +1116,8 @@ static int winfs_open(struct mount_point *mp, const char *pathname, int flags, i
 		create_disposition = FILE_OPEN_IF;
 	else
 		create_disposition = FILE_OPEN;
-	int r = open_file(&handle, mp, pathname, desired_access, create_disposition, flags, fp != NULL, target, buflen);
+	char drive_letter;
+	int r = open_file(&handle, mp, pathname, desired_access, create_disposition, flags, fp != NULL, target, buflen, &drive_letter);
 	if (r < 0 || r == 1)
 		return r;
 	if ((flags & O_TRUNC) && ((flags & O_WRONLY) || (flags & O_RDWR)))
@@ -1097,8 +1144,8 @@ static int winfs_open(struct mount_point *mp, const char *pathname, int flags, i
 		/* TODO: Don't need this mutex for directory or symlink */
 		file->fp_mutex = CreateMutexW(&attr, FALSE, NULL);
 		file->restart_scan = 1;
-		file->pathlen = pathlen;
-		memcpy(file->pathname, pathname, pathlen);
+		file->mp_key = mp->key;
+		file->drive_letter = drive_letter;
 		*fp = (struct file *)file;
 	}
 	else

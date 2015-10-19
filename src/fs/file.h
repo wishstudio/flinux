@@ -106,6 +106,7 @@ struct mount_point
 		 */
 		struct file_system *fs;
 	};
+	int key; /* Global id which can be used to uniquely identify this mount point */
 	bool is_system;
 	int win_path_len;
 	WCHAR win_path[MAX_PATH];
