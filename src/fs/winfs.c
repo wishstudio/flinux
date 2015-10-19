@@ -705,7 +705,7 @@ static struct file_ops winfs_ops =
 	.statfs = winfs_statfs,
 };
 
-static int winfs_symlink(struct file_system *fs, const char *target, const char *linkpath)
+static int winfs_symlink(struct mount_point *mp, const char *target, const char *linkpath)
 {
 	WCHAR wlinkpath[PATH_MAX];
 	int len = filename_to_nt_pathname(linkpath, wlinkpath, PATH_MAX);
@@ -756,7 +756,7 @@ static int winfs_symlink(struct file_system *fs, const char *target, const char 
 	return 0;
 }
 
-static int winfs_link(struct file_system *fs, struct file *f, const char *newpath)
+static int winfs_link(struct mount_point *mp, struct file *f, const char *newpath)
 {
 	AcquireSRWLockShared(&f->rw_lock);
 	struct winfs_file *winfile = (struct winfs_file *) f;
@@ -785,7 +785,7 @@ out:
 	return r;
 }
 
-static int winfs_unlink(struct file_system *fs, const char *pathname)
+static int winfs_unlink(struct mount_point *mp, const char *pathname)
 {
 	WCHAR wpathname[PATH_MAX];
 	int len = filename_to_nt_pathname(pathname, wpathname, PATH_MAX);
@@ -842,7 +842,7 @@ static int winfs_unlink(struct file_system *fs, const char *pathname)
 	return 0;
 }
 
-static int winfs_rename(struct file_system *fs, struct file *f, const char *newpath)
+static int winfs_rename(struct mount_point *mp, struct file *f, const char *newpath)
 {
 	AcquireSRWLockShared(&f->rw_lock);
 	struct winfs_file *winfile = (struct winfs_file *)f;
@@ -874,7 +874,7 @@ retry:
 			/* The destination exists and the operation cannot be completed via a native operation.
 			 * We remove the destination file first, then move this file again.
 			 */
-			r = winfs_unlink(fs, newpath);
+			r = winfs_unlink(mp, newpath);
 			if (r)
 				goto out;
 			goto retry;
@@ -888,7 +888,7 @@ out:
 	return r;
 }
 
-static int winfs_mkdir(struct file_system *fs, const char *pathname, int mode)
+static int winfs_mkdir(struct mount_point *mp, const char *pathname, int mode)
 {
 	WCHAR wpathname[PATH_MAX];
 
@@ -908,7 +908,7 @@ static int winfs_mkdir(struct file_system *fs, const char *pathname, int mode)
 	return 0;
 }
 
-static int winfs_rmdir(struct file_system *fs, const char *pathname)
+static int winfs_rmdir(struct mount_point *mp, const char *pathname)
 {
 	WCHAR wpathname[PATH_MAX];
 	if (utf8_to_utf16_filename(pathname, strlen(pathname) + 1, wpathname, PATH_MAX) <= 0)
@@ -1023,7 +1023,7 @@ static int open_file(HANDLE *hFile, const char *pathname, DWORD desired_access, 
 	return 0;
 }
 
-static int winfs_open(struct file_system *fs, const char *pathname, int flags, int mode, struct file **fp, char *target, int buflen)
+static int winfs_open(struct mount_point *mp, const char *pathname, int flags, int mode, struct file **fp, char *target, int buflen)
 {
 	/* TODO: mode */
 	DWORD desired_access, create_disposition;
@@ -1089,7 +1089,6 @@ struct winfs
 struct file_system *winfs_alloc()
 {
 	struct winfs *fs = (struct winfs *)kmalloc(sizeof(struct winfs));
-	fs->base_fs.mountpoint = "/";
 	fs->base_fs.open = winfs_open;
 	fs->base_fs.symlink = winfs_symlink;
 	fs->base_fs.link = winfs_link;

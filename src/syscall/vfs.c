@@ -36,6 +36,7 @@
 #include <syscall/vfs.h>
 #include <datetime.h>
 #include <log.h>
+#include <shared.h>
 #include <str.h>
 
 #define WIN32_LEAN_AND_MEAN
@@ -64,21 +65,87 @@ struct filed
 	int cloexec;
 };
 
+#define FS_WINFS			0
+#define FS_DEVFS			1
+#define FS_PROCFS			2
+#define FS_SYSFS			3
+#define FS_COUNT			4
+#define MAX_MOUNT_POINTS	64
 struct vfs_data
 {
 	SRWLOCK rw_lock;
+	struct file_system *fs[FS_COUNT];
+	HANDLE mount_write_mutex;
 	struct filed filed[MAX_FD_COUNT];
-	struct file_system *fs_first;
 	struct file *cwd;
 	int umask;
 };
 
-static struct vfs_data *vfs;
-
-static void vfs_add(struct file_system *fs)
+struct vfs_shared_data
 {
-	fs->next = vfs->fs_first;
-	vfs->fs_first = fs;
+	volatile int mp_first;
+	struct mount_point mounts[MAX_MOUNT_POINTS]; /* Slot 0 is unused */
+};
+
+static struct vfs_data *vfs;
+static struct vfs_shared_data *vfs_shared;
+
+/* Internal mount function. Caller should have vfs_mount_write_mutex acquired. */
+static bool vfs_mount_unsafe(int fs_id, bool is_system, const WCHAR *win_path, const char *mount_path)
+{
+	//assert(*mount_path == '/');
+	/* Find an empty slot */
+	for (int i = 1; i < MAX_MOUNT_POINTS; i++)
+		if (!vfs_shared->mounts[i].used)
+		{
+			/* Initialize mount struct */
+			vfs_shared->mounts[i].used = true;
+			vfs_shared->mounts[i].is_system = is_system;
+			vfs_shared->mounts[i].fs_id = fs_id;
+			if (win_path == NULL)
+				vfs_shared->mounts[i].win_path[0] = 0;
+			else
+				wcscpy(vfs_shared->mounts[i].win_path, win_path);
+			strcpy(vfs_shared->mounts[i].mountpoint, mount_path);
+			
+			/* We have to keep mount points sorted by their POSIX paths in descending order.
+			 * Hence "/home" will be tested before "/" on path resolving.
+			 */
+			/* Find the position to insert this mount point */
+			int prev = 0, cur = vfs_shared->mp_first;
+			while (cur)
+			{
+				int r = strcmp(vfs_shared->mounts[i].mountpoint, vfs_shared->mounts[cur].mountpoint);
+				if (r == 0)
+				{
+					log_error("Mounting to existing mount point \"%s\" not supported yet.",
+						vfs_shared->mounts[i].mountpoint);
+					process_exit(1, 0);
+				}
+				if (r > 0)
+				{
+					/* Insert before current mount point */
+					/* `next' is volatile, and in MSVC volatile means release ordering */
+					vfs_shared->mounts[i].next = cur;
+					if (prev == 0)
+						vfs_shared->mp_first = i;
+					else
+						vfs_shared->mounts[prev].next = i;
+					return true;
+				}
+				prev = cur;
+				cur = vfs_shared->mounts[cur].next;
+			}
+			/* It is less than any of existing mount points, insert after the last one */
+			/* `next' is volatile, and in MSVC volatile means release ordering */
+			vfs_shared->mounts[i].next = 0;
+			if (prev == 0)
+				vfs_shared->mp_first = i;
+			else
+				vfs_shared->mounts[prev].next = i;
+			return true;
+		}
+	return false;
 }
 
 /* Reference a file, only used on raw file handles not created by sys_open() */
@@ -127,11 +194,67 @@ static void vfs_close(int fd)
 	vfs->filed[fd].cloexec = 0;
 }
 
+static void vfs_shared_init()
+{
+	if (vfs_shared->mp_first > 0)
+	{
+		/* The shared area is already initialized */
+		return;
+	}
+	/* Acquire write mutex first */
+	WaitForSingleObject(vfs->mount_write_mutex, INFINITE);
+	if (vfs_shared->mp_first > 0)
+	{
+		/* It is initialized by another process, quit now */
+		NtReleaseMutant(vfs->mount_write_mutex, NULL);
+		return;
+	}
+	/* Create the initial mount table */
+	/* Get Win32 path of our root directory */
+	HANDLE basedir_handle = CreateFileW(L".", 0, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
+		OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+	if (basedir_handle == INVALID_HANDLE_VALUE)
+	{
+		log_error("Open current directory failed.");
+		process_exit(1, 0);
+	}
+	WCHAR basedir[MAX_PATH + 1];
+	DWORD basedir_len = GetFinalPathNameByHandleW(basedir_handle, basedir, MAX_PATH, FILE_NAME_NORMALIZED);
+	CloseHandle(basedir_handle);
+	if (basedir_len > MAX_PATH)
+	{
+		log_error("The path of current directory is too long.");
+		process_exit(1, 0);
+	}
+	basedir[1] = L'?';
+	log_info("Root directory: %S", basedir);
+	vfs_mount_unsafe(FS_WINFS, true, basedir, "/");
+	vfs_mount_unsafe(FS_DEVFS, true, NULL, "/dev");
+	vfs_mount_unsafe(FS_PROCFS, true, NULL, "/proc");
+	vfs_mount_unsafe(FS_SYSFS, true, NULL, "/sys");
+	NtReleaseMutant(vfs->mount_write_mutex, NULL);
+}
+
 void vfs_init()
 {
 	log_info("vfs subsystem initializing...");
 	vfs = mm_static_alloc(sizeof(struct vfs_data));
 	InitializeSRWLock(&vfs->rw_lock);
+	/* Create file systems */
+	vfs->fs[FS_WINFS] = winfs_alloc();
+	vfs->fs[FS_DEVFS] = devfs_alloc();
+	vfs->fs[FS_PROCFS] = procfs_alloc();
+	vfs->fs[FS_SYSFS] = sysfs_alloc();
+	/* Create vfs shared area */
+	vfs_shared = shared_alloc(sizeof(struct vfs_shared_data));
+	/* Create vfs mutexex */
+	UNICODE_STRING name;
+	RtlInitUnicodeString(&name, L"vfs_mount_write_mutex");
+	OBJECT_ATTRIBUTES oa;
+	InitializeObjectAttributes(&oa, &name, OBJ_INHERIT | OBJ_OPENIF, shared_get_object_directory(), NULL);
+	NtCreateMutant(&vfs->mount_write_mutex, MUTANT_ALL_ACCESS, &oa, FALSE);
+	vfs_shared_init();
+	/* Create files for standard I/O */
 	struct file *console_in, *console_out;
 	console_init();
 	struct file *console = console_alloc();
@@ -139,10 +262,6 @@ void vfs_init()
 	vfs->filed[0].fd = console;
 	vfs->filed[1].fd = console;
 	vfs->filed[2].fd = console;
-	vfs_add(winfs_alloc());
-	vfs_add(devfs_alloc());
-	vfs_add(procfs_alloc());
-	vfs_add(sysfs_alloc());
 	/* Initialize CWD */
 	if (vfs_openat(AT_FDCWD, "/", O_DIRECTORY | O_PATH, 0, &vfs->cwd) < 0)
 	{
@@ -213,6 +332,7 @@ static int cmpfiled(const void *a, const void *b)
 void vfs_afterfork_child()
 {
 	vfs = mm_static_alloc(sizeof(struct vfs_data));
+	vfs_shared = shared_alloc(sizeof(struct vfs_shared_data));
 	InitializeSRWLock(&vfs->rw_lock);
 	console_afterfork();
 
@@ -796,12 +916,12 @@ DEFINE_SYSCALL(llseek, int, fd, unsigned long, offset_high, unsigned long, offse
 	return r;
 }
 
-static int find_filesystem(const char *path, struct file_system **out_fs, const char **out_subpath)
+static bool find_mountpoint(const char *path, struct mount_point *out_mp, const char **out_subpath)
 {
-	struct file_system *fs;
-	for (fs = vfs->fs_first; fs; fs = fs->next)
+	for (int i = vfs_shared->mp_first; i; i = vfs_shared->mounts[i].next)
 	{
-		const char *p = fs->mountpoint;
+		struct mount_point *mp = &vfs_shared->mounts[i];
+		const char *p = mp->mountpoint;
 		const char *subpath = path;
 		while (*p && *p == *subpath)
 		{
@@ -810,14 +930,16 @@ static int find_filesystem(const char *path, struct file_system **out_fs, const 
 		}
 		if (*p == 0)
 		{
-			*out_fs = fs;
+			strcpy(out_mp->mountpoint, mp->mountpoint);
+			wcscpy(out_mp->win_path, mp->win_path);
+			out_mp->fs = vfs->fs[mp->fs_id];
 			*out_subpath = subpath;
 			if (**out_subpath == '/')
 				(*out_subpath)++;
-			return 1;
+			return true;
 		}
 	}
-	return 0;
+	return false;
 }
 
 /* Resolve a given path (except the last component), output the real path
@@ -878,14 +1000,15 @@ static int resolve_path(const char *dirpath, const char *pathname, char *realpat
 				/* Resolve component */
 				for (;;)
 				{
-					struct file_system *fs;
+					struct mount_point mp;
 					char *subpath;
 					*realpath = 0;
-					if (!find_filesystem(realpath_start, &fs, &subpath))
+					if (!find_mountpoint(realpath_start, &mp, &subpath))
 						return -L_ENOTDIR;
+					struct file_system *fs = mp.fs;
 					if (!fs->open)
 						return -L_ENOTDIR;
-					int r = fs->open(fs, subpath, O_PATH | O_DIRECTORY, 0, NULL, target, PATH_MAX);
+					int r = fs->open(&mp, subpath, O_PATH | O_DIRECTORY, 0, NULL, target, PATH_MAX);
 					if (r < 0)
 						return r;
 					else if (r == 0) /* It is a regular file, go forward */
@@ -998,11 +1121,12 @@ int vfs_openat(int dirfd, const char *pathname, int flags, int mode, struct file
 	{
 		if (r < 0)
 			return r;
-		struct file_system *fs;
+		struct mount_point mp;
 		char *subpath;
-		if (!find_filesystem(realpath, &fs, &subpath))
+		if (!find_mountpoint(realpath, &mp, &subpath))
 			return -L_ENOENT;
-		int ret = fs->open(fs, subpath, flags, mode, f, target, PATH_MAX);
+		struct file_system *fs = mp.fs;
+		int ret = fs->open(&mp, subpath, flags, mode, f, target, PATH_MAX);
 		if (ret <= 0)
 			return ret;
 		else if (ret == 1)
@@ -1110,14 +1234,18 @@ DEFINE_SYSCALL(linkat, int, olddirfd, const char *, oldpath, int, newdirfd, cons
 	r = resolve_pathat(newdirfd, newpath, realpath, &symlink_remain);
 	if (r < 0)
 		goto out;
-	struct file_system *fs;
+	struct mount_point mp;
 	char *subpath;
-	if (!find_filesystem(realpath, &fs, &subpath))
+	if (!find_mountpoint(realpath, &mp, &subpath))
 		r = -L_ENOENT;
-	else if (!fs->link)
-		r = -L_EXDEV;
 	else
-		r = fs->link(fs, f, subpath);
+	{
+		struct file_system *fs = mp.fs;
+		if (!fs->link)
+			r = -L_EXDEV;
+		else
+			r = fs->link(&mp, f, subpath);
+	}
 	vfs_release(f);
 out:
 	ReleaseSRWLockExclusive(&vfs->rw_lock);
@@ -1142,23 +1270,27 @@ DEFINE_SYSCALL(unlinkat, int, dirfd, const char *, pathname, int, flags)
 	int r = resolve_pathat(dirfd, pathname, realpath, &symlink_remain);
 	if (r >= 0)
 	{
-		struct file_system *fs;
+		struct mount_point mp;
 		char *subpath;
-		if (!find_filesystem(realpath, &fs, &subpath))
+		if (!find_mountpoint(realpath, &mp, &subpath))
 			r = -L_ENOENT;
-		else if (flags & AT_REMOVEDIR)
-		{
-			if (!fs->rmdir)
-				r = -L_EPERM;
-			else
-				r = fs->rmdir(fs, subpath);
-		}
 		else
 		{
-			if (!fs->unlink)
-				r = -L_EPERM;
+			struct file_system *fs = mp.fs;
+			if (flags & AT_REMOVEDIR)
+			{
+				if (!fs->rmdir)
+					r = -L_EPERM;
+				else
+					r = fs->rmdir(&mp, subpath);
+			}
 			else
-				r = fs->unlink(fs, subpath);
+			{
+				if (!fs->unlink)
+					r = -L_EPERM;
+				else
+					r = fs->unlink(&mp, subpath);
+			}
 		}
 	}
 	ReleaseSRWLockExclusive(&vfs->rw_lock);
@@ -1182,14 +1314,18 @@ DEFINE_SYSCALL(symlinkat, const char *, target, int, newdirfd, const char *, lin
 	int r = resolve_pathat(newdirfd, linkpath, realpath, &symlink_remain);
 	if (r >= 0)
 	{
-		struct file_system *fs;
+		struct mount_point mp;
 		char *subpath;
-		if (!find_filesystem(realpath, &fs, &subpath))
+		if (!find_mountpoint(realpath, &mp, &subpath))
 			r = -L_ENOTDIR;
-		else if (!fs->symlink)
-			r = -L_EPERM;
 		else
-			r = fs->symlink(fs, target, subpath);
+		{
+			struct file_system *fs = mp.fs;
+			if (!fs->symlink)
+				r = -L_EPERM;
+			else
+				r = fs->symlink(&mp, target, subpath);
+		}
 	}
 	ReleaseSRWLockExclusive(&vfs->rw_lock);
 	return r;
@@ -1255,14 +1391,18 @@ DEFINE_SYSCALL(renameat2, int, olddirfd, const char *, oldpath, int, newdirfd, c
 	r = resolve_pathat(newdirfd, newpath, realpath, &symlink_remain);
 	if (r < 0)
 		goto out;
-	struct file_system *fs;
+	struct mount_point mp;
 	char *subpath;
-	if (!find_filesystem(realpath, &fs, &subpath))
-		r = -L_EXDEV;
-	else if (!fs->rename)
+	if (!find_mountpoint(realpath, &mp, &subpath))
 		r = -L_EXDEV;
 	else
-		r = fs->rename(fs, f, subpath);
+	{
+		struct file_system *fs = mp.fs;
+		if (!fs->rename)
+			r = -L_EXDEV;
+		else
+			r = fs->rename(&mp, f, subpath);
+	}
 	vfs_release(f);
 out:
 	ReleaseSRWLockExclusive(&vfs->rw_lock);
@@ -1305,14 +1445,18 @@ DEFINE_SYSCALL(mkdirat, int, dirfd, const char *, pathname, int, mode)
 		r = resolve_pathat(dirfd, pathname, realpath, &symlink_remain);
 	if (r >= 0)
 	{
-		struct file_system *fs;
+		struct mount_point mp;
 		char *subpath;
-		if (!find_filesystem(realpath, &fs, &subpath))
+		if (!find_mountpoint(realpath, &mp, &subpath))
 			r = -L_ENOTDIR;
-		else if (!fs->mkdir)
-			r = -L_EPERM;
 		else
-			r = fs->mkdir(fs, subpath, mode);
+		{
+			struct file_system *fs = mp.fs;
+			if (!fs->mkdir)
+				r = -L_EPERM;
+			else
+				r = fs->mkdir(&mp, subpath, mode);
+		}
 	}
 	ReleaseSRWLockExclusive(&vfs->rw_lock);
 	return r;
@@ -2115,21 +2259,8 @@ DEFINE_SYSCALL(chroot, const char *, pathname)
 	log_info("chroot(\"%s\")", pathname);
 	if (!mm_check_read_string(pathname))
 		return -L_EFAULT;
-	AcquireSRWLockExclusive(&vfs->rw_lock);
-	char realpath[PATH_MAX];
-	int symlink_remain = MAX_SYMLINK_LEVEL;
-	int r = resolve_pathat(AT_FDCWD, pathname, realpath, &symlink_remain);
-	if (r < 0)
-		goto out;
-	log_info("resolved path: \"%s\"", realpath);
-	WCHAR wpath[PATH_MAX];
-	utf8_to_utf16_filename(realpath, r + 1, wpath, PATH_MAX);
-	/* TODO */
-	if (!SetCurrentDirectoryW(wpath + 1)) /* ignore the heading slash */
-		log_error("SetCurrentDirectoryW() failed, error code: %d", GetLastError());
-out:
-	ReleaseSRWLockExclusive(&vfs->rw_lock);
-	return r;
+	log_error("chroot() not implemented.");
+	return -L_ENOSYS;
 }
 
 DEFINE_SYSCALL(fchownat, int, dirfd, const char *, pathname, uid_t, owner, gid_t, group, int, flags)

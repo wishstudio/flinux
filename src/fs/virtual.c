@@ -570,11 +570,11 @@ struct virtualfs
 	const struct virtualfs_directory_desc *dir;
 };
 
-static int virtualfs_open(struct file_system *fs, const char *path, int flags, int mode, struct file **p, char *target, int buflen)
+static int virtualfs_open(struct mount_point *mp, const char *path, int flags, int mode, struct file **p, char *target, int buflen)
 {
 	if (flags & O_EXCL)
 		return -L_EPERM;
-	const struct virtualfs_directory_desc *dir = ((struct virtualfs *)fs)->dir;
+	const struct virtualfs_directory_desc *dir = ((struct virtualfs *)mp->fs)->dir;
 	const char *fullpath = path;
 	int tag = 0;
 do_component:;
@@ -585,7 +585,7 @@ do_component:;
 	if (path == end || (path + 1 == end && *path == '.'))
 	{
 		if (p)
-			*p = virtualfs_directory_alloc(dir, fs->mountpoint, fullpath, tag);
+			*p = virtualfs_directory_alloc(dir, mp->mountpoint, fullpath, tag);
 		return 0;
 	}
 	for (int i = 0;; i++)
@@ -678,7 +678,6 @@ do_component:;
 struct file_system *virtualfs_alloc(const char *mountpoint, const struct virtualfs_directory_desc *dir)
 {
 	struct virtualfs *fs = (struct virtualfs *)kmalloc(sizeof(struct virtualfs));
-	fs->base_fs.mountpoint = mountpoint;
 	fs->base_fs.open = virtualfs_open;
 	fs->dir = dir;
 	return (struct file_system *)fs;

@@ -35,5 +35,5 @@ void shared_afterfork_child();
  * Currently the users of this API should make sure to work with zero initialization
  * Because they do not have any chance of manually initialize their shared data area
  */
-#define SHARED_ALLOC_SIZE		3 * BLOCK_SIZE
+#define SHARED_ALLOC_SIZE		4 * BLOCK_SIZE
 void *shared_alloc(size_t size);

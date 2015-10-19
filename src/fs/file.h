@@ -25,6 +25,7 @@
 #include <common/types.h>
 #include <common/utime.h>
 
+#include <stdbool.h>
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
@@ -74,13 +75,38 @@ static void file_init(struct file *f, const struct file_ops *op_vtable, int flag
 
 struct file_system
 {
-	struct file_system *next;
-	const char *mountpoint;
-	int (*open)(struct file_system *fs, const char *path, int flags, int mode, struct file **fp, char *target, int buflen);
-	int (*symlink)(struct file_system *fs, const char *target, const char *linkpath);
-	int (*link)(struct file_system *fs, struct file *f, const char *newpath);
-	int (*unlink)(struct file_system *fs, const char *pathname);
-	int (*rename)(struct file_system *fs, struct file *f, const char *newpath);
-	int (*mkdir)(struct file_system *fs, const char *pathname, int mode);
-	int (*rmdir)(struct file_system *fs, const char *pathname);
+	int (*open)(struct mount_point *mp, const char *path, int flags, int mode, struct file **fp, char *target, int buflen);
+	int (*symlink)(struct mount_point *mp, const char *target, const char *linkpath);
+	int (*link)(struct mount_point *mp, struct file *f, const char *newpath);
+	int (*unlink)(struct mount_point *mp, const char *pathname);
+	int (*rename)(struct mount_point *mp, struct file *f, const char *newpath);
+	int (*mkdir)(struct mount_point *mp, const char *pathname, int mode);
+	int (*rmdir)(struct mount_point *mp, const char *pathname);
+};
+
+struct mount_point
+{
+	union
+	{
+		/* This struct is used in shared storage of mount points.
+		 * Due to the reason that the shared storage may be mapped to different
+		 * virtual addresses in different processes, only relative offsets can be
+		 * used here.
+		 */
+		struct
+		{
+			volatile bool used; /* Whether this entry is used */
+			volatile int next; /* Id of next entry in shared storage */
+			int fs_id; /* Id of file system in */
+		};
+		/* The pointer to the actual file system object.
+		 * This is only used on passing mount point info to vfs functions,
+		 * Since the individual file system implementations do not have access to
+		 * vfs file system table.
+		 */
+		struct file_system *fs;
+	};
+	bool is_system;
+	WCHAR win_path[MAX_PATH];
+	char mountpoint[MAX_PATH];
 };
