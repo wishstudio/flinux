@@ -103,9 +103,16 @@ static bool vfs_mount_unsafe(int fs_id, bool is_system, const WCHAR *win_path, c
 			vfs_shared->mounts[i].is_system = is_system;
 			vfs_shared->mounts[i].fs_id = fs_id;
 			if (win_path == NULL)
+			{
+				vfs_shared->mounts[i].win_path_len = 0;
 				vfs_shared->mounts[i].win_path[0] = 0;
+			}
 			else
+			{
+				vfs_shared->mounts[i].win_path_len = wcslen(win_path);
 				wcscpy(vfs_shared->mounts[i].win_path, win_path);
+			}
+			vfs_shared->mounts[i].mountpoint_len = strlen(mount_path);
 			strcpy(vfs_shared->mounts[i].mountpoint, mount_path);
 			
 			/* We have to keep mount points sorted by their POSIX paths in descending order.
@@ -930,8 +937,10 @@ static bool find_mountpoint(const char *path, struct mount_point *out_mp, const 
 		}
 		if (*p == 0)
 		{
-			strcpy(out_mp->mountpoint, mp->mountpoint);
+			out_mp->win_path_len = mp->win_path_len;
 			wcscpy(out_mp->win_path, mp->win_path);
+			out_mp->mountpoint_len = mp->mountpoint_len;
+			strcpy(out_mp->mountpoint, mp->mountpoint);
 			out_mp->fs = vfs->fs[mp->fs_id];
 			*out_subpath = subpath;
 			if (**out_subpath == '/')

@@ -47,25 +47,14 @@ struct winfs_file
 };
 
 /* Convert an utf-8 file name to NT file name, return converted name length in characters, no NULL terminator is appended */
-static int filename_to_nt_pathname(const char *filename, WCHAR *buf, int buf_size)
+static int filename_to_nt_pathname(struct mount_point *mp, const char *filename, WCHAR *buf, int buf_size)
 {
-	HANDLE basedir_handle = CreateFileW(L".", 0, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
-		OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
-	if (basedir_handle == INVALID_HANDLE_VALUE)
+	if (buf_size < mp->win_path_len)
 		return 0;
-	WCHAR basedir[PATH_MAX];
-	DWORD basedir_len = GetFinalPathNameByHandleW(basedir_handle, basedir, PATH_MAX, FILE_NAME_NORMALIZED);
-	CloseHandle(basedir_handle);
-	if (basedir_len > PATH_MAX)
-		return 0;
-	basedir[1] = L'?';
-
-	if (buf_size < basedir_len)
-		return 0;
-	memcpy(buf, basedir, basedir_len * sizeof(WCHAR));
-	buf += basedir_len;
-	int out_size = basedir_len;
-	buf_size -= basedir_len;
+	memcpy(buf, mp->win_path, mp->win_path_len * sizeof(WCHAR));
+	buf += mp->win_path_len;
+	int out_size = mp->win_path_len;
+	buf_size -= mp->win_path_len;
 	if (filename[0] == 0)
 		return out_size;
 	if (buf_size < 1)
@@ -708,7 +697,7 @@ static struct file_ops winfs_ops =
 static int winfs_symlink(struct mount_point *mp, const char *target, const char *linkpath)
 {
 	WCHAR wlinkpath[PATH_MAX];
-	int len = filename_to_nt_pathname(linkpath, wlinkpath, PATH_MAX);
+	int len = filename_to_nt_pathname(mp, linkpath, wlinkpath, PATH_MAX);
 	if (len <= 0)
 		return -L_ENOENT;
 
@@ -766,7 +755,7 @@ static int winfs_link(struct mount_point *mp, struct file *f, const char *newpat
 	FILE_LINK_INFORMATION *info = (FILE_LINK_INFORMATION *)buf;
 	info->ReplaceIfExists = FALSE;
 	info->RootDirectory = NULL;
-	info->FileNameLength = 2 * filename_to_nt_pathname(newpath, info->FileName, PATH_MAX);
+	info->FileNameLength = 2 * filename_to_nt_pathname(mp, newpath, info->FileName, PATH_MAX);
 	if (info->FileNameLength == 0)
 	{
 		r = -L_ENOENT;
@@ -788,7 +777,7 @@ out:
 static int winfs_unlink(struct mount_point *mp, const char *pathname)
 {
 	WCHAR wpathname[PATH_MAX];
-	int len = filename_to_nt_pathname(pathname, wpathname, PATH_MAX);
+	int len = filename_to_nt_pathname(mp, pathname, wpathname, PATH_MAX);
 	if (len <= 0)
 		return -L_ENOENT;
 
@@ -859,7 +848,7 @@ retry:
 	FILE_RENAME_INFORMATION *info = (FILE_RENAME_INFORMATION *)buf;
 	info->ReplaceIfExists = TRUE;
 	info->RootDirectory = NULL;
-	info->FileNameLength = 2 * filename_to_nt_pathname(newpath, info->FileName, PATH_MAX);
+	info->FileNameLength = 2 * filename_to_nt_pathname(mp, newpath, info->FileName, PATH_MAX);
 	if (info->FileNameLength == 0)
 	{
 		r = -L_ENOENT;
@@ -927,13 +916,14 @@ static int winfs_rmdir(struct mount_point *mp, const char *pathname)
  * == 0 => Opening file succeeded
  *  > 0 => It is a symlink which needs to be redirected (target written)
  */
-static int open_file(HANDLE *hFile, const char *pathname, DWORD desired_access, DWORD create_disposition,
+static int open_file(HANDLE *hFile, struct mount_point *mp, const char *pathname,
+	DWORD desired_access, DWORD create_disposition,
 	int flags, BOOL bInherit, char *target, int buflen)
 {
 	WCHAR buf[PATH_MAX];
 	UNICODE_STRING name;
 	name.Buffer = buf;
-	name.MaximumLength = name.Length = 2 * filename_to_nt_pathname(pathname, buf, PATH_MAX);
+	name.MaximumLength = name.Length = 2 * filename_to_nt_pathname(mp, pathname, buf, PATH_MAX);
 	if (name.Length == 0)
 		return -L_ENOENT;
 
@@ -1045,7 +1035,7 @@ static int winfs_open(struct mount_point *mp, const char *pathname, int flags, i
 		create_disposition = FILE_OPEN_IF;
 	else
 		create_disposition = FILE_OPEN;
-	int r = open_file(&handle, pathname, desired_access, create_disposition, flags, fp != NULL, target, buflen);
+	int r = open_file(&handle, mp, pathname, desired_access, create_disposition, flags, fp != NULL, target, buflen);
 	if (r < 0 || r == 1)
 		return r;
 	if ((flags & O_TRUNC) && ((flags & O_WRONLY) || (flags & O_RDWR)))

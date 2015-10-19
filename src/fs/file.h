@@ -107,6 +107,8 @@ struct mount_point
 		struct file_system *fs;
 	};
 	bool is_system;
+	int win_path_len;
 	WCHAR win_path[MAX_PATH];
+	int mountpoint_len;
 	char mountpoint[MAX_PATH];
 };
