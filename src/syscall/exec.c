@@ -50,14 +50,14 @@ struct elf_header
 {
 	size_t load_base, low, high;
 	Elf_Ehdr eh;
-	char pht[];
 };
 
 struct binfmt
 {
 	char *buffer_base;
 	const char *argv0, *argv1;
-	BOOL replace_argv0;
+	bool replace_argv0;
+	bool has_interpreter;
 	struct elf_header *executable, *interpreter;
 };
 
@@ -67,6 +67,10 @@ __declspec(noreturn) void goto_entrypoint(const char *stack, void *entrypoint);
 #define PTR(ptr) *(void**)(stack -= sizeof(void*)) = (void*)(ptr)
 #define AUX_VEC(id, value) do { PTR(value); PTR(id); } while (0)
 #define ALLOC(size) (stack -= (size))
+
+/* The user program may read pht structure so it must always be present */
+#define MAX_PHT_STORAGE		4096
+static char pht_storage[MAX_PHT_STORAGE];
 
 static void run(struct binfmt *binary, int argc, char *argv[], int env_size, char *envp[])
 {
@@ -93,7 +97,7 @@ static void run(struct binfmt *binary, int argc, char *argv[], int env_size, cha
 		AUX_VEC(AT_ENTRY, executable->load_base + executable->eh.e_entry);
 	else
 		AUX_VEC(AT_ENTRY, executable->eh.e_entry);
-	AUX_VEC(AT_BASE, (interpreter ? (void*)(interpreter->load_base - interpreter->low) : NULL));
+	AUX_VEC(AT_BASE, (binary->has_interpreter ? (void*)(interpreter->load_base - interpreter->low) : NULL));
 
 	/* environment variables */
 	PTR(NULL);
@@ -121,7 +125,7 @@ static void run(struct binfmt *binary, int argc, char *argv[], int env_size, cha
 
 	/* Call executable entrypoint */
 	size_t entrypoint;
-	struct elf_header *start = interpreter? interpreter: executable;
+	struct elf_header *start = binary->has_interpreter? interpreter: executable;
 	if (start->eh.e_type == ET_DYN)
 		entrypoint = start->load_base + start->eh.e_entry;
 	else
@@ -138,22 +142,21 @@ static void run(struct binfmt *binary, int argc, char *argv[], int env_size, cha
 
 static int load_elf(struct file *f, struct binfmt *binary)
 {
-	Elf_Ehdr eh;
-
+	struct elf_header *elf = binary->has_interpreter ? binary->interpreter : binary->executable;
 	/* Load ELF header */
-	f->op_vtable->pread(f, &eh, sizeof(eh), 0);
-	if (eh.e_type != ET_EXEC && eh.e_type != ET_DYN)
+	f->op_vtable->pread(f, &elf->eh, sizeof(Elf_Ehdr), 0);
+	if (elf->eh.e_type != ET_EXEC && elf->eh.e_type != ET_DYN)
 	{
 		log_error("Only ET_EXEC and ET_DYN executables can be loaded.");
 		return -L_EACCES;
 	}
 
 #ifdef _WIN64
-	if (eh.e_machine != EM_X86_64)
+	if (elf->eh.e_machine != EM_X86_64)
 	{
 		log_error("Not an x86_64 executable.");
 #else
-	if (eh.e_machine != EM_386)
+	if (elf->eh.e_machine != EM_386)
 	{
 		log_error("Not an i386 executable.");
 #endif
@@ -161,21 +164,16 @@ static int load_elf(struct file *f, struct binfmt *binary)
 	}
 
 	/* Load program header table */
-	size_t phsize = (size_t)eh.e_phentsize * (size_t)eh.e_phnum;
-	struct elf_header *elf = alloca(sizeof(struct elf_header) + phsize);
-	if (binary->executable)
-		binary->interpreter = elf;
-	else
-		binary->executable = elf;
-	elf->eh = eh;
-	f->op_vtable->pread(f, elf->pht, phsize, eh.e_phoff); /* TODO */
+	size_t phsize = (size_t)elf->eh.e_phentsize * (size_t)elf->eh.e_phnum;
+	char *pht = pht_storage;
+	f->op_vtable->pread(f, pht, phsize, elf->eh.e_phoff); /* TODO */
 
 	/* Find virtual address range */
 	elf->low = 0xFFFFFFFF;
 	elf->high = 0;
-	for (int i = 0; i < eh.e_phnum; i++)
+	for (int i = 0; i < elf->eh.e_phnum; i++)
 	{
-		Elf_Phdr *ph = (Elf_Phdr *)&elf->pht[eh.e_phentsize * i];
+		Elf_Phdr *ph = (Elf_Phdr *)&pht[elf->eh.e_phentsize * i];
 		if (ph->p_type == PT_LOAD)
 		{
 			elf->low = min(elf->low, ph->p_vaddr);
@@ -185,12 +183,12 @@ static int load_elf(struct file *f, struct binfmt *binary)
 		else if (ph->p_type == PT_DYNAMIC)
 			log_info("PT_DYNAMIC: vaddr %p, size %p", ph->p_vaddr, ph->p_memsz);
 		else if (ph->p_type == PT_PHDR) /* Patch phdr pointer in PT_PHDR, glibc uses it to determine load offset */
-			ph->p_vaddr = (size_t)elf->pht;
+			ph->p_vaddr = (size_t)pht;
 	}
 
 	/* Find virtual address range for ET_DYN executable */
 	elf->load_base = 0;
-	if (eh.e_type == ET_DYN)
+	if (elf->eh.e_type == ET_DYN)
 	{
 		size_t free_addr = mm_find_free_pages(elf->high - elf->low) * PAGE_SIZE;
 		if (!free_addr)
@@ -208,9 +206,9 @@ static int load_elf(struct file *f, struct binfmt *binary)
 	/* Map executable segments */
 	/* TODO: Directly use mmap() */
 	int load_base_set = 0;
-	for (int i = 0; i < eh.e_phnum; i++)
+	for (int i = 0; i < elf->eh.e_phnum; i++)
 	{
-		Elf_Phdr *ph = (Elf_Phdr *)&elf->pht[eh.e_phentsize * i];
+		Elf_Phdr *ph = (Elf_Phdr *)&pht[elf->eh.e_phentsize * i];
 		if (ph->p_type == PT_LOAD)
 		{
 			size_t addr = ph->p_vaddr & 0xFFFFF000;
@@ -227,18 +225,18 @@ static int load_elf(struct file *f, struct binfmt *binary)
 				prot |= PROT_WRITE;
 			if (ph->p_flags & PF_X)
 				prot |= PROT_EXEC;
-			if (eh.e_type == ET_DYN)
+			if (elf->eh.e_type == ET_DYN)
 				addr += elf->load_base;
 			mm_mmap((void*)addr, size, PROT_READ | PROT_WRITE | PROT_EXEC,
 				MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED | MAP_POPULATE, 0, NULL, 0);
 			char *vaddr = (char *)ph->p_vaddr;
-			if (eh.e_type == ET_DYN)
+			if (elf->eh.e_type == ET_DYN)
 				vaddr += elf->load_base;
 			mm_check_write(vaddr, ph->p_filesz); /* Populate the memory, otherwise pread() will fail */
 			f->op_vtable->pread(f, vaddr, ph->p_filesz, ph->p_offset);
-			if (!binary->interpreter) /* This is not interpreter */
+			if (!binary->has_interpreter) /* This is not interpreter */
 				mm_update_brk((void*)(addr + size));
-			if (eh.e_type == ET_EXEC && !load_base_set)
+			if (elf->eh.e_type == ET_EXEC && !load_base_set)
 			{
 				/* Record load base of first segment in ET_EXEC
 				 * load_base will be used in run() to calculate various auxiliary vector pointers */
@@ -249,13 +247,14 @@ static int load_elf(struct file *f, struct binfmt *binary)
 	}
 
 	/* Load interpreter if present */
-	for (int i = 0; i < eh.e_phnum; i++)
+	for (int i = 0; i < elf->eh.e_phnum; i++)
 	{
-		Elf_Phdr *ph = (Elf_Phdr *)&elf->pht[eh.e_phentsize * i];
+		Elf_Phdr *ph = (Elf_Phdr *)&pht[elf->eh.e_phentsize * i];
 		if (ph->p_type == PT_INTERP)
 		{
-			if (binary->interpreter) /* This is already an interpreter */
+			if (binary->has_interpreter) /* This is already an interpreter */
 				return -L_EACCES; /* Bad interpreter */
+			binary->has_interpreter = true;
 			char path[MAX_PATH];
 			f->op_vtable->pread(f, path, ph->p_filesz, ph->p_offset); /* TODO */
 			path[ph->p_filesz] = 0;
@@ -360,8 +359,9 @@ int do_execve(const char *filename, int argc, char *argv[], int env_size, char *
 	binary.argv1 = NULL;
 	binary.replace_argv0 = FALSE;
 	binary.buffer_base = buffer_base;
-	binary.executable = NULL;
-	binary.interpreter = NULL;
+	binary.has_interpreter = false;
+	binary.executable = (struct elf_header *)alloca(sizeof(struct elf_header));
+	binary.interpreter = (struct elf_header *)alloca(sizeof(struct elf_header));
 
 	/* Load file */
 	if (magic[0] == ELFMAG0 && magic[1] == ELFMAG1 && magic[2] == ELFMAG2 && magic[3] == ELFMAG3)
