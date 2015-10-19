@@ -237,6 +237,12 @@ void main()
 			cmdline_flags->dbt_trace = true;
 			cmdline_flags->dbt_trace_all = true;
 		}
+		else if (argv[i][0] == '-')
+		{
+			init_subsystems();
+			kprintf("Unrecognized option: %s\n", argv[i]);
+			process_exit(1, 0);
+		}
 		else if (!filename)
 		{
 			filename = argv[i];
