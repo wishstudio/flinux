@@ -689,6 +689,9 @@ int process_query(int query_type, char *buf)
 	case PROCESS_QUERY_STAT:
 		return process_get_stat(buf);
 
+	case PROCESS_QUERY_MAPS:
+		return mm_get_maps(buf);
+
 	default:
 		return 0;
 	}

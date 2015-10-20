@@ -562,6 +562,42 @@ void mm_dump_memory_mappings()
 	ReleaseSRWLockShared(&mm->rw_lock);
 }
 
+int mm_get_maps(char *buf)
+{
+	int r = 0;
+	AcquireSRWLockShared(&mm->rw_lock);
+	char path[PATH_MAX];
+	for (struct rb_node *cur = rb_first(&mm->entry_tree); cur; cur = rb_next(cur))
+	{
+		struct map_entry *e = rb_entry(cur, struct map_entry, tree);
+		char perm[5] = "----";
+		if (e->prot & PROT_READ)
+			perm[0] = 'r';
+		if (e->prot & PROT_WRITE)
+			perm[1] = 'w';
+		if (e->prot & PROT_EXEC)
+			perm[2] = 'x';
+		if (!(e->flags & INTERNAL_MAP_SHARED))
+			perm[3] = 'p'; /* Private mapping */
+		if (e->f)
+		{
+			int len = e->f->op_vtable->getpath(e->f, path);
+			path[len] = 0;
+		}
+		else
+			path[0] = 0;
+		r += ksprintf(buf + r, "%p-%p %s %p %02x:%02x %5d %s\n",
+			GET_PAGE_ADDRESS(e->start_page), GET_PAGE_ADDRESS(e->end_page + 1),
+			perm,
+			0,
+			0, 0,
+			0,
+			path);
+	}
+	ReleaseSRWLockShared(&mm->rw_lock);
+	return r;
+}
+
 static void map_entry_range(struct map_entry *e, size_t start_page, size_t end_page)
 {
 	if (e->f)

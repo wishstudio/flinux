@@ -51,6 +51,7 @@ pid_t process_get_sid();
 enum
 {
 	PROCESS_QUERY_STAT,		/* /proc/[pid]/stat */
+	PROCESS_QUERY_MAPS,		/* /proc/[pid]/maps */
 };
 int process_query(int query_type, char *buf);
 int process_query_pid(pid_t pid, int query_type, char *buf);

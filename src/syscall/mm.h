@@ -67,6 +67,7 @@ void mm_update_brk(void *brk);
 void mm_dump_stack_trace(PCONTEXT context);
 void mm_dump_windows_memory_mappings(HANDLE process);
 void mm_dump_memory_mappings();
+int mm_get_maps(char *buf);
 
 /* Check if the memory region is compatible with desired access */
 int mm_check_read(const void *addr, size_t size);

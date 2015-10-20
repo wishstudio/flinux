@@ -288,17 +288,19 @@ static int winfs_getpath(struct file *f, char *buf)
 	WCHAR *relpath;
 	/* Test if the file is in the mount point */
 	/* \??\C:\Windows,  \Windows */
-	if (mp.win_path[4] == winfile->drive_letter && !wcscmp(mp.win_path + 6, info->FileName))
+	if (mp.win_path[4] == winfile->drive_letter &&
+		!wcsncmp(mp.win_path + 6, info->FileName, mp.win_path_len - 6))
 	{
 		relpath = info->FileName + mp.win_path_len - 6;
 		/* Copy mount point */
 		memcpy(buf, mp.mountpoint, mp.mountpoint_len);
 		len = mp.mountpoint_len;
 		buf += mp.mountpoint_len;
-		if (buf[-1] != '/')
+		/* Remove trailling slash */
+		if (buf[-1] == '/')
 		{
-			*buf++ = '/';
-			len++;
+			buf--;
+			len--;
 		}
 	}
 	else
@@ -307,9 +309,8 @@ static int winfs_getpath(struct file *f, char *buf)
 		relpath = info->FileName;
 		buf[0] = '/';
 		buf[1] = winfile->drive_letter - 'A' + 'a';
-		buf[2] = '/';
-		buf += 3;
-		len = 3;
+		buf += 2;
+		len = 2;
 	}
 	int r = utf16_to_utf8_filename(relpath, wcslen(relpath), buf, PATH_MAX); /* TODO: length */
 	if (r < 0)
