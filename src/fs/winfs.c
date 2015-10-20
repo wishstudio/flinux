@@ -1134,7 +1134,7 @@ static int winfs_open(struct mount_point *mp, const char *pathname, int flags, i
 	if (fp)
 	{
 		int pathlen = strlen(pathname);
-		struct winfs_file *file = (struct winfs_file *)kmalloc(sizeof(struct winfs_file) + pathlen);
+		struct winfs_file *file = (struct winfs_file *)kmalloc(sizeof(struct winfs_file));
 		file_init(&file->base_file, &winfs_ops, flags);
 		file->handle = handle;
 		SECURITY_ATTRIBUTES attr;
