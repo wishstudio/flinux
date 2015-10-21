@@ -267,6 +267,12 @@ static void vfs_shared_init()
 	basedir[1] = L'?';
 	log_info("Root directory: %S", basedir);
 	vfs_shared->root_id = vfs_mount_unsafe(FS_WINFS, true, basedir, "/");
+	for (char i = 'a'; i <= 'z'; i++)
+	{
+		char mountpoint[3] = { '/', i, 0 };
+		WCHAR winpath[8] = { L'\\', L'?', L'?', L'\\', i - 'a' + 'A', L':', L'\\', 0 };
+		vfs_mount_unsafe(FS_WINFS, true, winpath, mountpoint);
+	}
 	vfs_mount_unsafe(FS_DEVFS, true, NULL, "/dev");
 	vfs_mount_unsafe(FS_PROCFS, true, NULL, "/proc");
 	vfs_mount_unsafe(FS_SYSFS, true, NULL, "/sys");
@@ -966,7 +972,7 @@ static bool find_mountpoint(const char *path, struct mount_point *out_mp, const 
 			p++;
 			subpath++;
 		}
-		if (*p == 0)
+		if (*p == 0 && (i == vfs_shared->root_id || *subpath == 0 || *subpath == '/'))
 		{
 			copy_mountpoint(mp, out_mp);
 			*out_subpath = subpath;
