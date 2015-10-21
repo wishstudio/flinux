@@ -287,6 +287,11 @@ static int winfs_getpath(struct file *f, char *buf)
 	len += r;
 	buf[r] = 0;
 	ReleaseSRWLockShared(&f->rw_lock);
+	if (len == 0)
+	{
+		buf[len++] = '/';
+		buf[len] = 0;
+	}
 	return len;
 }
 
