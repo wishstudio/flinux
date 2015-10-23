@@ -337,7 +337,6 @@ void vfs_shutdown()
 		if (f)
 			vfs_close(i);
 	}
-	socket_shutdown();
 }
 
 int vfs_fork(HANDLE process)

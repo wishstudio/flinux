@@ -37,9 +37,12 @@ typedef intptr_t getdents_callback(void *buffer, uint64_t inode, const void *nam
 
 struct file_ops
 {
+	/* Polling functions */
 	int (*get_poll_status)(struct file *f);
 	HANDLE (*get_poll_handle)(struct file *f, int *poll_events);
+	/* After fork handler */
 	void (*after_fork)(struct file *f);
+	/* General file operations */
 	int (*close)(struct file *f);
 	int (*getpath)(struct file *f, char *buf);
 	size_t (*read)(struct file *f, void *buf, size_t count);
@@ -55,6 +58,19 @@ struct file_ops
 	int (*getdents)(struct file *f, void *dirent, size_t count, getdents_callback *fill_callback);
 	int (*ioctl)(struct file *f, unsigned int cmd, unsigned long arg);
 	int (*statfs)(struct file *f, struct statfs64 *buf);
+	/* Socket functions */
+	int (*connect)(struct file *f, const struct sockaddr *addr, size_t addrlen);
+	int (*getsockname)(struct file *f, struct sockaddr *addr, int *addrlen);
+	int (*getpeername)(struct file *f, struct sockaddr *addr, int *addrlen);
+	size_t (*sendto)(struct file *f, const void *buf, size_t len, int flags, const struct sockaddr *dest_addr, int addrlen);
+	size_t (*recvfrom)(struct file *f, void *buf, size_t len, int flags, struct sockaddr *src_addr, int *addrlen);
+	int (*shutdown)(struct file *f, int how);
+	int (*setsockopt)(struct file *f, int level, int optname, const void *optval, int optlen);
+	int (*getsockopt)(struct file *f, int level, int optname, void *optval, int *optlen);
+	size_t (*sendmsg)(struct file *f, const struct msghdr *msg, int flags);
+	size_t (*recvmsg)(struct file *f, struct msghdr *msg, int flags);
+	int (*sendmmsg)(struct file *f, struct mmsghdr *msgvec, unsigned int vlen, unsigned int flags);
+	int (*recvmmsg)(struct file *f, struct mmsghdr *msgvec, unsigned int vlen, unsigned int flags, struct timespec *timeout);
 };
 
 struct file
