@@ -247,6 +247,7 @@ void main()
 		{
 			filename = argv[i];
 			arg_start = i;
+			break;
 		}
 	}
 
