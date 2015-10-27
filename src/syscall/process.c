@@ -884,32 +884,52 @@ DEFINE_SYSCALL(sysinfo, struct sysinfo *, info)
 	return 0;
 }
 
+static int do_prlimit64(pid_t pid, int resource, const struct rlimit64 *new_limit, struct rlimit64 *old_limit)
+{
+	if (old_limit)
+	{
+		switch (resource)
+		{
+		case RLIMIT_STACK:
+			old_limit->rlim_cur = STACK_SIZE;
+			old_limit->rlim_max = STACK_SIZE;
+			break;
+
+		case RLIMIT_NPROC:
+			log_info("RLIMIT_NPROC: return fake result.");
+			old_limit->rlim_cur = 65536;
+			old_limit->rlim_max = 65536;
+			break;
+
+		case RLIMIT_NOFILE:
+			old_limit->rlim_cur = MAX_FD_COUNT;
+			old_limit->rlim_max = MAX_FD_COUNT;
+			break;
+
+		default:
+			log_error("Unsupported resource: %d", resource);
+			return -L_EINVAL;
+		}
+	}
+	if (new_limit)
+	{
+		log_error("Setting rlimit %d not supported.", resource);
+		return -L_EINVAL;
+	}
+	return 0;
+}
+
 DEFINE_SYSCALL(getrlimit, int, resource, struct rlimit *, rlim)
 {
 	log_info("getrlimit(%d, %p)", resource, rlim);
 	if (!mm_check_write(rlim, sizeof(struct rlimit)))
 		return -L_EFAULT;
-	switch (resource)
+	struct rlimit64 old_limit;
+	int r = do_prlimit64(0, resource, NULL, &old_limit);
+	if (r == 0)
 	{
-	case RLIMIT_STACK:
-		rlim->rlim_cur = STACK_SIZE;
-		rlim->rlim_max = STACK_SIZE;
-		break;
-
-	case RLIMIT_NPROC:
-		log_info("RLIMIT_NPROC: return fake result.");
-		rlim->rlim_cur = 65536;
-		rlim->rlim_max = 65536;
-		break;
-
-	case RLIMIT_NOFILE:
-		rlim->rlim_cur = MAX_FD_COUNT;
-		rlim->rlim_max = MAX_FD_COUNT;
-		break;
-
-	default:
-		log_error("Unsupported resource: %d", resource);
-		return -L_EINVAL;
+		rlim->rlim_cur = old_limit.rlim_cur;
+		rlim->rlim_max = old_limit.rlim_max;
 	}
 	return 0;
 }
@@ -919,12 +939,10 @@ DEFINE_SYSCALL(setrlimit, int, resource, const struct rlimit *, rlim)
 	log_info("setrlimit(%d, %p)", resource, rlim);
 	if (!mm_check_read(rlim, sizeof(struct rlimit)))
 		return -L_EFAULT;
-	switch (resource)
-	{
-	default:
-		log_error("Unsupported resource: %d", resource);
-		return -L_EINVAL;
-	}
+	struct rlimit64 new_limit;
+	new_limit.rlim_cur = rlim->rlim_cur;
+	new_limit.rlim_max = rlim->rlim_max;
+	return do_prlimit64(0, resource, &new_limit, NULL);
 }
 
 DEFINE_SYSCALL(getrusage, int, who, struct rusage *, usage)
@@ -979,7 +997,11 @@ DEFINE_SYSCALL(capset, void *, header, const void *, data)
 DEFINE_SYSCALL(prlimit64, pid_t, pid, int, resource, const struct rlimit64 *, new_limit, struct rlimit64 *, old_limit)
 {
 	log_info("prlimit64(pid=%d, resource=%d, new_limit=%p, old_limit=%p)", pid, resource, new_limit, old_limit);
-	log_error("prlimit64() not implemented.");
+	if (new_limit && !mm_check_read(new_limit, sizeof(struct rlimit64)))
+		return -L_EFAULT;
+	if (old_limit && !mm_check_write(old_limit, sizeof(struct rlimit64)))
+		return -L_EFAULT;
+	do_prlimit64(pid, resource, new_limit, old_limit);
 	return 0;
 }
 
