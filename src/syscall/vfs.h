@@ -42,7 +42,7 @@ void vfs_afterfork_parent();
 void vfs_afterfork_child();
 int vfs_store_file(struct file *f, int cloexec);
 
-int vfs_openat(int dirfd, const char *pathname, int flags, int mode, struct file **f);
+int vfs_openat(int dirfd, const char *pathname, int flags, int internal_flags, int mode, struct file **f);
 struct file *vfs_get(int fd);
 void vfs_ref(struct file *f);
 void vfs_release(struct file *f);

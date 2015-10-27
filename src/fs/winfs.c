@@ -1080,7 +1080,7 @@ static int winfs_open(struct mount_point *mp, const char *pathname, int flags, i
 		desired_access = GENERIC_WRITE;
 	else
 		desired_access = GENERIC_READ;
-	if (flags & __O_DELETE)
+	if (flags & INTERNAL_O_DELETE)
 		desired_access |= DELETE;
 	if (flags & O_EXCL)
 		create_disposition = FILE_CREATE;

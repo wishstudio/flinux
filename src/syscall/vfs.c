@@ -307,7 +307,7 @@ void vfs_init()
 	vfs->filed[1].fd = console;
 	vfs->filed[2].fd = console;
 	/* Initialize CWD */
-	if (vfs_openat(AT_FDCWD, "/", O_DIRECTORY | O_PATH, 0, &vfs->cwd) < 0)
+	if (vfs_openat(AT_FDCWD, "/", O_DIRECTORY | O_PATH, 0, 0, &vfs->cwd) < 0)
 	{
 		log_error("Opening initial current directory \"/\" failed.");
 		__debugbreak();
@@ -796,7 +796,7 @@ DEFINE_SYSCALL(truncate, const char *, path, off_t, length)
 	log_info("truncate(\"%s\", %p)", path, length);
 	AcquireSRWLockExclusive(&vfs->rw_lock);
 	struct file *f;
-	int r = vfs_openat(AT_FDCWD, path, O_WRONLY, 0, &f);
+	int r = vfs_openat(AT_FDCWD, path, O_WRONLY, 0, 0, &f);
 	if (r == 0)
 	{
 		if (!f->op_vtable->truncate)
@@ -836,7 +836,7 @@ DEFINE_SYSCALL(truncate64, const char *, path, loff_t, length)
 	log_info("truncate64(\"%s\", %lld)", path, length);
 	AcquireSRWLockExclusive(&vfs->rw_lock);
 	struct file *f;
-	int r = vfs_openat(AT_FDCWD, path, O_WRONLY, 0, &f);
+	int r = vfs_openat(AT_FDCWD, path, O_WRONLY, 0, 0, &f);
 	if (r == 0)
 	{
 		if (!f->op_vtable->truncate)
@@ -1117,7 +1117,7 @@ int resolve_pathat(int dirfd, const char *pathname, char *realpath, int *symlink
 	return resolve_path(dirpath, pathname, realpath, symlink_remain);
 }
 
-int vfs_openat(int dirfd, const char *pathname, int flags, int mode, struct file **f)
+int vfs_openat(int dirfd, const char *pathname, int flags, int internal_flags, int mode, struct file **f)
 {
 	/*
 	Supported flags:
@@ -1194,7 +1194,7 @@ DEFINE_SYSCALL(openat, int, dirfd, const char *, pathname, int, flags, int, mode
 		return -L_EFAULT;
 	AcquireSRWLockExclusive(&vfs->rw_lock);
 	struct file *f;
-	int r = vfs_openat(dirfd, pathname, flags, mode, &f);
+	int r = vfs_openat(dirfd, pathname, flags, 0, mode, &f);
 	if (r >= 0)
 	{
 		r = store_file_internal(f, (flags & O_CLOEXEC) > 0);
@@ -1262,7 +1262,7 @@ DEFINE_SYSCALL(linkat, int, olddirfd, const char *, oldpath, int, newdirfd, cons
 	int openflags = O_PATH;
 	if (!(openflags & AT_SYMLINK_FOLLOW))
 		openflags |= O_NOFOLLOW;
-	int r = vfs_openat(olddirfd, oldpath, openflags, 0, &f);
+	int r = vfs_openat(olddirfd, oldpath, openflags, 0, 0, &f);
 	if (r < 0)
 		goto out;
 	if (!winfs_is_winfile(f))
@@ -1385,7 +1385,7 @@ DEFINE_SYSCALL(readlinkat, int, dirfd, const char *, pathname, char *, buf, int,
 		return -L_EFAULT;
 	AcquireSRWLockExclusive(&vfs->rw_lock);
 	struct file *f;
-	int r = vfs_openat(dirfd, pathname, O_PATH | O_NOFOLLOW, 0, &f);
+	int r = vfs_openat(dirfd, pathname, O_PATH | O_NOFOLLOW, 0, 0, &f);
 	if (r >= 0)
 	{
 		if (!f->op_vtable->readlink)
@@ -1419,7 +1419,7 @@ DEFINE_SYSCALL(renameat2, int, olddirfd, const char *, oldpath, int, newdirfd, c
 		return -L_EFAULT;
 	AcquireSRWLockExclusive(&vfs->rw_lock);
 	struct file *f;
-	int r = vfs_openat(olddirfd, oldpath, O_PATH | O_NOFOLLOW | __O_DELETE, 0, &f);
+	int r = vfs_openat(olddirfd, oldpath, O_PATH | O_NOFOLLOW, INTERNAL_O_DELETE, 0, &f);
 	if (r < 0)
 		goto out;
 	if (!winfs_is_winfile(f))
@@ -1689,7 +1689,7 @@ static int vfs_statat(int dirfd, const char *pathname, struct newstat *stat, int
 		int openflags = O_PATH;
 		if (flags & AT_SYMLINK_NOFOLLOW)
 			openflags |= O_NOFOLLOW;
-		r = vfs_openat(dirfd, pathname, openflags, 0, &f);
+		r = vfs_openat(dirfd, pathname, openflags, 0, 0, &f);
 		if (r < 0)
 			goto out;
 	}
@@ -1875,7 +1875,7 @@ static int vfs_statfs(const char *pathname, struct statfs64 *buf)
 {
 	AcquireSRWLockExclusive(&vfs->rw_lock);
 	struct file *f;
-	int r = vfs_openat(AT_FDCWD, pathname, O_PATH, 0, &f);
+	int r = vfs_openat(AT_FDCWD, pathname, O_PATH, 0, 0, &f);
 	if (r == 0)
 	{
 		if (!f->op_vtable->statfs)
@@ -2019,7 +2019,7 @@ DEFINE_SYSCALL(utime, const char *, filename, const struct utimbuf *, times)
 		return -L_EFAULT;
 	AcquireSRWLockExclusive(&vfs->rw_lock);
 	struct file *f;
-	int r = vfs_openat(AT_FDCWD, filename, O_WRONLY, 0, &f);
+	int r = vfs_openat(AT_FDCWD, filename, O_WRONLY, 0, 0, &f);
 	if (r < 0)
 		goto out;
 	if (!f->op_vtable->utimens)
@@ -2055,7 +2055,7 @@ DEFINE_SYSCALL(utimes, const char *, filename, const struct timeval *, times)
 		return -L_EFAULT;
 	AcquireSRWLockExclusive(&vfs->rw_lock);
 	struct file *f;
-	int r = vfs_openat(AT_FDCWD, filename, O_WRONLY, 0, &f);
+	int r = vfs_openat(AT_FDCWD, filename, O_WRONLY, 0, 0, &f);
 	if (r < 0)
 		goto out;
 	if (!f->op_vtable->utimens)
@@ -2109,7 +2109,7 @@ DEFINE_SYSCALL(utimensat, int, dirfd, const char *, pathname, const struct times
 	if (flags & AT_SYMLINK_NOFOLLOW)
 		openflags |= O_NOFOLLOW;
 	struct file *f;
-	int r = vfs_openat(dirfd, pathname, openflags, 0, &f);
+	int r = vfs_openat(dirfd, pathname, openflags, 0, 0, &f);
 	if (r < 0)
 		goto out;
 	if (!f->op_vtable->utimens)
@@ -2132,7 +2132,7 @@ DEFINE_SYSCALL(chdir, const char *, pathname)
 		return -L_EFAULT;
 	AcquireSRWLockExclusive(&vfs->rw_lock);
 	struct file *f;
-	int r = vfs_openat(AT_FDCWD, pathname, O_PATH | O_DIRECTORY, 0, &f);
+	int r = vfs_openat(AT_FDCWD, pathname, O_PATH | O_DIRECTORY, 0, 0, &f);
 	if (r < 0)
 		goto out;
 	vfs_release(vfs->cwd);
@@ -2249,7 +2249,7 @@ DEFINE_SYSCALL(faccessat, int, dirfd, const char *, pathname, int, mode, int, fl
 		openflags |= O_NOFOLLOW;
 	/* Currently emulate access behaviour by testing whether the file exists */
 	struct file *f;
-	int r = vfs_openat(dirfd, pathname, openflags, mode, &f);
+	int r = vfs_openat(dirfd, pathname, openflags, 0, mode, &f);
 	if (r < 0)
 		goto out;
 	vfs_release(f);

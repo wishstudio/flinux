@@ -261,7 +261,7 @@ static int load_elf(struct file *f, struct binfmt *binary)
 			log_info("interpreter: %s", path);
 
 			struct file *fi;
-			int r = vfs_openat(AT_FDCWD, path, O_RDONLY, 0, &fi);
+			int r = vfs_openat(AT_FDCWD, path, O_RDONLY, 0, 0, &fi);
 			if (r < 0)
 				return r;
 			if (!winfs_is_winfile(fi))
@@ -321,7 +321,7 @@ static int load_script(struct file *f, struct binfmt *binary)
 	binary->replace_argv0 = TRUE;
 
 	struct file *fe;
-	int r = vfs_openat(AT_FDCWD, executable, O_RDONLY, 0, &fe);
+	int r = vfs_openat(AT_FDCWD, executable, O_RDONLY, 0, 0, &fe);
 	if (r < 0)
 		return r;
 	if (!winfs_is_winfile(fe))
@@ -342,7 +342,7 @@ int do_execve(const char *filename, int argc, char *argv[], int env_size, char *
 	int r;
 	char magic[4];
 	struct file *f;
-	r = vfs_openat(AT_FDCWD, filename, O_RDONLY, 0, &f);
+	r = vfs_openat(AT_FDCWD, filename, O_RDONLY, 0, 0, &f);
 	if (r < 0)
 		return r;
 	if (!winfs_is_winfile(f))
