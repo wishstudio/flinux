@@ -677,7 +677,7 @@ static int socket_accept(struct file *f, struct sockaddr *addr, int *addrlen)
 	struct socket_file *socket = (struct socket_file *)f;
 	AcquireSRWLockExclusive(&f->rw_lock);
 	int r = 0;
-	if (connect(socket->socket, addr, addrlen) == SOCKET_ERROR)
+	if (accept(socket->socket, addr, addrlen) == SOCKET_ERROR)
 	{
 		int err = WSAGetLastError();
 		if (err != WSAEWOULDBLOCK)
