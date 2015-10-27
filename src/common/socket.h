@@ -185,6 +185,11 @@ struct linux_sockaddr_storage {
 	char __data[128];
 };
 
+struct sockaddr_un {
+	unsigned short sun_family;
+	char sun_path[108];
+};
+
 struct linux_linger {
 	int l_onoff;   /* Linger active */
 	int l_linger;  /* How long to linger for */

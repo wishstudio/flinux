@@ -173,7 +173,7 @@ struct socket_file
 	SOCKET socket;
 	HANDLE event_handle;
 	int af, type;
-	int events, connect_error;
+	int events, connect_error, accept_error;
 };
 
 /* Reports current ready state
@@ -193,12 +193,15 @@ static int socket_update_events(struct socket_file *f, int error_report_events)
 		f->events |= FD_READ;
 	if (events.lNetworkEvents & FD_WRITE)
 		f->events |= FD_WRITE;
-	if (events.lNetworkEvents & FD_ACCEPT)
-		f->events |= FD_ACCEPT;
 	if (events.lNetworkEvents & FD_CONNECT)
 	{
 		f->events |= FD_CONNECT;
 		f->connect_error = events.iErrorCode[FD_CONNECT_BIT];
+	}
+	if (events.lNetworkEvents & FD_ACCEPT)
+	{
+		f->events |= FD_ACCEPT;
+		f->accept_error = events.iErrorCode[FD_ACCEPT_BIT];
 	}
 	if (events.lNetworkEvents & FD_CLOSE)
 		f->events |= FD_CLOSE;
@@ -208,6 +211,12 @@ static int socket_update_events(struct socket_file *f, int error_report_events)
 		WSASetLastError(f->connect_error);
 		f->events &= ~FD_CONNECT;
 		f->connect_error = 0;
+	}
+	if (error_report_events & f->events & FD_ACCEPT)
+	{
+		WSASetLastError(f->accept_error);
+		f->events &= ~FD_ACCEPT;
+		f->accept_error = 0;
 	}
 	return e;
 }
@@ -546,7 +555,7 @@ static int mm_check_write_msghdr(struct msghdr *msg)
 }
 
 static const struct file_ops socket_ops;
-static int socket_create(int domain, int type, int protocol)
+static int socket_open(int domain, int type, int protocol)
 {
 	/* Translation constants to their Windows counterparts */
 	int win32_af = translate_address_family(domain);
@@ -597,6 +606,25 @@ static int socket_create(int domain, int type, int protocol)
 	return fd;
 }
 
+static int socket_bind(struct file *f, const struct sockaddr *addr, int addrlen)
+{
+	struct socket_file *socket = (struct socket_file *)f;
+	struct sockaddr_storage addr_storage;
+	int addr_storage_len;
+	if ((addr_storage_len = translate_socket_addr_to_winsock((const struct sockaddr_storage *)addr, &addr_storage, addrlen)) == SOCKET_ERROR)
+		return -L_EINVAL;
+	AcquireSRWLockExclusive(&f->rw_lock);
+	int r = 0;
+	if (bind(socket->socket, (struct sockaddr *)&addr_storage, addr_storage_len) == SOCKET_ERROR)
+	{
+		int err = WSAGetLastError();
+		log_warning("bind() failed, error code: %d", err);
+		r = translate_socket_error(err);
+	}
+	ReleaseSRWLockExclusive(&f->rw_lock);
+	return r;
+}
+
 static int socket_connect(struct file *f, const struct sockaddr *addr, size_t addrlen)
 {
 	struct socket_file *socket = (struct socket_file *)f;
@@ -622,6 +650,49 @@ static int socket_connect(struct file *f, const struct sockaddr *addr, size_t ad
 		else
 		{
 			socket_wait_event(socket, FD_CONNECT, 0);
+			r = translate_socket_error(WSAGetLastError());
+		}
+	}
+	ReleaseSRWLockExclusive(&f->rw_lock);
+	return r;
+}
+
+static int socket_listen(struct file *f, int backlog)
+{
+	struct socket_file *socket = (struct socket_file *)f;
+	AcquireSRWLockExclusive(&f->rw_lock);
+	int r = 0;
+	if (listen(socket->socket, backlog) == SOCKET_ERROR)
+	{
+		int err = WSAGetLastError();
+		log_warning("listen() failed, error code: %d", err);
+		r = translate_socket_error(err);
+	}
+	ReleaseSRWLockExclusive(&f->rw_lock);
+	return r;
+}
+
+static int socket_accept(struct file *f, struct sockaddr *addr, int *addrlen)
+{
+	struct socket_file *socket = (struct socket_file *)f;
+	AcquireSRWLockExclusive(&f->rw_lock);
+	int r = 0;
+	if (connect(socket->socket, addr, addrlen) == SOCKET_ERROR)
+	{
+		int err = WSAGetLastError();
+		if (err != WSAEWOULDBLOCK)
+		{
+			log_warning("accept() failed, error code: %d", err);
+			r = translate_socket_error(err);
+		}
+		else if ((f->flags & O_NONBLOCK) > 0)
+		{
+			log_info("No connecting clients, return EAGAIN.");
+			r = -L_EAGAIN;
+		}
+		else
+		{
+			socket_wait_event(socket, FD_ACCEPT, 0);
 			r = translate_socket_error(WSAGetLastError());
 		}
 	}
@@ -921,7 +992,9 @@ static const struct file_ops socket_ops =
 	.read = socket_read,
 	.write = socket_write,
 	.stat = socket_stat,
+	.bind = socket_bind,
 	.connect = socket_connect,
+	.listen = socket_listen,
 	.getsockname = socket_getsockname,
 	.getpeername = socket_getpeername,
 	.sendto = socket_sendto,
@@ -937,10 +1010,30 @@ static const struct file_ops socket_ops =
 DEFINE_SYSCALL(socket, int, domain, int, type, int, protocol)
 {
 	log_info("socket(domain=%d, type=0%o, protocol=%d)", domain, type, protocol);
-	int fd = socket_create(domain, type, protocol);
+	int fd = socket_open(domain, type, protocol);
 	if (fd >= 0)
 		log_info("socket fd: %d", fd);
 	return fd;
+}
+
+DEFINE_SYSCALL(bind, int, sockfd, const struct sockaddr *, addr, int, addrlen)
+{
+	log_info("bind(%p, %d)", addr, addrlen);
+	if (!mm_check_read(addr, sizeof(struct sockaddr)))
+		return -L_EFAULT;
+	struct file *f = vfs_get(sockfd);
+	if (!f)
+		return -L_EBADF;
+	int r;
+	if (!f->op_vtable->bind)
+	{
+		log_error("bind() not implemented.");
+		r = -L_ENOTSOCK;
+	}
+	else
+		r = f->op_vtable->bind(f, addr, addrlen);
+	vfs_release(f);
+	return r;
 }
 
 DEFINE_SYSCALL(connect, int, sockfd, const struct sockaddr *, addr, size_t, addrlen)
@@ -959,6 +1052,44 @@ DEFINE_SYSCALL(connect, int, sockfd, const struct sockaddr *, addr, size_t, addr
 	}
 	else
 		r = f->op_vtable->connect(f, addr, addrlen);
+	vfs_release(f);
+	return r;
+}
+
+DEFINE_SYSCALL(listen, int, sockfd, int, backlog)
+{
+	log_info("listen(%d, %d)", sockfd, backlog);
+	struct file *f = vfs_get(sockfd);
+	if (!f)
+		return -L_EBADF;
+	int r;
+	if (!f->op_vtable->listen)
+	{
+		log_error("listen() not implemented.");
+		r = -L_ENOTSOCK;
+	}
+	else
+		r = f->op_vtable->listen(f, backlog);
+	vfs_release(f);
+	return r;
+}
+
+DEFINE_SYSCALL(accept, int, sockfd, struct sockaddr *, addr, int *, addrlen)
+{
+	log_info("accept(%d, %p, %p)", sockfd, addr, addrlen);
+	if (!mm_check_write(addr, sizeof(struct sockaddr)))
+		return -L_EFAULT;
+	struct file *f = vfs_get(sockfd);
+	if (!f)
+		return -L_EBADF;
+	int r;
+	if (!f->op_vtable->listen)
+	{
+		log_error("accept() not implemented.");
+		r = -L_ENOTSOCK;
+	}
+	else
+		r = f->op_vtable->accept(f, addr, addrlen);
 	vfs_release(f);
 	return r;
 }
@@ -1240,8 +1371,17 @@ DEFINE_SYSCALL(socketcall, int, call, uintptr_t *, args)
 	case SYS_SOCKET:
 		return sys_socket(args[0], args[1], args[2]);
 
+	case SYS_BIND:
+		return sys_bind(args[0], (const struct sockaddr *)args[1], args[2]);
+
 	case SYS_CONNECT:
 		return sys_connect(args[0], (const struct sockaddr *)args[1], args[2]);
+
+	case SYS_LISTEN:
+		return sys_listen(args[0], args[1]);
+
+	case SYS_ACCEPT:
+		return sys_accept(args[0], (struct sockaddr *)args[1], (int *)args[2]);
 
 	case SYS_GETSOCKNAME:
 		return sys_getsockname(args[0], (struct sockaddr *)args[1], (int *)args[2]);
