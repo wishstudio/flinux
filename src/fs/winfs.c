@@ -1066,7 +1066,7 @@ static int open_file(HANDLE *hFile, struct mount_point *mp, const char *pathname
 	return 0;
 }
 
-static int winfs_open(struct mount_point *mp, const char *pathname, int flags, int mode, struct file **fp, char *target, int buflen)
+static int winfs_open(struct mount_point *mp, const char *pathname, int flags, int internal_flags, int mode, struct file **fp, char *target, int buflen)
 {
 	/* TODO: mode */
 	DWORD desired_access, create_disposition;
@@ -1080,7 +1080,7 @@ static int winfs_open(struct mount_point *mp, const char *pathname, int flags, i
 		desired_access = GENERIC_WRITE;
 	else
 		desired_access = GENERIC_READ;
-	if (flags & INTERNAL_O_DELETE)
+	if (internal_flags & INTERNAL_O_DELETE)
 		desired_access |= DELETE;
 	if (flags & O_EXCL)
 		create_disposition = FILE_CREATE;

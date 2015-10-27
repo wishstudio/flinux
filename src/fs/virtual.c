@@ -570,7 +570,7 @@ struct virtualfs
 	const struct virtualfs_directory_desc *dir;
 };
 
-static int virtualfs_open(struct mount_point *mp, const char *path, int flags, int mode, struct file **p, char *target, int buflen)
+static int virtualfs_open(struct mount_point *mp, const char *path, int flags, int internal_flags, int mode, struct file **p, char *target, int buflen)
 {
 	if (flags & O_EXCL)
 		return -L_EPERM;

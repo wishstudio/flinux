@@ -1049,7 +1049,7 @@ static int resolve_path(const char *dirpath, const char *pathname, char *realpat
 					struct file_system *fs = mp.fs;
 					if (!fs->open)
 						return -L_ENOTDIR;
-					int r = fs->open(&mp, subpath, O_PATH | O_DIRECTORY, 0, NULL, target, PATH_MAX);
+					int r = fs->open(&mp, subpath, O_PATH | O_DIRECTORY, 0, 0, NULL, target, PATH_MAX);
 					if (r < 0)
 						return r;
 					else if (r == 0) /* It is a regular file, go forward */
@@ -1167,7 +1167,7 @@ int vfs_openat(int dirfd, const char *pathname, int flags, int internal_flags, i
 		if (!find_mountpoint(realpath, &mp, &subpath))
 			return -L_ENOENT;
 		struct file_system *fs = mp.fs;
-		int ret = fs->open(&mp, subpath, flags, mode, f, target, PATH_MAX);
+		int ret = fs->open(&mp, subpath, flags, internal_flags, mode, f, target, PATH_MAX);
 		if (ret <= 0)
 			return ret;
 		else if (ret == 1)

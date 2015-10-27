@@ -94,7 +94,7 @@ static void file_init(struct file *f, const struct file_ops *op_vtable, int flag
 
 struct file_system
 {
-	int (*open)(struct mount_point *mp, const char *path, int flags, int mode, struct file **fp, char *target, int buflen);
+	int (*open)(struct mount_point *mp, const char *path, int flags, int internal_flags, int mode, struct file **fp, char *target, int buflen);
 	int (*symlink)(struct mount_point *mp, const char *target, const char *linkpath);
 	int (*link)(struct mount_point *mp, struct file *f, const char *newpath);
 	int (*unlink)(struct mount_point *mp, const char *pathname);
