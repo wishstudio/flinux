@@ -27,6 +27,8 @@
 #define O_NDELAY		O_NONBLOCK
 
 /* Internal modes */
+#define INTERNAL_O_TMP		010000000
+#define INTERNAL_O_SPECIAL	020000000
 #define INTERNAL_O_DELETE	040000000
 
 #define AT_FDCWD				-100    /* Special value used to indicate openat should use the current working directory. */

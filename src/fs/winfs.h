@@ -23,3 +23,5 @@
 
 struct file_system *winfs_alloc();
 int winfs_is_winfile(struct file *f);
+int winfs_read_special_file(struct file *f, const char *header, int headerlen, char *buf, int buflen);
+int winfs_write_special_file(struct file *f, const char *header, int headerlen, char *buf, int buflen);

@@ -25,6 +25,7 @@
 #include <common/tcp.h>
 #include <fs/file.h>
 #include <fs/socket.h>
+#include <fs/winfs.h>
 #include <syscall/mm.h>
 #include <syscall/process.h>
 #include <syscall/sig.h>
@@ -32,6 +33,7 @@
 #include <syscall/vfs.h>
 #include <heap.h>
 #include <log.h>
+#include <str.h>
 
 #include <malloc.h>
 #include <WinSock2.h>
@@ -41,12 +43,22 @@
 
 #pragma comment(lib, "ws2_32.lib")
 
+static void log_unix_socket_addr(const struct sockaddr_un *addr, int addrlen)
+{
+	if (addrlen == sizeof(addr->sun_family))
+		log_info("sockaddr: (unnamed)");
+	else if (addr->sun_path[0] == 0)
+		log_info("sockaddr: (abstract)"); /* TODO */
+	else
+		log_info("sockaddr: (path) %s", addr->sun_path);
+}
+
 static int translate_address_family(int af)
 {
 	switch (af)
 	{
 	case LINUX_AF_UNSPEC: return AF_UNSPEC;
-	case LINUX_AF_UNIX: return AF_UNIX;
+	case LINUX_AF_UNIX: return AF_INET;
 	case LINUX_AF_INET: return AF_INET;
 	case LINUX_AF_INET6: return AF_INET6;
 	default:
@@ -494,7 +506,6 @@ static int socket_stat(struct file *f, struct newstat *buf)
 	return 0;
 }
 
-
 static HANDLE init_socket_event(int sock)
 {
 	SECURITY_ATTRIBUTES attr;
@@ -611,7 +622,43 @@ static int socket_bind(struct file *f, const struct sockaddr *addr, int addrlen)
 	struct socket_file *socket = (struct socket_file *)f;
 	struct sockaddr_storage addr_storage;
 	int addr_storage_len;
-	if ((addr_storage_len = translate_socket_addr_to_winsock((const struct sockaddr_storage *)addr, &addr_storage, addrlen)) == SOCKET_ERROR)
+	struct file *winfile = NULL;
+	if (socket->af == LINUX_AF_UNIX)
+	{
+		if (addrlen <= sizeof(addr->sa_family))
+			return -L_EINVAL;
+		if (addr->sa_family != LINUX_AF_UNIX)
+			return -L_EAFNOSUPPORT;
+		const struct sockaddr_un *addr_un = (const struct sockaddr_un*)addr;
+		log_unix_socket_addr(addr_un, addrlen);
+		if (addrlen == 0)
+		{
+			log_warning("sockaddr is empty.");
+			return -L_EINVAL;
+		}
+		if (addr_un->sun_path[0] == 0)
+		{
+			log_error("Abstract sockaddr not supported.");
+			return -L_EINVAL;
+		}
+		int r = vfs_openat(AT_FDCWD, addr_un->sun_path, O_CREAT | O_WRONLY, INTERNAL_O_SPECIAL, 0, &winfile);
+		if (r < 0)
+			return r;
+		if (!winfs_is_winfile(winfile))
+		{
+			log_warning("Not a winfile.");
+			vfs_release(f);
+			return -L_EPERM;
+		}
+		/* Generate inet sockaddr for winsock */
+		struct sockaddr_in *addr_inet = (struct sockaddr_in *)&addr_storage;
+		addr_storage_len = sizeof(struct sockaddr_in);
+		memset(addr_inet, 0, sizeof(struct sockaddr_in));
+		addr_inet->sin_family = AF_INET;
+		addr_inet->sin_addr.S_un.S_addr = htonl(INADDR_LOOPBACK);
+		addr_inet->sin_port = 0;
+	}
+	else if ((addr_storage_len = translate_socket_addr_to_winsock((const struct sockaddr_storage *)addr, &addr_storage, addrlen)) == SOCKET_ERROR)
 		return -L_EINVAL;
 	AcquireSRWLockExclusive(&f->rw_lock);
 	int r = 0;
@@ -621,6 +668,34 @@ static int socket_bind(struct file *f, const struct sockaddr *addr, int addrlen)
 		log_warning("bind() failed, error code: %d", err);
 		r = translate_socket_error(err);
 	}
+	else
+	{
+		/* Bind succeeded */
+		if (socket->af == LINUX_AF_UNIX)
+		{
+			struct sockaddr_in addr_in;
+			int addr_in_len;
+			if (getsockname(socket->socket, (struct sockaddr *)&addr_in, &addr_in_len) == SOCKET_ERROR)
+			{
+				log_error("getsockname() failed, error code: %d", WSAGetLastError());
+				/* TODO: Recover */
+				__debugbreak();
+			}
+			int port = ntohs(addr_in.sin_port);
+			log_info("Bind port: %d", port);
+			/* Write port information to the socket file */
+			char buf[10];
+			int buflen = ksprintf(buf, "%d", port);
+			int wr = winfs_write_special_file(winfile, WINFS_UNIX_HEADER, WINFS_UNIX_HEADER_LEN, buf, buflen);
+			if (wr <= 0)
+			{
+				log_error("winfs_write_special_file() failed, return code: %d", wr);
+				/* TODO: Recover */
+				__debugbreak();
+			}
+			vfs_release(winfile);
+		}
+	}
 	ReleaseSRWLockExclusive(&f->rw_lock);
 	return r;
 }
@@ -628,13 +703,56 @@ static int socket_bind(struct file *f, const struct sockaddr *addr, int addrlen)
 static int socket_connect(struct file *f, const struct sockaddr *addr, size_t addrlen)
 {
 	struct socket_file *socket = (struct socket_file *)f;
-	AcquireSRWLockExclusive(&f->rw_lock);
 	struct sockaddr_storage addr_storage;
-	int r = 0;
 	int addr_storage_len;
-	if ((addr_storage_len = translate_socket_addr_to_winsock((const struct sockaddr_storage *)addr, &addr_storage, addrlen)) == SOCKET_ERROR)
-		r = -L_EINVAL;
-	else if (connect(socket->socket, (struct sockaddr *)&addr_storage, addr_storage_len) == SOCKET_ERROR)
+	if (socket->af == LINUX_AF_UNIX)
+	{
+		if (addrlen <= sizeof(addr->sa_family))
+			return -L_EINVAL;
+		if (addr->sa_family != LINUX_AF_UNIX)
+			return -L_EAFNOSUPPORT;
+		const struct sockaddr_un *addr_un = (const struct sockaddr_un *)addr;
+		log_unix_socket_addr(addr_un, addrlen);
+		if (addrlen == 0)
+		{
+			log_warning("sockaddr is empty.");
+			return -L_EINVAL;
+		}
+		if (addr_un->sun_path[0] == 0)
+		{
+			log_error("Abstract sockaddr not supported.");
+			return -L_EINVAL;
+		}
+		/* Get socket port */
+		struct file *winfile;
+		int r = vfs_openat(AT_FDCWD, addr_un->sun_path, O_RDONLY, 0, 0, &winfile);
+		if (r < 0)
+			return r;
+		char buf[10];
+		r = winfs_read_special_file(winfile, WINFS_UNIX_HEADER, WINFS_UNIX_HEADER_LEN, buf, sizeof(buf));
+		vfs_release(winfile);
+		if (r < 0)
+			return r;
+		if (r == 0) /* The file is not a socket file */
+			return -L_ECONNREFUSED;
+		buf[r] = 0;
+		int port;
+		if (!katoi(buf, &port))
+			return -L_ECONNREFUSED;
+		/* Generate inet sockaddr for winsock */
+		struct sockaddr_in *addr_inet = (struct sockaddr_in *)&addr_storage;
+		addr_storage_len = sizeof(struct sockaddr_in);
+		memset(addr_inet, 0, sizeof(struct sockaddr_in));
+		addr_inet->sin_addr.S_un.S_addr = htonl(INADDR_LOOPBACK);
+		addr_inet->sin_port = htons(port);
+		addr_storage_len = sizeof(struct sockaddr_in);
+	}
+	else if ((addr_storage_len = translate_socket_addr_to_winsock((const struct sockaddr_storage *)addr, &addr_storage, addrlen)) == SOCKET_ERROR)
+		return -L_EINVAL;
+
+	AcquireSRWLockExclusive(&f->rw_lock);
+	int r = 0;
+	if (connect(socket->socket, (struct sockaddr *)&addr_storage, addr_storage_len) == SOCKET_ERROR)
 	{
 		int err = WSAGetLastError();
 		if (err != WSAEWOULDBLOCK)
@@ -1078,6 +1196,8 @@ DEFINE_SYSCALL(accept, int, sockfd, struct sockaddr *, addr, int *, addrlen)
 {
 	log_info("accept(%d, %p, %p)", sockfd, addr, addrlen);
 	if (!mm_check_write(addr, sizeof(struct sockaddr)))
+		return -L_EFAULT;
+	if (!mm_check_write(addrlen, sizeof(int)))
 		return -L_EFAULT;
 	struct file *f = vfs_get(sockfd);
 	if (!f)

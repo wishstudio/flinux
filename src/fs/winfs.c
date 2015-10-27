@@ -32,9 +32,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <limits.h>
-
-#define WINFS_SYMLINK_HEADER		"!<SYMLINK>\379\378"
-#define WINFS_SYMLINK_HEADER_LEN	(sizeof(WINFS_SYMLINK_HEADER) - 1)
+#include <malloc.h>
 
 struct winfs_file
 {
@@ -87,7 +85,7 @@ static PSID get_user_sid()
 		TOKEN_USER *token_user = (TOKEN_USER *)cached_token_user;
 		cached_sid = token_user->User.Sid;
 		cached_sid_initialized = 1;
-		CloseHandle(token);
+		NtClose(token);
 		return cached_sid;
 	}
 }
@@ -164,6 +162,84 @@ static NTSTATUS move_to_recycle_bin(HANDLE handle, WCHAR *pathname)
 	return STATUS_SUCCESS;
 }
 
+/* Return value:
+ * < 0: errno
+ * = 0: Not a special file of the specified header
+ * > 0: Bytes read
+ */
+int winfs_read_special_file(struct file *f, const char *header, int headerlen, char *buf, int buflen)
+{
+	if (!winfs_is_winfile(f))
+	{
+		log_warning("Not a winfile.");
+		return 0;
+	}
+	struct winfs_file *winfile = (struct winfs_file *)f;
+	/* Test if the system attribute is set */
+	FILE_ATTRIBUTE_TAG_INFORMATION info;
+	IO_STATUS_BLOCK status_block;
+	NTSTATUS status;
+	status = NtQueryInformationFile(winfile->handle, &status_block, &info, sizeof(info), FileAttributeTagInformation);
+	if (!NT_SUCCESS(status))
+	{
+		log_warning("NtQueryInformationFile() failed, status: %x", status);
+		return 0;
+	}
+	if (!(info.FileAttributes & FILE_ATTRIBUTE_SYSTEM))
+	{
+		log_warning("System attribute is not set.");
+		return 0;
+	}
+	/* The if the header matches */
+	char *file_header = (char *)alloca(headerlen);
+	DWORD num_read;
+	OVERLAPPED overlapped;
+	overlapped.Internal = 0;
+	overlapped.InternalHigh = 0;
+	overlapped.Offset = 0;
+	overlapped.OffsetHigh = 0;
+	overlapped.hEvent = 0;
+	if (!ReadFile(winfile->handle, file_header, headerlen, &num_read, &overlapped) || num_read < headerlen)
+	{
+		log_warning("ReadFile() failed, error code: %d", GetLastError());
+		return 0;
+	}
+	if (memcmp(file_header, header, headerlen))
+	{
+		log_warning("File header mismatch.");
+		return 0;
+	}
+	/* Read special content */
+	overlapped.Offset = headerlen;
+	if (!ReadFile(winfile->handle, buf, buflen, &num_read, &overlapped))
+		return 0;
+	return num_read;
+}
+
+/* The file pointer must be at the begin of the file
+ * Return value: bytes written (0 indicates an error) */
+int winfs_write_special_file(struct file *f, const char *header, int headerlen, char *buf, int buflen)
+{
+	if (!winfs_is_winfile(f))
+	{
+		log_warning("Not a winfile.");
+		return 0;
+	}
+	struct winfs_file *winfile = (struct winfs_file *)f;
+	DWORD num_written;
+	if (!WriteFile(winfile->handle, header, headerlen, &num_written, NULL) || num_written < headerlen)
+	{
+		log_warning("WriteFile() failed, error code: %d", GetLastError());
+		return 0;
+	}
+	if (!WriteFile(winfile->handle, buf, buflen, &num_written, NULL) || num_written < buflen)
+	{
+		log_warning("WriteFile() failed, error code: %d", GetLastError());
+		return 0;
+	}
+	return headerlen + buflen;
+}
+
 /* Test if a handle is a symlink, does not read the target
  * The current file pointer will be changed
  */
@@ -187,15 +263,45 @@ static int winfs_is_symlink_unsafe(HANDLE hFile)
 	return 1;
 }
 
+/* Return file type.
+ * File pointer is changed after the operation.
+ * Return 0 if anything fails
+ */
+#define SPECIAL_FILE_SYMLINK		1
+#define SPECIAL_FILE_SOCKET			2
+static int winfs_get_special_file_type(HANDLE hFile)
+{
+	char header[WINFS_HEADER_MAX_LEN];
+	memset(header, 0, sizeof(header));
+	DWORD num_read;
+	OVERLAPPED overlapped;
+	overlapped.Internal = 0;
+	overlapped.InternalHigh = 0;
+	overlapped.Offset = 0;
+	overlapped.OffsetHigh = 0;
+	overlapped.hEvent = 0;
+	if (!ReadFile(hFile, header, WINFS_HEADER_MAX_LEN, &num_read, &overlapped))
+	{
+		log_error("ReadFile() failed, error code: %d", GetLastError());
+		return 0;
+	}
+	if (!memcpy(header, WINFS_SYMLINK_HEADER, WINFS_SYMLINK_HEADER_LEN))
+		return SPECIAL_FILE_SYMLINK;
+	else if (!memcpy(header, WINFS_UNIX_HEADER, WINFS_UNIX_HEADER_LEN))
+		return SPECIAL_FILE_SOCKET;
+	else
+		return 0;
+}
+
 /*
 Test if a handle is a symlink, also return its target if requested.
 For optimal performance, caller should ensure the handle is a regular file with system attribute.
+File pointer is changed after the operation.
 */
 static int winfs_read_symlink_unsafe(HANDLE hFile, char *target, int buflen)
 {
 	char header[WINFS_SYMLINK_HEADER_LEN];
 	DWORD num_read;
-	/* Use overlapped structure to avoid changing file pointer */
 	OVERLAPPED overlapped;
 	overlapped.Internal = 0;
 	overlapped.InternalHigh = 0;
@@ -226,7 +332,7 @@ static int winfs_read_symlink_unsafe(HANDLE hFile, char *target, int buflen)
 static int winfs_close(struct file *f)
 {
 	struct winfs_file *winfile = (struct winfs_file *)f;
-	CloseHandle(winfile->handle);
+	NtClose(winfile->handle);
 	CloseHandle(winfile->fp_mutex);
 	kfree(winfile, sizeof(struct winfs_file));
 	return 0;
@@ -552,17 +658,34 @@ static int winfs_stat(struct file *f, struct newstat *buf)
 	}
 	else
 	{
-		int r;
-		if ((info.dwFileAttributes & FILE_ATTRIBUTE_SYSTEM)
-			&& (r = winfs_read_symlink_unsafe(winfile->handle, NULL, 0)) > 0)
+		buf->st_mode |= S_IFREG;
+		buf->st_size = ((uint64_t)info.nFileSizeHigh << 32ULL) + info.nFileSizeLow;
+		if (info.dwFileAttributes & FILE_ATTRIBUTE_SYSTEM)
 		{
-			buf->st_mode |= S_IFLNK;
-			buf->st_size = r;
-		}
-		else
-		{
-			buf->st_mode |= S_IFREG;
-			buf->st_size = ((uint64_t)info.nFileSizeHigh << 32ULL) + info.nFileSizeLow;
+			WaitForSingleObject(winfile->fp_mutex, INFINITE);
+			/* Save current file pointer */
+			LARGE_INTEGER distanceToMove, currentFilePointer;
+			distanceToMove.QuadPart = 0;
+			SetFilePointerEx(winfile->handle, distanceToMove, &currentFilePointer, FILE_CURRENT);
+
+			int type = winfs_get_special_file_type(winfile->handle);
+			if (type > 0)
+			{
+				if (type == SPECIAL_FILE_SYMLINK)
+				{
+					buf->st_mode |= S_IFLNK;
+					buf->st_size -= WINFS_SYMLINK_HEADER_LEN;
+				}
+				else if (type == SPECIAL_FILE_SOCKET)
+				{
+					buf->st_mode |= S_IFSOCK;
+					buf->st_size = 0;
+				}
+			}
+
+			/* Restore current file pointer */
+			SetFilePointerEx(winfile->handle, currentFilePointer, &currentFilePointer, FILE_BEGIN);
+			ReleaseMutex(winfile->fp_mutex);
 		}
 	}
 	buf->st_nlink = info.nNumberOfLinks;
@@ -670,8 +793,11 @@ static int winfs_getdents(struct file *f, void *dirent, size_t count, getdents_c
 					FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT, NULL, 0);
 				if (NT_SUCCESS(status))
 				{
-					if (winfs_is_symlink_unsafe(handle))
+					int type = winfs_get_special_file_type(handle);
+					if (type == SPECIAL_FILE_SYMLINK)
 						type = DT_LNK;
+					else if (type == SPECIAL_FILE_SOCKET)
+						type = DT_SOCK;
 					NtClose(handle);
 				}
 				else
@@ -782,14 +908,14 @@ static int winfs_symlink(struct mount_point *mp, const char *target, const char 
 	if (!WriteFile(handle, WINFS_SYMLINK_HEADER, WINFS_SYMLINK_HEADER_LEN, &num_written, NULL) || num_written < WINFS_SYMLINK_HEADER_LEN)
 	{
 		log_warning("WriteFile() failed, error code: %d.", GetLastError());
-		CloseHandle(handle);
+		NtClose(handle);
 		return -L_EIO;
 	}
 	DWORD targetlen = strlen(target);
 	if (!WriteFile(handle, target, targetlen, &num_written, NULL) || num_written < targetlen)
 	{
 		log_warning("WriteFile() failed, error code: %d.", GetLastError());
-		CloseHandle(handle);
+		NtClose(handle);
 		return -L_EIO;
 	}
 	NtClose(handle);
@@ -968,7 +1094,7 @@ static int winfs_rmdir(struct mount_point *mp, const char *pathname)
  *  > 0 => It is a symlink which needs to be redirected (target written)
  */
 static int open_file(HANDLE *hFile, struct mount_point *mp, const char *pathname,
-	DWORD desired_access, DWORD create_disposition,
+	DWORD desired_access, DWORD create_disposition, DWORD attributes,
 	int flags, BOOL bInherit, char *target, int buflen, char *drive_letter)
 {
 	WCHAR buf[PATH_MAX];
@@ -1002,7 +1128,7 @@ static int open_file(HANDLE *hFile, struct mount_point *mp, const char *pathname
 	}
 	desired_access |= SYNCHRONIZE | FILE_READ_ATTRIBUTES;
 	status = NtCreateFile(&handle, desired_access, &attr, &status_block, NULL,
-		FILE_ATTRIBUTE_NORMAL, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+		attributes, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
 		create_disposition, create_options, NULL, 0);
 	if (status == STATUS_OBJECT_NAME_COLLISION)
 	{
@@ -1039,19 +1165,19 @@ static int open_file(HANDLE *hFile, struct mount_point *mp, const char *pathname
 				*hFile = handle;
 				return 0;
 			}
-			CloseHandle(handle);
+			NtClose(handle);
 			handle = read_handle;
 		}
 		if (winfs_read_symlink_unsafe(handle, target, buflen) > 0)
 		{
 			if (!(flags & O_NOFOLLOW))
 			{
-				CloseHandle(handle);
+				NtClose(handle);
 				return 1;
 			}
 			if (!(flags & O_PATH))
 			{
-				CloseHandle(handle);
+				NtClose(handle);
 				log_info("Specified O_NOFOLLOW but not O_PATH, returning ELOOP.");
 				return -L_ELOOP;
 			}
@@ -1088,8 +1214,13 @@ static int winfs_open(struct mount_point *mp, const char *pathname, int flags, i
 		create_disposition = FILE_OPEN_IF;
 	else
 		create_disposition = FILE_OPEN;
+	DWORD attributes;
+	if (internal_flags & INTERNAL_O_SPECIAL)
+		attributes = FILE_ATTRIBUTE_SYSTEM;
+	else
+		attributes = FILE_ATTRIBUTE_NORMAL;
 	char drive_letter;
-	int r = open_file(&handle, mp, pathname, desired_access, create_disposition, flags, fp != NULL, target, buflen, &drive_letter);
+	int r = open_file(&handle, mp, pathname, desired_access, create_disposition, attributes, flags, fp != NULL, target, buflen, &drive_letter);
 	if (r < 0 || r == 1)
 		return r;
 	if ((flags & O_TRUNC) && ((flags & O_WRONLY) || (flags & O_RDWR)))
@@ -1118,10 +1249,23 @@ static int winfs_open(struct mount_point *mp, const char *pathname, int flags, i
 		file->restart_scan = 1;
 		file->mp_key = mp->key;
 		file->drive_letter = drive_letter;
+		if (internal_flags & INTERNAL_O_TMP)
+		{
+			FILE_DISPOSITION_INFORMATION info;
+			IO_STATUS_BLOCK status_block;
+			info.DeleteFile = TRUE;
+			NTSTATUS status;
+			status = NtSetInformationFile(handle, &status_block, &info, sizeof(info), FileDispositionInformation);
+			if (!NT_SUCCESS(status))
+			{
+				log_warning("NtSetInformation(FileDispositionInformation) failed, status: %x", status);
+				return -L_EBUSY;
+			}
+		}
 		*fp = (struct file *)file;
 	}
 	else
-		CloseHandle(handle);
+		NtClose(handle);
 	return 0;
 }
 

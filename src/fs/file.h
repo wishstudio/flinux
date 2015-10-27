@@ -32,6 +32,12 @@
 #define GETDENTS_UTF8	1
 #define GETDENTS_UTF16	2
 
+#define WINFS_SYMLINK_HEADER		"!<SYMLINK>\379\378"
+#define WINFS_SYMLINK_HEADER_LEN	(sizeof(WINFS_SYMLINK_HEADER) - 1)
+#define WINFS_UNIX_HEADER			"!<UNIX>\379\378"
+#define WINFS_UNIX_HEADER_LEN		(sizeof(WINFS_UNIX_HEADER) - 1)
+#define WINFS_HEADER_MAX_LEN		16
+
 #define GETDENTS_ERR_BUFFER_OVERFLOW	-100
 typedef intptr_t getdents_callback(void *buffer, uint64_t inode, const void *name, int namelen, char type, size_t size, int flags);
 
