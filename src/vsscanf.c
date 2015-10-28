@@ -87,24 +87,28 @@ int kvsscanf(const char *buffer, const char *format, va_list args)
 			{
 				if (*buffer++ != '%')
 					return count;
+				continue;
 			}
 
 			case 'n':
 			{
 				int *out = va_arg(args, int *);
 				*out = buf - buffer;
+				continue;
 			}
 
 			case 'd':
 			{
 				int32_t *out = va_arg(args, int32_t *);
 				PARSE_NUM(buf, out, int32_t, uint32_t);
+				continue;
 			}
 
 			case 'u':
 			{
 				uint32_t *out = va_arg(args, uint32_t *);
 				PARSE_NUM(buf, out, uint32_t, uint32_t);
+				continue;
 			}
 			}
 		}

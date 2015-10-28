@@ -641,7 +641,7 @@ static int socket_bind(struct file *f, const struct sockaddr *addr, int addrlen)
 			log_error("Abstract sockaddr not supported.");
 			return -L_EINVAL;
 		}
-		int r = vfs_openat(AT_FDCWD, addr_un->sun_path, O_CREAT | O_WRONLY, INTERNAL_O_SPECIAL, 0, &winfile);
+		int r = vfs_openat(AT_FDCWD, addr_un->sun_path, O_CREAT | O_EXCL | O_WRONLY, INTERNAL_O_SPECIAL, 0, &winfile);
 		if (r < 0)
 			return r;
 		if (!winfs_is_winfile(winfile))
@@ -732,17 +732,28 @@ static int socket_connect(struct file *f, const struct sockaddr *addr, size_t ad
 		r = winfs_read_special_file(winfile, WINFS_UNIX_HEADER, WINFS_UNIX_HEADER_LEN, buf, sizeof(buf));
 		vfs_release(winfile);
 		if (r < 0)
+		{
+			log_warning("Open socket file failed.");
 			return r;
+		}
 		if (r == 0) /* The file is not a socket file */
+		{
+			log_warning("Not a socket file.");
 			return -L_ECONNREFUSED;
+		}
 		buf[r] = 0;
 		int port;
 		if (!katoi(buf, &port))
+		{
+			log_warning("Invalid socket file content.");
 			return -L_ECONNREFUSED;
+		}
+		log_info("port: %d", port);
 		/* Generate inet sockaddr for winsock */
 		struct sockaddr_in *addr_inet = (struct sockaddr_in *)&addr_storage;
 		addr_storage_len = sizeof(struct sockaddr_in);
 		memset(addr_inet, 0, sizeof(struct sockaddr_in));
+		addr_inet->sin_family = AF_INET;
 		addr_inet->sin_addr.S_un.S_addr = htonl(INADDR_LOOPBACK);
 		addr_inet->sin_port = htons(port);
 		addr_storage_len = sizeof(struct sockaddr_in);
@@ -790,29 +801,66 @@ static int socket_listen(struct file *f, int backlog)
 	return r;
 }
 
-static int socket_accept(struct file *f, struct sockaddr *addr, int *addrlen)
+static int socket_accept4(struct file *f, struct sockaddr *addr, int *addrlen, int flags)
 {
 	struct socket_file *socket = (struct socket_file *)f;
 	AcquireSRWLockExclusive(&f->rw_lock);
-	int r = 0;
-	if (accept(socket->socket, addr, addrlen) == SOCKET_ERROR)
+	struct sockaddr_storage addr_storage;
+	int addr_storage_len;
+	int r;
+	while ((r = socket_wait_event(socket, FD_ACCEPT, 0)) == 0)
 	{
+		SOCKET socket_handle;
+		if ((socket_handle = accept(socket->socket, (struct sockaddr *)&addr_storage, &addr_storage_len)) != SOCKET_ERROR)
+		{
+			/* Create a new socket */
+			HANDLE event_handle = init_socket_event(socket_handle);
+			if (!event_handle)
+			{
+				closesocket(socket_handle);
+				log_error("init_socket_event() failed.");
+				r = -L_ENFILE;
+				break;
+			}
+			struct socket_file *conn_socket = (struct socket_file *)kmalloc(sizeof(struct socket_file));
+			file_init(&conn_socket->base_file, &socket_ops, 0);
+			conn_socket->socket = socket_handle;
+			conn_socket->event_handle = event_handle;
+			conn_socket->af = socket->af;
+			conn_socket->type = socket->type;
+			conn_socket->events = 0;
+			conn_socket->connect_error = 0;
+			if (flags & O_NONBLOCK)
+				conn_socket->base_file.flags |= O_NONBLOCK;
+			int fd = vfs_store_file((struct file *)f, (flags & O_CLOEXEC) > 0);
+			r = vfs_store_file((struct file *)conn_socket, 0);
+			if (r < 0)
+				vfs_release((struct file *)conn_socket);
+			/* Translate address back to Linux format */
+			if (addr && addrlen)
+			{
+				if (socket->af == LINUX_AF_UNIX)
+				{
+					/* Set addr to unnamed */
+					struct sockaddr_un *addr_un = (struct sockaddr_un *)addr;
+					*addrlen = sizeof(addr_un->sun_family);
+				}
+				else
+				{
+					*addrlen = translate_socket_addr_to_linux(&addr_storage, addr_storage_len);
+					memcpy(addr, &addr_storage, *addrlen);
+				}
+			}
+			break;
+		}
 		int err = WSAGetLastError();
 		if (err != WSAEWOULDBLOCK)
 		{
 			log_warning("accept() failed, error code: %d", err);
 			r = translate_socket_error(err);
+			break;
 		}
-		else if ((f->flags & O_NONBLOCK) > 0)
-		{
-			log_info("No connecting clients, return EAGAIN.");
-			r = -L_EAGAIN;
-		}
-		else
-		{
-			socket_wait_event(socket, FD_ACCEPT, 0);
-			r = translate_socket_error(WSAGetLastError());
-		}
+		socket->events &= ~FD_ACCEPT;
 	}
 	ReleaseSRWLockExclusive(&f->rw_lock);
 	return r;
@@ -1113,6 +1161,7 @@ static const struct file_ops socket_ops =
 	.bind = socket_bind,
 	.connect = socket_connect,
 	.listen = socket_listen,
+	.accept4 = socket_accept4,
 	.getsockname = socket_getsockname,
 	.getpeername = socket_getpeername,
 	.sendto = socket_sendto,
@@ -1195,21 +1244,21 @@ DEFINE_SYSCALL(listen, int, sockfd, int, backlog)
 DEFINE_SYSCALL(accept, int, sockfd, struct sockaddr *, addr, int *, addrlen)
 {
 	log_info("accept(%d, %p, %p)", sockfd, addr, addrlen);
-	if (!mm_check_write(addr, sizeof(struct sockaddr)))
+	if (addr && !mm_check_write(addr, sizeof(struct sockaddr)))
 		return -L_EFAULT;
-	if (!mm_check_write(addrlen, sizeof(int)))
+	if (addrlen && !mm_check_write(addrlen, sizeof(int)))
 		return -L_EFAULT;
 	struct file *f = vfs_get(sockfd);
 	if (!f)
 		return -L_EBADF;
 	int r;
-	if (!f->op_vtable->listen)
+	if (!f->op_vtable->accept4)
 	{
 		log_error("accept() not implemented.");
 		r = -L_ENOTSOCK;
 	}
 	else
-		r = f->op_vtable->accept(f, addr, addrlen);
+		r = f->op_vtable->accept4(f, addr, addrlen, 0);
 	vfs_release(f);
 	return r;
 }
@@ -1447,6 +1496,28 @@ DEFINE_SYSCALL(recvmsg, int, sockfd, struct msghdr *, msg, int, flags)
 	return r;
 }
 
+DEFINE_SYSCALL(accept4, int, sockfd, struct sockaddr *, addr, int *, addrlen, int, flags)
+{
+	log_info("accept4(%d, %p, %p, %d)", sockfd, addr, addrlen, flags);
+	if (addr && !mm_check_write(addr, sizeof(struct sockaddr)))
+		return -L_EFAULT;
+	if (addrlen && !mm_check_write(addrlen, sizeof(int)))
+		return -L_EFAULT;
+	struct file *f = vfs_get(sockfd);
+	if (!f)
+		return -L_EBADF;
+	int r;
+	if (!f->op_vtable->accept4)
+	{
+		log_error("accept4() not implemented.");
+		r = -L_ENOTSOCK;
+	}
+	else
+		r = f->op_vtable->accept4(f, addr, addrlen, flags);
+	vfs_release(f);
+	return r;
+}
+
 DEFINE_SYSCALL(sendmmsg, int, sockfd, struct mmsghdr *, msgvec, unsigned int, vlen, unsigned int, flags)
 {
 	log_info("sendmmsg(sockfd=%d, msgvec=%p, vlen=%d, flags=%d)", sockfd, msgvec, vlen, flags);
@@ -1535,6 +1606,9 @@ DEFINE_SYSCALL(socketcall, int, call, uintptr_t *, args)
 
 	case SYS_RECVMSG:
 		return sys_recvmsg(args[0], (struct msghdr *)args[1], args[2]);
+
+	case SYS_ACCEPT4:
+		return sys_accept4(args[0], (struct sockaddr *)args[1], (int *)args[2], args[3]);
 
 	case SYS_SENDMMSG:
 		return sys_sendmmsg(args[0], (struct mmsghdr *)args[1], args[2], args[3]);

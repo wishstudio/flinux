@@ -68,7 +68,7 @@ struct file_ops
 	int (*bind)(struct file *f, const struct sockaddr *addr, int addrlen);
 	int (*connect)(struct file *f, const struct sockaddr *addr, size_t addrlen);
 	int (*listen)(struct file *f, int backlog);
-	int (*accept)(struct file *f, struct sockaddr *addr, int *addrlen);
+	int (*accept4)(struct file *f, struct sockaddr *addr, int *addrlen, int flags);
 	int (*getsockname)(struct file *f, struct sockaddr *addr, int *addrlen);
 	int (*getpeername)(struct file *f, struct sockaddr *addr, int *addrlen);
 	size_t (*sendto)(struct file *f, const void *buf, size_t len, int flags, const struct sockaddr *dest_addr, int addrlen);
