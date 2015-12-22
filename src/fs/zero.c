@@ -30,4 +30,4 @@ static size_t zero_write(int tag, const void *buf, size_t count)
 	return count;
 }
 
-struct virtualfs_char_desc zero_desc = VIRTUALFS_CHAR(mkdev(1, 10), zero_read, zero_write);
+struct virtualfs_char_desc zero_desc = VIRTUALFS_CHAR(mkdev(1, 5), zero_read, zero_write);
