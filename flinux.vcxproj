@@ -19,6 +19,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\rc\resource1.h" />
     <ClInclude Include="src\binfmt\elf-em.h" />
     <ClInclude Include="src\binfmt\elf.h" />
     <ClInclude Include="src\common\auxvec.h" />
@@ -161,6 +162,9 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
     </MASM>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="src\rc\flinux.rc" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{A2C5DF3A-D377-47F0-AC4C-0B1011585778}</ProjectGuid>

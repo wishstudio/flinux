@@ -19,6 +19,9 @@
     <Filter Include="lib">
       <UniqueIdentifier>{bf8b2302-bfb8-482c-bb5a-68176dce23d8}</UniqueIdentifier>
     </Filter>
+    <Filter Include="rc">
+      <UniqueIdentifier>{12cf0f16-d8d6-45c7-9cfd-ea38d2eff008}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\binfmt\elf.h">
@@ -258,6 +261,9 @@
     <ClInclude Include="src\flags.h" />
     <ClInclude Include="src\win7compat.h" />
     <ClInclude Include="src\shared.h" />
+    <ClInclude Include="src\rc\resource1.h">
+      <Filter>rc</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
@@ -372,5 +378,10 @@
     <MASM Include="src\dbt\x86_trampoline.asm">
       <Filter>dbt</Filter>
     </MASM>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="src\rc\flinux.rc">
+      <Filter>rc</Filter>
+    </ResourceCompile>
   </ItemGroup>
 </Project>
