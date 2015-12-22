@@ -78,6 +78,7 @@
     <ClInclude Include="src\fs\sysfs.h" />
     <ClInclude Include="src\fs\virtual.h" />
     <ClInclude Include="src\fs\winfs.h" />
+    <ClInclude Include="src\fs\zero.h" />
     <ClInclude Include="src\heap.h" />
     <ClInclude Include="src\lib\core.h" />
     <ClInclude Include="src\lib\list.h" />
@@ -128,6 +129,7 @@
     <ClCompile Include="src\fs\random.c" />
     <ClCompile Include="src\fs\socket.c" />
     <ClCompile Include="src\fs\winfs.c" />
+    <ClCompile Include="src\fs\zero.c" />
     <ClCompile Include="src\heap.c" />
     <ClCompile Include="src\lib\rbtree.c" />
     <ClCompile Include="src\log.c" />

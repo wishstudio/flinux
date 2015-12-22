@@ -17,30 +17,17 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <fs/console.h>
-#include <fs/devfs.h>
-#include <fs/dsp.h>
-#include <fs/null.h>
-#include <fs/random.h>
-#include <fs/virtual.h>
 #include <fs/zero.h>
 
-static const struct virtualfs_directory_desc devfs =
+static size_t zero_read(int tag, void *buf, size_t count)
 {
-	.type = VIRTUALFS_TYPE_DIRECTORY,
-	.entries = {
-		VIRTUALFS_ENTRY("dsp", dsp_desc)
-		VIRTUALFS_ENTRY("null", null_desc)
-	    VIRTUALFS_ENTRY("zero", zero_desc)
-		VIRTUALFS_ENTRY("random", random_desc)
-		VIRTUALFS_ENTRY("urandom", urandom_desc)
-		VIRTUALFS_ENTRY("console", console_desc)
-		VIRTUALFS_ENTRY("tty", console_desc)
-		VIRTUALFS_ENTRY_END()
-	}
-};
-
-struct file_system *devfs_alloc()
-{
-	return virtualfs_alloc("/dev", &devfs);
+	RtlZeroMemory(buf, count);
+	return count;
 }
+
+static size_t zero_write(int tag, const void *buf, size_t count)
+{
+	return count;
+}
+
+struct virtualfs_char_desc zero_desc = VIRTUALFS_CHAR(mkdev(1, 10), zero_read, zero_write);
