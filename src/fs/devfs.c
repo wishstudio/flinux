@@ -31,7 +31,7 @@ static const struct virtualfs_directory_desc devfs =
 	.entries = {
 		VIRTUALFS_ENTRY("dsp", dsp_desc)
 		VIRTUALFS_ENTRY("null", null_desc)
-	    VIRTUALFS_ENTRY("zero", zero_desc)
+		VIRTUALFS_ENTRY("zero", zero_desc)
 		VIRTUALFS_ENTRY("random", random_desc)
 		VIRTUALFS_ENTRY("urandom", urandom_desc)
 		VIRTUALFS_ENTRY("console", console_desc)
