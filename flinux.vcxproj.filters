@@ -264,6 +264,9 @@
     <ClInclude Include="src\rc\resource1.h">
       <Filter>rc</Filter>
     </ClInclude>
+    <ClInclude Include="src\fs\zero.h">
+      <Filter>fs</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\main.c" />
@@ -367,6 +370,9 @@
     <ClCompile Include="src\flags.c" />
     <ClCompile Include="src\win7compat.c" />
     <ClCompile Include="src\shared.c" />
+    <ClCompile Include="src\fs\zero.c">
+      <Filter>fs</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <MASM Include="src\syscall\stubs64.asm">
