@@ -105,7 +105,7 @@ static void copy_mountpoint(const struct mount_point *mp, struct mount_point *ou
 /* Internal mount function. Caller should have vfs_mount_write_mutex acquired. */
 static int vfs_mount_unsafe(int fs_id, bool is_system, const WCHAR *win_path, const char *mount_path)
 {
-	//assert(*mount_path == '/');
+	log_assert(*mount_path == '/');
 	/* Find an empty slot */
 	for (int i = 1; i < MAX_MOUNT_POINTS; i++)
 		if (!vfs_shared->mounts[i].used)

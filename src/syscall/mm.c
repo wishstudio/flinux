@@ -1047,7 +1047,8 @@ int mm_fork(HANDLE process)
 				}
 				size_t start_page = current;
 				size_t end_page = min(e->end_page, GET_PAGE((size_t)info.BaseAddress + info.RegionSize));
-				//assert(info.State == MEM_COMMIT && info.Type == MEM_PRIVATE);
+
+				log_assert(info.State == MEM_COMMIT && info.Type == MEM_PRIVATE);
 				if (info.Protect == PAGE_NOACCESS || info.Protect == 0)
 				{
 					// FIXME: How to handle this case?
