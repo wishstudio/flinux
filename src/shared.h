@@ -37,3 +37,17 @@ void shared_afterfork_child();
  */
 #define SHARED_ALLOC_SIZE		4 * BLOCK_SIZE
 void *shared_alloc(size_t size);
+
+/* Memory allocation for shared data regions
+ * The shared memory manager creates one or more pools for each size of shared
+ * data region. Every pool is managed as a linked list allocator, which
+ * is pretty like the heap. But they are equipped with carefully written procedures
+ * to avoid races even in the tricky case where one process died when altering the
+ * shared pool.
+ * Currently the only possible heap sharing scheme is via forking.
+ * To simplify the process, we remap all pools currently mapped to the child process
+ * to the same memory address at fork time. Hence all shared pointers will stay the
+ * same in the child. No additional handling is needed in caller.
+ */
+void *kmalloc_shared(size_t obj_size);
+void kfree_shared(void *obj, size_t obj_size);

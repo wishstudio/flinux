@@ -185,7 +185,7 @@ struct socket_file
 	SOCKET socket;
 	HANDLE event_handle;
 	int af, type;
-	int events, connect_error, accept_error;
+	int events, connect_error;
 };
 
 /* Reports current ready state
@@ -211,10 +211,7 @@ static int socket_update_events(struct socket_file *f, int error_report_events)
 		f->connect_error = events.iErrorCode[FD_CONNECT_BIT];
 	}
 	if (events.lNetworkEvents & FD_ACCEPT)
-	{
 		f->events |= FD_ACCEPT;
-		f->accept_error = events.iErrorCode[FD_ACCEPT_BIT];
-	}
 	if (events.lNetworkEvents & FD_CLOSE)
 		f->events |= FD_CLOSE;
 	int e = f->events;
@@ -223,12 +220,6 @@ static int socket_update_events(struct socket_file *f, int error_report_events)
 		WSASetLastError(f->connect_error);
 		f->events &= ~FD_CONNECT;
 		f->connect_error = 0;
-	}
-	if (error_report_events & f->events & FD_ACCEPT)
-	{
-		WSASetLastError(f->accept_error);
-		f->events &= ~FD_ACCEPT;
-		f->accept_error = 0;
 	}
 	return e;
 }
