@@ -153,3 +153,15 @@ void log_error_internal(const char *format, ...)
 	va_start(ap, format);
 	log_internal(LOG_ERROR, 'E', format, ap);
 }
+
+#ifdef _DEBUG
+
+void log_assert_internal(const char *format, ...)
+{
+	va_list ap;
+	va_start(ap, format);
+	log_internal(LOG_DEBUG, 'D', format, ap);
+	process_exit(LOG_ASSERT_EXIT, 0);
+}
+
+#endif
