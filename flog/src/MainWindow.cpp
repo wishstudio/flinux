@@ -22,13 +22,13 @@
 
 LRESULT MainWindow::OnCreate(LPCREATESTRUCT cs)
 {
+	DPIAware::Init(*this);
+
 	m_processTree.Create(*this, rcDefault, NULL,
 		WS_CHILD | WS_VISIBLE | WS_VSCROLL | TVS_HASLINES | TVS_LINESATROOT | TVS_HASBUTTONS,
 		WS_EX_CLIENTEDGE);
 
 	m_splitter.Create(*this, rcDefault, NULL, WS_CHILD | WS_VISIBLE);
-	m_logViewerFont.CreateFontW(18, 0, 0, 0, FW_DONTCARE, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
-		OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, FF_DONTCARE, L"Consolas");
 	InitLogViewer(m_defaultLogViewer);
 	m_defaultLogViewer.SetWindowTextW(L"No Foreign Linux client connected.");
 
@@ -37,11 +37,13 @@ LRESULT MainWindow::OnCreate(LPCREATESTRUCT cs)
 	m_hWndClient = m_splitter;
 	UpdateLayout();
 
-	m_splitter.SetSplitterPos(240);
+	m_splitter.SetSplitterPos(GetPhysicalX(240));
 	m_splitter.SetSplitterExtendedStyle(0);
 	m_splitter.m_bFullDrag = FALSE;
 
 	m_logServer.Start(*this);
+
+	ResizeClient(GetPhysicalX(1280), GetPhysicalY(720));
 	return 0;
 }
 
@@ -166,7 +168,6 @@ void MainWindow::ProcessClientLog(Client *client, LogPacket *packet)
 void MainWindow::InitLogViewer(LogViewer &logViewer)
 {
 	logViewer.Create(m_splitter, rcDefault);
-	logViewer.SetFont(m_logViewerFont);
 }
 
 void MainWindow::SetCurrentLogViewer(LogViewer &logViewer)

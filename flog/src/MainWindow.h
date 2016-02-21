@@ -19,10 +19,11 @@
 
 #pragma once
 
+#include "DPIAware.h"
 #include "LogServer.h"
 #include "LogViewer.h"
 
-class MainWindow: public CFrameWindowImpl<MainWindow>
+class MainWindow: public CFrameWindowImpl<MainWindow>, public DPIAware
 {
 public:
 	BEGIN_MSG_MAP(MainWindow)
@@ -58,7 +59,6 @@ private:
 	LogServer m_logServer;
 	CSplitterWindow m_splitter;
 	CTreeViewCtrl m_processTree;
-	CFont m_logViewerFont;
 	LogViewer m_defaultLogViewer;
 	std::vector<std::vector<std::unique_ptr<Client>>> m_clients;
 };

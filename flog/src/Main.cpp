@@ -29,10 +29,11 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
 	CAppModule Module;
 	Module.Init(NULL, hInstance);
 
+	SetProcessDPIAware();
+
 	MainWindow mainWindow;
 	if (mainWindow.Create(NULL, CWindow::rcDefault, L"Foreign Linux Logger"))
 	{
-		mainWindow.ResizeClient(1280, 720);
 		mainWindow.CenterWindow();
 		mainWindow.ShowWindow(nCmdShow);
 		mainWindow.UpdateWindow();

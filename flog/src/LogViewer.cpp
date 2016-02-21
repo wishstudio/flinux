@@ -27,7 +27,9 @@ HWND LogViewer::Create(HWND hWndParent, ATL::_U_RECT rect, LPCTSTR szWindowName)
 	HWND hWnd = CWindowImpl<LogViewer>::Create(hWndParent, rect, szWindowName,
 		WS_CHILD | WS_VISIBLE | WS_VSCROLL,
 		WS_EX_CLIENTEDGE);
-	m_font.CreateFont(FONT_SIZE, 0, 0, 0, FW_DONTCARE, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, FF_DONTCARE, _T("Consolas"));
+	DPIAware::Init(hWnd);
+	m_font.CreateFont(GetPhysicalY(FONT_SIZE), 0, 0, 0, FW_DONTCARE, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+		OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, FF_DONTCARE, _T("Consolas"));
 	m_timerShot = false;
 	m_mouseDown = false;
 	m_selStart = std::make_pair(0, 0);
@@ -42,7 +44,7 @@ void LogViewer::DoPaint(CDCHandle dc)
 	POINT offset;
 	GetScrollOffset(offset);
 
-	RECT clientRect;
+	RECT clientRect; /* In physical coordinates */
 	GetClientRect(&clientRect);
 	/* Erase background */
 	dc.FillRect(&clientRect, COLOR_WINDOW);
@@ -52,14 +54,14 @@ void LogViewer::DoPaint(CDCHandle dc)
 	selEnd = max(m_selStart, m_selEnd);
 	dc.SelectFont(m_font);
 	dc.SetBkMode(TRANSPARENT);
-	for (int i = offset.y / FONT_SIZE; i < (int)m_lines.size(); i++)
+	for (int i = offset.y / GetPhysicalY(FONT_SIZE); i < (int)m_lines.size(); i++)
 	{
-		int y = clientRect.top + i * FONT_SIZE - offset.y;
+		int y = clientRect.top + GetPhysicalY(i * FONT_SIZE) - offset.y;
 		if (y > clientRect.bottom)
 			break;
-		RECT rect = clientRect;
+		RECT rect = clientRect; /* In physical coordinates */
 		rect.top = y;
-		rect.bottom = y + FONT_SIZE;
+		rect.bottom = y + GetPhysicalY(FONT_SIZE);
 		if (m_types[i] == LOG_DEBUG)
 			dc.FillSolidRect(&rect, RGB(0xE0, 0xF0, 0xFF));
 		if (m_types[i] == LOG_WARNING)
@@ -85,7 +87,7 @@ void LogViewer::DoPaint(CDCHandle dc)
 			else
 				end = m_lines[i].size();
 			int x = 0;
-			SIZE size;
+			SIZE size; /* In physical coordinates */
 			/* Draw text before selection */
 			GetTextExtentPoint32W(dc, m_lines[i].c_str(), start, &size);
 			dc.ExtTextOutW(x, y, 0, NULL, m_lines[i].c_str(), start, 0);
@@ -93,7 +95,7 @@ void LogViewer::DoPaint(CDCHandle dc)
 			/* Draw selection */
 			dc.SetTextColor(RGB(0xFF, 0xFF, 0xFF));
 			GetTextExtentPoint32W(dc, m_lines[i].c_str() + start, end - start, &size);
-			dc.FillSolidRect(x, y, size.cx, FONT_SIZE, RGB(0x00, 0xAA, 0xFF));
+			dc.FillSolidRect(x, y, size.cx, GetPhysicalY(FONT_SIZE), RGB(0x00, 0xAA, 0xFF));
 			dc.ExtTextOutW(x, y, 0, NULL, m_lines[i].c_str() + start, end - start, 0);
 			x += size.cx;
 			/* Draw text after selection */
@@ -110,7 +112,7 @@ void LogViewer::OnTimer(UINT_PTR id)
 	bool atBottom = false;
 	if (offset.y >= m_sizeAll.cy - m_sizeClient.cy - 1)
 		atBottom = true;
-	SetScrollSize(1, m_lines.size() * FONT_SIZE, TRUE, FALSE);
+	SetScrollSize(1, m_lines.size() * GetPhysicalY(FONT_SIZE), TRUE, FALSE);
 	SetScrollLine(0, FONT_SIZE);
 	if (atBottom)
 	{
@@ -129,7 +131,7 @@ void LogViewer::OnTimer(UINT_PTR id)
 
 void LogViewer::OnSetFocus(CWindow wndOld)
 {
-	CreateSolidCaret(1, FONT_SIZE);
+	CreateSolidCaret(1, GetPhysicalY(FONT_SIZE));
 	UpdateCaret(false);
 	ShowCaret();
 }
@@ -192,7 +194,7 @@ void LogViewer::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 		{
 			CPoint point = TranslateCharPosToClientPoint(m_selEnd);
 			m_savedX = max(m_savedX, point.x);
-			int y = (m_selEnd.first - 1) * FONT_SIZE;
+			int y = (m_selEnd.first - 1) * GetPhysicalY(FONT_SIZE);
 			m_selEnd = TranslateClientPointToCharPos(CPoint(m_savedX, y));
 		}
 		if (!shift)
@@ -204,7 +206,7 @@ void LogViewer::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 		{
 			CPoint point = TranslateCharPosToClientPoint(m_selEnd);
 			m_savedX = max(m_savedX, point.x);
-			int y = (m_selEnd.first + 1) * FONT_SIZE;
+			int y = (m_selEnd.first + 1) * GetPhysicalY(FONT_SIZE);
 			m_selEnd = TranslateClientPointToCharPos(CPoint(m_savedX, y));
 		}
 		if (!shift)
@@ -216,7 +218,7 @@ void LogViewer::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 		{
 			CPoint point = TranslateCharPosToClientPoint(m_selEnd);
 			m_savedX = max(m_savedX, point.x);
-			int y = max(0, m_selEnd.first - pageSize) * FONT_SIZE;
+			int y = max(0, m_selEnd.first - pageSize) * GetPhysicalY(FONT_SIZE);
 			m_selEnd = TranslateClientPointToCharPos(CPoint(m_savedX, y));
 		}
 		if (!shift)
@@ -228,7 +230,7 @@ void LogViewer::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 		{
 			CPoint point = TranslateCharPosToClientPoint(m_selEnd);
 			m_savedX = max(m_savedX, point.x);
-			int y = min((int)m_lines.size() - 1, m_selEnd.first + pageSize) * FONT_SIZE;
+			int y = min((int)m_lines.size() - 1, m_selEnd.first + pageSize) * GetPhysicalY(FONT_SIZE);
 			m_selEnd = TranslateClientPointToCharPos(CPoint(m_savedX, y));
 		}
 		if (!shift)
@@ -249,7 +251,7 @@ void LogViewer::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
 		break;
 
 	case VK_RIGHT:
-		if (m_selEnd.second == (int)m_lines[m_selEnd.first].size() && m_selEnd.first < (int)m_lines.size())
+		if (m_selEnd.second == (int)m_lines[m_selEnd.first].size() && m_selEnd.first + 1 < (int)m_lines.size())
 		{
 			m_selEnd.first++;
 			m_selEnd.second = 0;
@@ -323,7 +325,7 @@ std::pair<int, int> LogViewer::TranslateMousePoint(CPoint mousePoint)
 
 std::pair<int, int> LogViewer::TranslateClientPointToCharPos(CPoint clientPoint)
 {
-	int y = clientPoint.y / FONT_SIZE;
+	int y = clientPoint.y / GetPhysicalY(FONT_SIZE);
 	if (y < 0)
 		y = 0;
 	if (y >= (int)m_lines.size())
@@ -371,12 +373,12 @@ CPoint LogViewer::TranslateCharPosToClientPoint(std::pair<int, int> pos)
 	SIZE size;
 	GetTextExtentPoint32W(dc, m_lines[pos.first].c_str(), pos.second, &size);
 	ReleaseDC(dc);
-	return CPoint(size.cx, pos.first * FONT_SIZE);
+	return CPoint(size.cx, pos.first * GetPhysicalY(FONT_SIZE));
 }
 
 void LogViewer::UpdateCaret(bool scrollToCaret)
 {
-	int y = m_selEnd.first * FONT_SIZE;
+	int y = m_selEnd.first * GetPhysicalY(FONT_SIZE);
 	int x = 0;
 	if (!m_lines.empty())
 	{

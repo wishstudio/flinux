@@ -125,6 +125,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="src\DPIAware.cpp" />
     <ClCompile Include="src\LogServer.cpp" />
     <ClCompile Include="src\LogViewer.cpp" />
     <ClCompile Include="src\Main.cpp" />
@@ -137,6 +138,7 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\DPIAware.h" />
     <ClInclude Include="src\LogServer.h" />
     <ClInclude Include="src\LogViewer.h" />
     <ClInclude Include="src\MainWindow.h" />

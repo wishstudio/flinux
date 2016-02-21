@@ -19,9 +19,10 @@
 
 #pragma once
 
+#include "DPIAware.h"
 #include "LogServer.h"
 
-class LogViewer: public CWindowImpl<LogViewer>, public CScrollImpl<LogViewer>, public CDoubleBufferImpl<LogViewer>
+class LogViewer: public CWindowImpl<LogViewer>, public CScrollImpl<LogViewer>, public CDoubleBufferImpl<LogViewer>, public DPIAware
 {
 public:
 	static ATL::CWndClassInfo& GetWndClassInfo()

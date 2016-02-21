@@ -6,6 +6,7 @@
     <ClCompile Include="src\pch.cpp" />
     <ClCompile Include="src\LogServer.cpp" />
     <ClCompile Include="src\LogViewer.cpp" />
+    <ClCompile Include="src\DPIAware.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\MainWindow.h" />
@@ -13,6 +14,7 @@
     <ClInclude Include="src\pch.h" />
     <ClInclude Include="src\LogServer.h" />
     <ClInclude Include="src\LogViewer.h" />
+    <ClInclude Include="src\DPIAware.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="src\Resource.rc" />
