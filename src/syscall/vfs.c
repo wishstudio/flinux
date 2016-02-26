@@ -339,17 +339,6 @@ void vfs_shutdown()
 	}
 }
 
-int vfs_fork(HANDLE process)
-{
-	if (!console_fork(process))
-		return 0;
-	AcquireSRWLockShared(&vfs->rw_lock);
-	for (int i = 0; i < MAX_FD_COUNT; i++)
-		if (vfs->filed[i].fd)
-			AcquireSRWLockShared(&vfs->filed[i].fd->rw_lock);
-	return 1;
-}
-
 static int cmpfiled(const void *a, const void *b)
 {
 	int fda = *(int *)a;
@@ -372,6 +361,34 @@ static int cmpfiled(const void *a, const void *b)
 	}
 }
 
+int vfs_fork(HANDLE process, DWORD process_id)
+{
+	if (!console_fork(process))
+		return 0;
+	AcquireSRWLockShared(&vfs->rw_lock);
+	for (int i = 0; i < MAX_FD_COUNT; i++)
+		if (vfs->filed[i].fd)
+			AcquireSRWLockShared(&vfs->filed[i].fd->rw_lock);
+	
+	int index[MAX_FD_COUNT];
+	for (int i = 0; i < MAX_FD_COUNT; i++)
+		index[i] = i;
+	qsort(index, MAX_FD_COUNT, sizeof(int), cmpfiled);
+
+	struct file *last = NULL;
+	for (int i = 0; i < MAX_FD_COUNT; i++)
+	{
+		struct file *f = vfs->filed[index[i]].fd;
+		if (f && f != last)
+		{
+			if (f->op_vtable->fork)
+				f->op_vtable->fork(f, process, process_id);
+		}
+		last = f;
+	}
+	return 1;
+}
+
 void vfs_afterfork_child()
 {
 	vfs = mm_static_alloc(sizeof(struct vfs_data));
@@ -381,9 +398,7 @@ void vfs_afterfork_child()
 
 	int index[MAX_FD_COUNT];
 	for (int i = 0; i < MAX_FD_COUNT; i++)
-	{
 		index[i] = i;
-	}
 
 	qsort(index, MAX_FD_COUNT, sizeof(int), cmpfiled);
 
@@ -394,8 +409,8 @@ void vfs_afterfork_child()
 		if (f && f != last)
 		{
 			InitializeSRWLock(&f->rw_lock);
-			if (f->op_vtable->after_fork)
-				f->op_vtable->after_fork(f);
+			if (f->op_vtable->after_fork_child)
+				f->op_vtable->after_fork_child(f);
 		}
 		last = f;
 	}
@@ -403,6 +418,23 @@ void vfs_afterfork_child()
 
 void vfs_afterfork_parent()
 {
+	int index[MAX_FD_COUNT];
+	for (int i = 0; i < MAX_FD_COUNT; i++)
+		index[i] = i;
+
+	qsort(index, MAX_FD_COUNT, sizeof(int), cmpfiled);
+
+	struct file *last = NULL;
+	for (int i = 0; i < MAX_FD_COUNT; i++)
+	{
+		struct file *f = vfs->filed[index[i]].fd;
+		if (f && f != last)
+		{
+			if (f->op_vtable->after_fork_parent)
+				f->op_vtable->after_fork_parent(f);
+		}
+		last = f;
+	}
 	for (int i = 0; i < MAX_FD_COUNT; i++)
 		if (vfs->filed[i].fd)
 			ReleaseSRWLockShared(&vfs->filed[i].fd->rw_lock);

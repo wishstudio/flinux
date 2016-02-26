@@ -139,7 +139,7 @@ void shared_init()
 		NULL,
 		&view_size,
 		ViewUnmap,
-		0,
+		MEM_TOP_DOWN,
 		PAGE_READWRITE
 		);
 	if (!NT_SUCCESS(status))
@@ -264,9 +264,9 @@ static bool map_shared_heap_pool(size_t obj_size, int id)
 	}
 	SIZE_T view_size = SHARED_HEAP_POOL_SIZE;
 	status = NtMapViewOfSection(shared->shared_heap_mapped_pools[id].handle, NtCurrentProcess(),
-		(PVOID *)&shared->shared_heap_mapped_pools[id].addr, 0, SHARED_HEAP_POOL_SIZE, NULL, &view_size, 0, ViewUnmap,
-		PAGE_READWRITE);
-	if (NT_SUCCESS(status))
+		(PVOID *)&shared->shared_heap_mapped_pools[id].addr, 0, SHARED_HEAP_POOL_SIZE, NULL, &view_size, ViewUnmap,
+		MEM_TOP_DOWN, PAGE_READWRITE);
+	if (!NT_SUCCESS(status))
 	{
 		NtClose(shared->shared_heap_mapped_pools[id].handle);
 		shared->shared_heap_mapped_pools[id].handle = NULL;
@@ -275,7 +275,7 @@ static bool map_shared_heap_pool(size_t obj_size, int id)
 		return false;
 	}
 	struct shared_heap_pool_header *pool = (struct shared_heap_pool_header *)shared->shared_heap_mapped_pools[id].addr;
-	if (!pool->initialized)
+ 	if (!pool->initialized)
 	{
 		/* We just created the pool, initialize it now */
 		int pool_ref_count = (SHARED_HEAP_POOL_SIZE - sizeof(struct shared_heap_pool_header)) / obj_size;
@@ -284,10 +284,10 @@ static bool map_shared_heap_pool(size_t obj_size, int id)
 		pool->first_free = (void*)start;
 		for (size_t addr = start; addr < end; addr += obj_size)
 		{
-			if (start + obj_size < end)
-				*(void**)start = (void*)(start + obj_size);
+			if (addr + obj_size < end)
+				*(void**)addr = (void*)(addr + obj_size);
 			else
-				*(void**)start = NULL;
+				*(void**)addr = NULL;
 		}
 		shared->shared_heap->pools[id].obj_size = obj_size;
 		shared->shared_heap->pools[id].ref_count = pool_ref_count;
@@ -317,7 +317,7 @@ void *kmalloc_shared(size_t obj_size)
 	{
 		/* Did not find an appropriate pool, create a new one */
 		/* Firstly, find an unused pool id */
-		for (int i = 0; i < SHARED_HEAP_POOL_COUNT; i++)
+		for (int i = 1; i < SHARED_HEAP_POOL_COUNT; i++)
 		{
 			if (shared->shared_heap->pools[i].obj_size == 0)
 			{
@@ -350,6 +350,7 @@ void *kmalloc_shared(size_t obj_size)
 	shared->shared_heap_mapped_pools[current_pool].addr->first_free = next;
 	shared->shared_heap->pools[current_pool].ref_count--;
 	NtReleaseMutant(shared->shared_heap_mutex, NULL);
+	ReleaseSRWLockExclusive(&shared->rw_lock);
 	return cur;
 
 failed:

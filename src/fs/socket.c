@@ -33,6 +33,7 @@
 #include <syscall/vfs.h>
 #include <heap.h>
 #include <log.h>
+#include <shared.h>
 #include <str.h>
 
 #include <malloc.h>
@@ -179,55 +180,57 @@ void socket_init()
 	socket_inited = 0;
 }
 
+struct socket_file_shared
+{
+	int af, type;
+	int events, connect_error;
+};
+
 struct socket_file
 {
 	struct file base_file;
 	SOCKET socket;
 	HANDLE event_handle;
-	int af, type;
-	int events, connect_error;
+	HANDLE mutex;
+	WSAPROTOCOL_INFOW fork_info;
+	volatile struct socket_file_shared *shared;
 };
 
 /* Reports current ready state
  * If one event in error_report_events has potential error code, the last WSA error code is set to that
  */
-static int socket_update_events(struct socket_file *f, int error_report_events)
+static int socket_update_events_unsafe(struct socket_file *f, int error_report_events)
 {
-	/* CAUTION:
-	 * When we finally get to add multi-process(thread) shared socket support,
-	 * We have to do proper synchronization to ensure even if a process die halfway
-	 * the other processes won't lose the ready notification.
-	 * This is very complicated and I don't want to touch too far for now
-	 */
 	WSANETWORKEVENTS events;
 	WSAEnumNetworkEvents(f->socket, f->event_handle, &events);
+	int e = 0;
 	if (events.lNetworkEvents & FD_READ)
-		f->events |= FD_READ;
+		e |= FD_READ;
 	if (events.lNetworkEvents & FD_WRITE)
-		f->events |= FD_WRITE;
+		e |= FD_WRITE;
 	if (events.lNetworkEvents & FD_CONNECT)
 	{
-		f->events |= FD_CONNECT;
-		f->connect_error = events.iErrorCode[FD_CONNECT_BIT];
+		e |= FD_CONNECT;
+		f->shared->connect_error = events.iErrorCode[FD_CONNECT_BIT];
 	}
 	if (events.lNetworkEvents & FD_ACCEPT)
-		f->events |= FD_ACCEPT;
+		e |= FD_ACCEPT;
 	if (events.lNetworkEvents & FD_CLOSE)
-		f->events |= FD_CLOSE;
-	int e = f->events;
-	if (error_report_events & f->events & FD_CONNECT)
+		e |= FD_CLOSE;
+	InterlockedOr(&f->shared->events, e);
+	if (error_report_events & f->shared->events & FD_CONNECT)
 	{
-		WSASetLastError(f->connect_error);
-		f->events &= ~FD_CONNECT;
-		f->connect_error = 0;
+		WSASetLastError(f->shared->connect_error);
+		f->shared->connect_error = 0;
+		InterlockedAnd(&f->shared->events, ~FD_CONNECT);
 	}
-	return e;
+	return f->shared->events;
 }
 
 static int socket_get_poll_status(struct file *f)
 {
 	struct socket_file *socket_file = (struct socket_file *) f;
-	int e = socket_update_events(socket_file, 0);
+	int e = socket_update_events_unsafe(socket_file, 0);
 	int ret = 0;
 	if (e & FD_READ)
 		ret |= LINUX_POLLIN;
@@ -245,11 +248,32 @@ static HANDLE socket_get_poll_handle(struct file *f, int *poll_events)
 	return socket_file->event_handle;
 }
 
+static void socket_fork(struct file *f, HANDLE child_process, DWORD child_process_id)
+{
+	struct socket_file *socket_file = (struct socket_file *) f;
+	AcquireSRWLockExclusive(&f->rw_lock);
+	WSADuplicateSocketW(socket_file->socket, child_process_id, &socket_file->fork_info);
+}
+
+static void socket_after_fork_parent(struct file *f)
+{
+	ReleaseSRWLockExclusive(&f->rw_lock);
+}
+
+static void socket_after_fork_child(struct file *f)
+{
+	struct socket_file *socket_file = (struct socket_file *) f;
+	socket_ensure_initialized();
+	socket_file->socket = WSASocketW(0, 0, 0, &socket_file->fork_info, 0, 0);
+	if (socket_file->socket == INVALID_SOCKET)
+		log_error("WSASocketW() failed, error code: %d", socket_file->socket);
+}
+
 static int socket_wait_event(struct socket_file *f, int event, int flags)
 {
 	do
 	{
-		int e = socket_update_events(f, event);
+		int e = socket_update_events_unsafe(f, event);
 		if (e & event)
 			return 0;
 		if ((f->base_file.flags & O_NONBLOCK) || (flags & LINUX_MSG_DONTWAIT))
@@ -284,7 +308,7 @@ static int socket_sendto_unsafe(struct socket_file *f, const void *buf, size_t l
 			log_warning("sendto() failed, error code: %d", err);
 			return translate_socket_error(err);
 		}
-		f->events &= ~FD_WRITE;
+		InterlockedAnd(&f->shared->events, ~FD_WRITE);
 	}
 	return r;
 }
@@ -329,7 +353,7 @@ static int socket_sendmsg_unsafe(struct socket_file *f, const struct msghdr *msg
 			log_warning("WSASendMsg() failed, error code: %d", err);
 			return translate_socket_error(err);
 		}
-		f->events &= ~FD_WRITE;
+		InterlockedAnd(&f->shared->events, ~FD_WRITE);
 	}
 	return r;
 }
@@ -344,7 +368,7 @@ static int socket_recvfrom_unsafe(struct socket_file *f, void *buf, size_t len, 
 	while ((r = socket_wait_event(f, FD_READ | FD_CLOSE, flags)) == 0)
 	{
 		if (!(flags & LINUX_MSG_PEEK))
-			f->events &= ~FD_READ;
+			InterlockedAnd(&f->shared->events, ~FD_READ);
 		r = recvfrom(f->socket, buf, len, flags, (struct sockaddr *)&addr_storage, &addr_storage_len);
 		if (r != SOCKET_ERROR)
 			break;
@@ -370,7 +394,7 @@ static int socket_recvmsg_unsafe(struct socket_file *f, struct msghdr *msg, int 
 	if (flags & ~LINUX_MSG_DONTWAIT)
 		log_error("socket_sendmsg(): flags (0x%x) contains unsupported bits.", flags);
 
-	if (f->type != LINUX_SOCK_DGRAM && f->type != LINUX_SOCK_RAW)
+	if (f->shared->type != LINUX_SOCK_DGRAM && f->shared->type != LINUX_SOCK_RAW)
 	{
 		/* WSARecvMsg() only supports datagram and raw sockets
 		 * For other types we emulate using recvfrom()
@@ -425,7 +449,7 @@ static int socket_recvmsg_unsafe(struct socket_file *f, struct msghdr *msg, int 
 	{
 		if (WSARecvMsg(f->socket, &wsamsg, &r, NULL, NULL) != SOCKET_ERROR)
 			break;
-		f->events &= ~FD_READ;
+		InterlockedAnd(&f->shared->events, ~FD_READ);
 		int err = WSAGetLastError();
 		if (err != WSAEWOULDBLOCK)
 		{
@@ -460,18 +484,18 @@ static int socket_close(struct file *f)
 static size_t socket_read(struct file *f, char *buf, size_t count)
 {
 	struct socket_file *socket_file = (struct socket_file *) f;
-	AcquireSRWLockExclusive(&f->rw_lock);
+	WaitForSingleObject(socket_file->mutex, INFINITE);
 	int r = socket_recvfrom_unsafe(socket_file, buf, count, 0, NULL, 0);
-	ReleaseSRWLockExclusive(&f->rw_lock);
+	ReleaseMutex(socket_file->mutex);
 	return r;
 }
 
 static size_t socket_write(struct file *f, const char *buf, size_t count)
 {
 	struct socket_file *socket_file = (struct socket_file *) f;
-	AcquireSRWLockExclusive(&f->rw_lock);
+	WaitForSingleObject(socket_file->mutex, INFINITE);
 	int r = socket_sendto_unsafe(socket_file, buf, count, 0, NULL, 0);
-	ReleaseSRWLockExclusive(&f->rw_lock);
+	ReleaseMutex(socket_file->mutex);
 	return r;
 }
 
@@ -590,15 +614,23 @@ static int socket_open(int domain, int type, int protocol)
 		log_error("init_socket_event() failed.");
 		return -L_ENFILE;
 	}
+	HANDLE mutex;
+	SECURITY_ATTRIBUTES attr;
+	attr.nLength = sizeof(SECURITY_ATTRIBUTES);
+	attr.lpSecurityDescriptor = NULL;
+	attr.bInheritHandle = TRUE;
+	mutex = CreateMutexW(&attr, FALSE, NULL);
 
 	struct socket_file *f = (struct socket_file *) kmalloc(sizeof(struct socket_file));
 	file_init(&f->base_file, &socket_ops, O_RDWR);
 	f->socket = sock;
 	f->event_handle = event_handle;
-	f->af = domain;
-	f->type = (type & LINUX_SOCK_TYPE_MASK);
-	f->events = 0;
-	f->connect_error = 0;
+	f->mutex = mutex;
+	f->shared = (struct socket_file_shared *)kmalloc_shared(sizeof(struct socket_file_shared));
+	f->shared->af = domain;
+	f->shared->type = (type & LINUX_SOCK_TYPE_MASK);
+	f->shared->events = 0;
+	f->shared->connect_error = 0;
 	if ((type & O_NONBLOCK))
 		f->base_file.flags |= O_NONBLOCK;
 
@@ -614,7 +646,7 @@ static int socket_bind(struct file *f, const struct sockaddr *addr, int addrlen)
 	struct sockaddr_storage addr_storage;
 	int addr_storage_len;
 	struct file *winfile = NULL;
-	if (socket->af == LINUX_AF_UNIX)
+	if (socket->shared->af == LINUX_AF_UNIX)
 	{
 		if (addrlen <= sizeof(addr->sa_family))
 			return -L_EINVAL;
@@ -651,7 +683,7 @@ static int socket_bind(struct file *f, const struct sockaddr *addr, int addrlen)
 	}
 	else if ((addr_storage_len = translate_socket_addr_to_winsock((const struct sockaddr_storage *)addr, &addr_storage, addrlen)) == SOCKET_ERROR)
 		return -L_EINVAL;
-	AcquireSRWLockExclusive(&f->rw_lock);
+	WaitForSingleObject(socket->mutex, INFINITE);
 	int r = 0;
 	if (bind(socket->socket, (struct sockaddr *)&addr_storage, addr_storage_len) == SOCKET_ERROR)
 	{
@@ -662,7 +694,7 @@ static int socket_bind(struct file *f, const struct sockaddr *addr, int addrlen)
 	else
 	{
 		/* Bind succeeded */
-		if (socket->af == LINUX_AF_UNIX)
+		if (socket->shared->af == LINUX_AF_UNIX)
 		{
 			struct sockaddr_in addr_in;
 			int addr_in_len;
@@ -687,7 +719,7 @@ static int socket_bind(struct file *f, const struct sockaddr *addr, int addrlen)
 			vfs_release(winfile);
 		}
 	}
-	ReleaseSRWLockExclusive(&f->rw_lock);
+	ReleaseMutex(socket->mutex);
 	return r;
 }
 
@@ -696,7 +728,7 @@ static int socket_connect(struct file *f, const struct sockaddr *addr, size_t ad
 	struct socket_file *socket = (struct socket_file *)f;
 	struct sockaddr_storage addr_storage;
 	int addr_storage_len;
-	if (socket->af == LINUX_AF_UNIX)
+	if (socket->shared->af == LINUX_AF_UNIX)
 	{
 		if (addrlen <= sizeof(addr->sa_family))
 			return -L_EINVAL;
@@ -752,7 +784,7 @@ static int socket_connect(struct file *f, const struct sockaddr *addr, size_t ad
 	else if ((addr_storage_len = translate_socket_addr_to_winsock((const struct sockaddr_storage *)addr, &addr_storage, addrlen)) == SOCKET_ERROR)
 		return -L_EINVAL;
 
-	AcquireSRWLockExclusive(&f->rw_lock);
+	WaitForSingleObject(socket->mutex, INFINITE);
 	int r = 0;
 	if (connect(socket->socket, (struct sockaddr *)&addr_storage, addr_storage_len) == SOCKET_ERROR)
 	{
@@ -773,14 +805,14 @@ static int socket_connect(struct file *f, const struct sockaddr *addr, size_t ad
 			r = translate_socket_error(WSAGetLastError());
 		}
 	}
-	ReleaseSRWLockExclusive(&f->rw_lock);
+	ReleaseMutex(socket->mutex);
 	return r;
 }
 
 static int socket_listen(struct file *f, int backlog)
 {
 	struct socket_file *socket = (struct socket_file *)f;
-	AcquireSRWLockExclusive(&f->rw_lock);
+	WaitForSingleObject(socket->mutex, INFINITE);
 	int r = 0;
 	if (listen(socket->socket, backlog) == SOCKET_ERROR)
 	{
@@ -788,14 +820,14 @@ static int socket_listen(struct file *f, int backlog)
 		log_warning("listen() failed, error code: %d", err);
 		r = translate_socket_error(err);
 	}
-	ReleaseSRWLockExclusive(&f->rw_lock);
+	ReleaseMutex(socket->mutex);
 	return r;
 }
 
 static int socket_accept4(struct file *f, struct sockaddr *addr, int *addrlen, int flags)
 {
 	struct socket_file *socket = (struct socket_file *)f;
-	AcquireSRWLockExclusive(&f->rw_lock);
+	WaitForSingleObject(socket->mutex, INFINITE);
 	struct sockaddr_storage addr_storage;
 	int addr_storage_len;
 	int r;
@@ -813,14 +845,21 @@ static int socket_accept4(struct file *f, struct sockaddr *addr, int *addrlen, i
 				r = -L_ENFILE;
 				break;
 			}
+			HANDLE mutex;
+			SECURITY_ATTRIBUTES attr;
+			attr.nLength = sizeof(SECURITY_ATTRIBUTES);
+			attr.lpSecurityDescriptor = NULL;
+			attr.bInheritHandle = TRUE;
+			mutex = CreateMutexW(&attr, FALSE, NULL);
 			struct socket_file *conn_socket = (struct socket_file *)kmalloc(sizeof(struct socket_file));
 			file_init(&conn_socket->base_file, &socket_ops, 0);
 			conn_socket->socket = socket_handle;
 			conn_socket->event_handle = event_handle;
-			conn_socket->af = socket->af;
-			conn_socket->type = socket->type;
-			conn_socket->events = 0;
-			conn_socket->connect_error = 0;
+			conn_socket->mutex = mutex;
+			conn_socket->shared->af = socket->shared->af;
+			conn_socket->shared->type = socket->shared->type;
+			conn_socket->shared->events = 0;
+			conn_socket->shared->connect_error = 0;
 			if (flags & O_NONBLOCK)
 				conn_socket->base_file.flags |= O_NONBLOCK;
 			int fd = vfs_store_file((struct file *)f, (flags & O_CLOEXEC) > 0);
@@ -830,7 +869,7 @@ static int socket_accept4(struct file *f, struct sockaddr *addr, int *addrlen, i
 			/* Translate address back to Linux format */
 			if (addr && addrlen)
 			{
-				if (socket->af == LINUX_AF_UNIX)
+				if (socket->shared->af == LINUX_AF_UNIX)
 				{
 					/* Set addr to unnamed */
 					struct sockaddr_un *addr_un = (struct sockaddr_un *)addr;
@@ -851,16 +890,16 @@ static int socket_accept4(struct file *f, struct sockaddr *addr, int *addrlen, i
 			r = translate_socket_error(err);
 			break;
 		}
-		socket->events &= ~FD_ACCEPT;
+		InterlockedAnd(&socket->shared->events, ~FD_ACCEPT);
 	}
-	ReleaseSRWLockExclusive(&f->rw_lock);
+	ReleaseMutex(socket->mutex);
 	return r;
 }
 
 static int socket_getsockname(struct file *f, struct sockaddr *addr, int *addrlen)
 {
 	struct socket_file *socket = (struct socket_file *)f;
-	AcquireSRWLockExclusive(&f->rw_lock);
+	WaitForSingleObject(socket->mutex, INFINITE);
 	int r = 0;
 	struct sockaddr_storage addr_storage;
 	int addr_storage_len = sizeof(struct sockaddr_storage);
@@ -873,7 +912,7 @@ static int socket_getsockname(struct file *f, struct sockaddr *addr, int *addrle
 			/* Winsock returns WSAEINVAL if the socket is unbound, but in Linux this is okay.
 			* We fake a result and return
 			*/
-			switch (socket->af)
+			switch (socket->shared->af)
 			{
 			case LINUX_AF_INET:
 			{
@@ -907,14 +946,14 @@ static int socket_getsockname(struct file *f, struct sockaddr *addr, int *addrle
 	memcpy(addr, &addr_storage, copylen);
 	*addrlen = addr_storage_len;
 out:
-	ReleaseSRWLockExclusive(&f->rw_lock);
+	ReleaseMutex(socket->mutex);
 	return r;
 }
 
 static int socket_getpeername(struct file *f, struct sockaddr *addr, int *addrlen)
 {
 	struct socket_file *socket = (struct socket_file *)f;
-	AcquireSRWLockExclusive(&f->rw_lock);
+	WaitForSingleObject(socket->mutex, INFINITE);
 	struct sockaddr_storage addr_storage;
 	int addr_storage_len = sizeof(struct sockaddr_storage);
 	int r = 0;
@@ -929,25 +968,25 @@ static int socket_getpeername(struct file *f, struct sockaddr *addr, int *addrle
 	memcpy(addr, &addr_storage, copylen);
 	*addrlen = addr_storage_len;
 out:
-	ReleaseSRWLockExclusive(&f->rw_lock);
+	ReleaseMutex(socket->mutex);
 	return r;
 }
 
 static size_t socket_sendto(struct file *f, const void *buf, size_t len, int flags, const struct sockaddr *dest_addr, int addrlen)
 {
 	struct socket_file *socket = (struct socket_file *)f;
-	AcquireSRWLockExclusive(&f->rw_lock);
+	WaitForSingleObject(socket->mutex, INFINITE);
 	int r = socket_sendto_unsafe(socket, buf, len, flags, dest_addr, addrlen);
-	ReleaseSRWLockExclusive(&f->rw_lock);
+	ReleaseMutex(socket->mutex);
 	return r;
 }
 
 static size_t socket_recvfrom(struct file *f, void *buf, size_t len, int flags, struct sockaddr *src_addr, int *addrlen)
 {
 	struct socket_file *socket = (struct socket_file *)f;
-	AcquireSRWLockExclusive(&f->rw_lock);
+	WaitForSingleObject(socket->mutex, INFINITE);
 	int r = socket_recvfrom_unsafe(socket, buf, len, flags, src_addr, addrlen);
-	ReleaseSRWLockExclusive(&f->rw_lock);
+	ReleaseMutex(socket->mutex);
 	return r;
 }
 
@@ -964,13 +1003,13 @@ static int socket_shutdown(struct file *f, int how)
 	else
 		return -L_EINVAL;
 	int r = 0;
-	AcquireSRWLockExclusive(&f->rw_lock);
+	WaitForSingleObject(socket->mutex, INFINITE);
 	if (shutdown(socket->socket, win32_how) == SOCKET_ERROR)
 	{
 		log_warning("shutdown() failed, error code: %d", WSAGetLastError());
 		r = translate_socket_error(WSAGetLastError());
 	}
-	ReleaseSRWLockExclusive(&f->rw_lock);
+	ReleaseMutex(socket->mutex);
 	return r;
 }
 
@@ -1068,43 +1107,43 @@ get_set_sockopt:
 static int socket_setsockopt(struct file *f, int level, int optname, const void *optval, int optlen)
 {
 	struct socket_file *socket = (struct socket_file *)f;
-	AcquireSRWLockExclusive(&f->rw_lock);
+	WaitForSingleObject(socket->mutex, INFINITE);
 	int r = socket_get_set_sockopt(SYS_SETSOCKOPT, socket, level, optname, optval, optlen, NULL, NULL);
-	ReleaseSRWLockExclusive(&f->rw_lock);
+	ReleaseMutex(socket->mutex);
 	return r;
 }
 
 static int socket_getsockopt(struct file *f, int level, int optname, void *optval, int *optlen)
 {
 	struct socket_file *socket = (struct socket_file *)f;
-	AcquireSRWLockExclusive(&f->rw_lock);
+	WaitForSingleObject(socket->mutex, INFINITE);
 	int r = socket_get_set_sockopt(SYS_GETSOCKOPT, socket, level, optname, NULL, 0, optval, optlen);
-	ReleaseSRWLockExclusive(&f->rw_lock);
+	ReleaseMutex(socket->mutex);
 	return r;
 }
 
 static int socket_sendmsg(struct file *f, const struct msghdr *msg, int flags)
 {
 	struct socket_file *socket = (struct socket_file *)f;
-	AcquireSRWLockExclusive(&f->rw_lock);
+	WaitForSingleObject(socket->mutex, INFINITE);
 	int r = socket_sendmsg_unsafe(socket, msg, flags);
-	ReleaseSRWLockExclusive(&f->rw_lock);
+	ReleaseMutex(socket->mutex);
 	return r;
 }
 
 static int socket_recvmsg(struct file *f, struct msghdr *msg, int flags)
 {
 	struct socket_file *socket = (struct socket_file *)f;
-	AcquireSRWLockExclusive(&f->rw_lock);
+	WaitForSingleObject(socket->mutex, INFINITE);
 	int r = socket_recvmsg_unsafe(socket, msg, flags);
-	ReleaseSRWLockExclusive(&f->rw_lock);
+	ReleaseMutex(socket->mutex);
 	return r;
 }
 
 static int socket_sendmmsg(struct file *f, struct mmsghdr *msgvec, unsigned int vlen, unsigned int flags)
 {
 	struct socket_file *socket = (struct socket_file *)f;
-	AcquireSRWLockExclusive(&f->rw_lock);
+	WaitForSingleObject(socket->mutex, INFINITE);
 	int r = 0;
 	/* Windows have no native sendmmsg(), we emulate it by sending msgvec one by one */
 	for (int i = 0; i < vlen; i++)
@@ -1137,7 +1176,7 @@ static int socket_sendmmsg(struct file *f, struct mmsghdr *msgvec, unsigned int 
 	}
 	r = vlen;
 out:
-	ReleaseSRWLockExclusive(&f->rw_lock);
+	ReleaseMutex(socket->mutex);
 	return r;
 }
 
@@ -1145,6 +1184,9 @@ static const struct file_ops socket_ops =
 {
 	.get_poll_status = socket_get_poll_status,
 	.get_poll_handle = socket_get_poll_handle,
+	.fork = socket_fork,
+	.after_fork_parent = socket_after_fork_parent,
+	.after_fork_child = socket_after_fork_child,
 	.close = socket_close,
 	.read = socket_read,
 	.write = socket_write,

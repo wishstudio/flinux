@@ -46,8 +46,10 @@ struct file_ops
 	/* Polling functions */
 	int (*get_poll_status)(struct file *f);
 	HANDLE (*get_poll_handle)(struct file *f, int *poll_events);
-	/* After fork handler */
-	void (*after_fork)(struct file *f);
+	/* Fork handler */
+	void (*fork)(struct file *f, HANDLE child_process, DWORD child_process_id);
+	void (*after_fork_parent)(struct file *f);
+	void (*after_fork_child)(struct file *f);
 	/* General file operations */
 	int (*close)(struct file *f);
 	int (*getpath)(struct file *f, char *buf);

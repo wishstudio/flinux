@@ -134,11 +134,11 @@ static int eventfd_get_poll_status(struct file *f)
 	return events;
 }
 
-static void eventfd_after_fork(struct file *f)
+static void eventfd_after_fork_child(struct file *f)
 {
 	struct eventfd_file *efd = (struct eventfd_file *)f;
 
-	log_info("eventfd: after_fork");
+	log_info("eventfd: after_fork_child");
 
 	efd->efd_value = MapViewOfFile(efd->efd_handle, FILE_MAP_ALL_ACCESS, 0, 0, 8);
 }
@@ -223,7 +223,7 @@ static size_t eventfd_write(struct file *f, const void *buf, size_t count)
 
 static const struct file_ops eventfd_ops = {
 	.get_poll_status = eventfd_get_poll_status,
-	.after_fork = eventfd_after_fork,
+	.after_fork_child = eventfd_after_fork_child,
 	.close = eventfd_close,
 	.read = eventfd_read,
 	.write = eventfd_write,

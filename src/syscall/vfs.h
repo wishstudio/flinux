@@ -37,7 +37,7 @@
 void vfs_init();
 void vfs_reset();
 void vfs_shutdown();
-int vfs_fork(HANDLE process);
+int vfs_fork(HANDLE process, DWORD process_id);
 void vfs_afterfork_parent();
 void vfs_afterfork_child();
 int vfs_store_file(struct file *f, int cloexec);

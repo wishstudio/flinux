@@ -177,6 +177,9 @@ static pid_t fork_process(struct syscall_context *context, unsigned long flags, 
 	if (!tls_fork(info.hProcess))
 		goto fail;
 
+	if (!vfs_fork(info.hProcess, info.dwProcessId))
+		goto fail;
+
 	if (!mm_fork(info.hProcess))
 		goto fail;
 
@@ -190,9 +193,6 @@ static pid_t fork_process(struct syscall_context *context, unsigned long flags, 
 		goto fail;
 
 	if (!process_fork(info.hProcess))
-		goto fail;
-
-	if (!vfs_fork(info.hProcess))
 		goto fail;
 
 	if (!exec_fork(info.hProcess))
