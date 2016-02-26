@@ -366,10 +366,6 @@ int vfs_fork(HANDLE process, DWORD process_id)
 	if (!console_fork(process))
 		return 0;
 	AcquireSRWLockShared(&vfs->rw_lock);
-	for (int i = 0; i < MAX_FD_COUNT; i++)
-		if (vfs->filed[i].fd)
-			AcquireSRWLockShared(&vfs->filed[i].fd->rw_lock);
-	
 	int index[MAX_FD_COUNT];
 	for (int i = 0; i < MAX_FD_COUNT; i++)
 		index[i] = i;
@@ -383,6 +379,8 @@ int vfs_fork(HANDLE process, DWORD process_id)
 		{
 			if (f->op_vtable->fork)
 				f->op_vtable->fork(f, process, process_id);
+			else
+				AcquireSRWLockShared(&f->rw_lock);
 		}
 		last = f;
 	}
@@ -432,12 +430,11 @@ void vfs_afterfork_parent()
 		{
 			if (f->op_vtable->after_fork_parent)
 				f->op_vtable->after_fork_parent(f);
+			else
+				ReleaseSRWLockShared(&f->rw_lock);
 		}
 		last = f;
 	}
-	for (int i = 0; i < MAX_FD_COUNT; i++)
-		if (vfs->filed[i].fd)
-			ReleaseSRWLockShared(&vfs->filed[i].fd->rw_lock);
 	ReleaseSRWLockShared(&vfs->rw_lock);
 }
 
