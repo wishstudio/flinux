@@ -217,14 +217,14 @@ static int socket_update_events_unsafe(struct socket_file *f, int error_report_e
 		e |= FD_ACCEPT;
 	if (events.lNetworkEvents & FD_CLOSE)
 		e |= FD_CLOSE;
-	InterlockedOr(&f->shared->events, e);
+	int original = InterlockedOr(&f->shared->events, e);
 	if (error_report_events & f->shared->events & FD_CONNECT)
 	{
 		WSASetLastError(f->shared->connect_error);
 		f->shared->connect_error = 0;
 		InterlockedAnd(&f->shared->events, ~FD_CONNECT);
 	}
-	return f->shared->events;
+	return original | e;
 }
 
 static int socket_get_poll_status(struct file *f)
@@ -521,7 +521,7 @@ static int socket_stat(struct file *f, struct newstat *buf)
 	return 0;
 }
 
-static HANDLE init_socket_event(int sock)
+static HANDLE init_socket_event(SOCKET sock)
 {
 	SECURITY_ATTRIBUTES attr;
 	attr.nLength = sizeof(SECURITY_ATTRIBUTES);
@@ -697,7 +697,7 @@ static int socket_bind(struct file *f, const struct sockaddr *addr, int addrlen)
 		if (socket->shared->af == LINUX_AF_UNIX)
 		{
 			struct sockaddr_in addr_in;
-			int addr_in_len;
+			int addr_in_len = sizeof(addr_in);
 			if (getsockname(socket->socket, (struct sockaddr *)&addr_in, &addr_in_len) == SOCKET_ERROR)
 			{
 				log_error("getsockname() failed, error code: %d", WSAGetLastError());
@@ -779,7 +779,6 @@ static int socket_connect(struct file *f, const struct sockaddr *addr, size_t ad
 		addr_inet->sin_family = AF_INET;
 		addr_inet->sin_addr.S_un.S_addr = htonl(INADDR_LOOPBACK);
 		addr_inet->sin_port = htons(port);
-		addr_storage_len = sizeof(struct sockaddr_in);
 	}
 	else if ((addr_storage_len = translate_socket_addr_to_winsock((const struct sockaddr_storage *)addr, &addr_storage, addrlen)) == SOCKET_ERROR)
 		return -L_EINVAL;
@@ -834,6 +833,7 @@ static int socket_accept4(struct file *f, struct sockaddr *addr, int *addrlen, i
 	while ((r = socket_wait_event(socket, FD_ACCEPT, 0)) == 0)
 	{
 		SOCKET socket_handle;
+		addr_storage_len = sizeof(struct sockaddr_storage);
 		if ((socket_handle = accept(socket->socket, (struct sockaddr *)&addr_storage, &addr_storage_len)) != SOCKET_ERROR)
 		{
 			/* Create a new socket */
@@ -856,13 +856,13 @@ static int socket_accept4(struct file *f, struct sockaddr *addr, int *addrlen, i
 			conn_socket->socket = socket_handle;
 			conn_socket->event_handle = event_handle;
 			conn_socket->mutex = mutex;
+			conn_socket->shared = (struct socket_file_shared *)kmalloc_shared(sizeof(struct socket_file_shared));
 			conn_socket->shared->af = socket->shared->af;
 			conn_socket->shared->type = socket->shared->type;
 			conn_socket->shared->events = 0;
 			conn_socket->shared->connect_error = 0;
 			if (flags & O_NONBLOCK)
 				conn_socket->base_file.flags |= O_NONBLOCK;
-			int fd = vfs_store_file((struct file *)f, (flags & O_CLOEXEC) > 0);
 			r = vfs_store_file((struct file *)conn_socket, 0);
 			if (r < 0)
 				vfs_release((struct file *)conn_socket);
