@@ -1220,7 +1220,10 @@ static int winfs_open(struct mount_point *mp, const char *pathname, int flags, i
 	else
 		attributes = FILE_ATTRIBUTE_NORMAL;
 	char drive_letter;
-	int r = open_file(&handle, mp, pathname, desired_access, create_disposition, attributes, flags, fp != NULL, target, buflen, &drive_letter);
+	BOOL bInherit = TRUE;
+	if (fp == NULL || (internal_flags & INTERNAL_O_NOINHERIT))
+		bInherit = FALSE;
+	int r = open_file(&handle, mp, pathname, desired_access, create_disposition, attributes, flags, bInherit, target, buflen, &drive_letter);
 	if (r < 0 || r == 1)
 		return r;
 	if ((flags & O_TRUNC) && ((flags & O_WRONLY) || (flags & O_RDWR)))

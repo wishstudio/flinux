@@ -823,9 +823,9 @@ DEFINE_SYSCALL(pwritev, int, fd, const struct iovec *, iov, int, iovcnt, off_t, 
 DEFINE_SYSCALL(truncate, const char *, path, off_t, length)
 {
 	log_info("truncate(\"%s\", %p)", path, length);
-	AcquireSRWLockExclusive(&vfs->rw_lock);
+	AcquireSRWLockShared(&vfs->rw_lock);
 	struct file *f;
-	int r = vfs_openat(AT_FDCWD, path, O_WRONLY, 0, 0, &f);
+	int r = vfs_openat(AT_FDCWD, path, O_WRONLY, INTERNAL_O_NOINHERIT, 0, &f);
 	if (r == 0)
 	{
 		if (!f->op_vtable->truncate)
@@ -837,7 +837,7 @@ DEFINE_SYSCALL(truncate, const char *, path, off_t, length)
 			r = f->op_vtable->truncate(f, length);
 		vfs_release(f);
 	}
-	ReleaseSRWLockExclusive(&vfs->rw_lock);
+	ReleaseSRWLockShared(&vfs->rw_lock);
 	return r;
 }
 
@@ -863,9 +863,9 @@ DEFINE_SYSCALL(ftruncate, int, fd, off_t, length)
 DEFINE_SYSCALL(truncate64, const char *, path, loff_t, length)
 {
 	log_info("truncate64(\"%s\", %lld)", path, length);
-	AcquireSRWLockExclusive(&vfs->rw_lock);
+	AcquireSRWLockShared(&vfs->rw_lock);
 	struct file *f;
-	int r = vfs_openat(AT_FDCWD, path, O_WRONLY, 0, 0, &f);
+	int r = vfs_openat(AT_FDCWD, path, O_WRONLY, INTERNAL_O_NOINHERIT, 0, &f);
 	if (r == 0)
 	{
 		if (!f->op_vtable->truncate)
@@ -877,7 +877,7 @@ DEFINE_SYSCALL(truncate64, const char *, path, loff_t, length)
 			r = f->op_vtable->truncate(f, length);
 		vfs_release(f);
 	}
-	ReleaseSRWLockExclusive(&vfs->rw_lock);
+	ReleaseSRWLockShared(&vfs->rw_lock);
 	return r;
 }
 
@@ -1286,12 +1286,12 @@ DEFINE_SYSCALL(linkat, int, olddirfd, const char *, oldpath, int, newdirfd, cons
 		log_error("AT_EMPTY_PATH not supported.");
 		return -L_EINVAL;
 	}
-	AcquireSRWLockExclusive(&vfs->rw_lock);
+	AcquireSRWLockShared(&vfs->rw_lock);
 	struct file *f;
 	int openflags = O_PATH;
 	if (!(openflags & AT_SYMLINK_FOLLOW))
 		openflags |= O_NOFOLLOW;
-	int r = vfs_openat(olddirfd, oldpath, openflags, 0, 0, &f);
+	int r = vfs_openat(olddirfd, oldpath, openflags, INTERNAL_O_NOINHERIT, 0, &f);
 	if (r < 0)
 		goto out;
 	if (!winfs_is_winfile(f))
@@ -1318,7 +1318,7 @@ DEFINE_SYSCALL(linkat, int, olddirfd, const char *, oldpath, int, newdirfd, cons
 	}
 	vfs_release(f);
 out:
-	ReleaseSRWLockExclusive(&vfs->rw_lock);
+	ReleaseSRWLockShared(&vfs->rw_lock);
 	return r;
 }
 
@@ -1334,7 +1334,7 @@ DEFINE_SYSCALL(unlinkat, int, dirfd, const char *, pathname, int, flags)
 	if (!mm_check_read_string(pathname))
 		return -L_EFAULT;
 
-	AcquireSRWLockExclusive(&vfs->rw_lock);
+	AcquireSRWLockShared(&vfs->rw_lock);
 	char realpath[PATH_MAX];
 	int symlink_remain = MAX_SYMLINK_LEVEL;
 	int r = resolve_pathat(dirfd, pathname, realpath, &symlink_remain);
@@ -1363,7 +1363,7 @@ DEFINE_SYSCALL(unlinkat, int, dirfd, const char *, pathname, int, flags)
 			}
 		}
 	}
-	ReleaseSRWLockExclusive(&vfs->rw_lock);
+	ReleaseSRWLockShared(&vfs->rw_lock);
 	return r;
 }
 
@@ -1378,7 +1378,7 @@ DEFINE_SYSCALL(symlinkat, const char *, target, int, newdirfd, const char *, lin
 	log_info("symlinkat(\"%s\", %d, \"%s\")", target, newdirfd, linkpath);
 	if (!mm_check_read_string(target) || !mm_check_read_string(linkpath))
 		return -L_EFAULT;
-	AcquireSRWLockExclusive(&vfs->rw_lock);
+	AcquireSRWLockShared(&vfs->rw_lock);
 	char realpath[PATH_MAX];
 	int symlink_remain = MAX_SYMLINK_LEVEL;
 	int r = resolve_pathat(newdirfd, linkpath, realpath, &symlink_remain);
@@ -1397,7 +1397,7 @@ DEFINE_SYSCALL(symlinkat, const char *, target, int, newdirfd, const char *, lin
 				r = fs->symlink(&mp, target, subpath);
 		}
 	}
-	ReleaseSRWLockExclusive(&vfs->rw_lock);
+	ReleaseSRWLockShared(&vfs->rw_lock);
 	return r;
 }
 
@@ -1412,9 +1412,9 @@ DEFINE_SYSCALL(readlinkat, int, dirfd, const char *, pathname, char *, buf, int,
 	log_info("readlinkat(%d, \"%s\", %p, %d)", dirfd, pathname, buf, bufsize);
 	if (!mm_check_read_string(pathname) || !mm_check_write(buf, bufsize))
 		return -L_EFAULT;
-	AcquireSRWLockExclusive(&vfs->rw_lock);
+	AcquireSRWLockShared(&vfs->rw_lock);
 	struct file *f;
-	int r = vfs_openat(dirfd, pathname, O_PATH | O_NOFOLLOW, 0, 0, &f);
+	int r = vfs_openat(dirfd, pathname, O_PATH | O_NOFOLLOW, INTERNAL_O_NOINHERIT, 0, &f);
 	if (r >= 0)
 	{
 		if (!f->op_vtable->readlink)
@@ -1426,7 +1426,7 @@ DEFINE_SYSCALL(readlinkat, int, dirfd, const char *, pathname, char *, buf, int,
 			r = f->op_vtable->readlink(f, buf, bufsize);
 		vfs_release(f);
 	}
-	ReleaseSRWLockExclusive(&vfs->rw_lock);
+	ReleaseSRWLockShared(&vfs->rw_lock);
 	return r;
 }
 
@@ -1446,9 +1446,9 @@ DEFINE_SYSCALL(renameat2, int, olddirfd, const char *, oldpath, int, newdirfd, c
 	}
 	if (!mm_check_read_string(oldpath) || !mm_check_read_string(newpath))
 		return -L_EFAULT;
-	AcquireSRWLockExclusive(&vfs->rw_lock);
+	AcquireSRWLockShared(&vfs->rw_lock);
 	struct file *f;
-	int r = vfs_openat(olddirfd, oldpath, O_PATH | O_NOFOLLOW, INTERNAL_O_DELETE, 0, &f);
+	int r = vfs_openat(olddirfd, oldpath, O_PATH | O_NOFOLLOW, INTERNAL_O_DELETE | INTERNAL_O_NOINHERIT, 0, &f);
 	if (r < 0)
 		goto out;
 	if (!winfs_is_winfile(f))
@@ -1475,7 +1475,7 @@ DEFINE_SYSCALL(renameat2, int, olddirfd, const char *, oldpath, int, newdirfd, c
 	}
 	vfs_release(f);
 out:
-	ReleaseSRWLockExclusive(&vfs->rw_lock);
+	ReleaseSRWLockShared(&vfs->rw_lock);
 	return r;
 }
 
@@ -1498,7 +1498,7 @@ DEFINE_SYSCALL(mkdirat, int, dirfd, const char *, pathname, int, mode)
 		log_error("mode != 0");
 	if (!mm_check_read_string(pathname))
 		return -L_EFAULT;
-	AcquireSRWLockExclusive(&vfs->rw_lock);
+	AcquireSRWLockShared(&vfs->rw_lock);
 	char realpath[PATH_MAX];
 	int symlink_remain = MAX_SYMLINK_LEVEL;
 	/* Very special case: mkdir with a tailing slash is equivalent to no tailing slash */
@@ -1528,7 +1528,7 @@ DEFINE_SYSCALL(mkdirat, int, dirfd, const char *, pathname, int, mode)
 				r = fs->mkdir(&mp, subpath, mode);
 		}
 	}
-	ReleaseSRWLockExclusive(&vfs->rw_lock);
+	ReleaseSRWLockShared(&vfs->rw_lock);
 	return r;
 }
 
@@ -1696,7 +1696,7 @@ static int stat64_from_newstat(struct stat64 *stat, const struct newstat *newsta
 static int vfs_statat(int dirfd, const char *pathname, struct newstat *stat, int flags)
 {
 	int r = 0;
-	AcquireSRWLockExclusive(&vfs->rw_lock);
+	AcquireSRWLockShared(&vfs->rw_lock);
 	if (flags & AT_NO_AUTOMOUNT)
 	{
 		log_error("AT_NO_AUTOMOUNT not supported.");
@@ -1718,7 +1718,7 @@ static int vfs_statat(int dirfd, const char *pathname, struct newstat *stat, int
 		int openflags = O_PATH;
 		if (flags & AT_SYMLINK_NOFOLLOW)
 			openflags |= O_NOFOLLOW;
-		r = vfs_openat(dirfd, pathname, openflags, 0, 0, &f);
+		r = vfs_openat(dirfd, pathname, openflags, INTERNAL_O_NOINHERIT, 0, &f);
 		if (r < 0)
 			goto out;
 	}
@@ -1732,7 +1732,7 @@ static int vfs_statat(int dirfd, const char *pathname, struct newstat *stat, int
 	vfs_release(f);
 
 out:
-	ReleaseSRWLockExclusive(&vfs->rw_lock);
+	ReleaseSRWLockShared(&vfs->rw_lock);
 	return r;
 }
 
@@ -1902,9 +1902,9 @@ static int vfs_fstatfs(int fd, struct statfs64 *buf)
 
 static int vfs_statfs(const char *pathname, struct statfs64 *buf)
 {
-	AcquireSRWLockExclusive(&vfs->rw_lock);
+	AcquireSRWLockShared(&vfs->rw_lock);
 	struct file *f;
-	int r = vfs_openat(AT_FDCWD, pathname, O_PATH, 0, 0, &f);
+	int r = vfs_openat(AT_FDCWD, pathname, O_PATH, INTERNAL_O_NOINHERIT, 0, &f);
 	if (r == 0)
 	{
 		if (!f->op_vtable->statfs)
@@ -1916,7 +1916,7 @@ static int vfs_statfs(const char *pathname, struct statfs64 *buf)
 			r = f->op_vtable->statfs(f, buf);
 		vfs_release(f);
 	}
-	ReleaseSRWLockExclusive(&vfs->rw_lock);
+	ReleaseSRWLockShared(&vfs->rw_lock);
 	return r;
 }
 
@@ -2046,9 +2046,9 @@ DEFINE_SYSCALL(utime, const char *, filename, const struct utimbuf *, times)
 	log_info("utime(\"%s\", %p)", filename, times);
 	if (!mm_check_read_string(filename) || (times && !mm_check_read(times, sizeof(struct utimbuf))))
 		return -L_EFAULT;
-	AcquireSRWLockExclusive(&vfs->rw_lock);
+	AcquireSRWLockShared(&vfs->rw_lock);
 	struct file *f;
-	int r = vfs_openat(AT_FDCWD, filename, O_WRONLY, 0, 0, &f);
+	int r = vfs_openat(AT_FDCWD, filename, O_WRONLY, INTERNAL_O_NOINHERIT, 0, &f);
 	if (r < 0)
 		goto out;
 	if (!f->op_vtable->utimens)
@@ -2073,7 +2073,7 @@ DEFINE_SYSCALL(utime, const char *, filename, const struct utimbuf *, times)
 	vfs_release(f);
 
 out:
-	ReleaseSRWLockExclusive(&vfs->rw_lock);
+	ReleaseSRWLockShared(&vfs->rw_lock);
 	return r;
 }
 
@@ -2082,9 +2082,9 @@ DEFINE_SYSCALL(utimes, const char *, filename, const struct timeval *, times)
 	log_info("utimes(\"%s\", %p)", filename, times);
 	if (!mm_check_read_string(filename) || (times && !mm_check_read(times, 2 * sizeof(struct timeval))))
 		return -L_EFAULT;
-	AcquireSRWLockExclusive(&vfs->rw_lock);
+	AcquireSRWLockShared(&vfs->rw_lock);
 	struct file *f;
-	int r = vfs_openat(AT_FDCWD, filename, O_WRONLY, 0, 0, &f);
+	int r = vfs_openat(AT_FDCWD, filename, O_WRONLY, INTERNAL_O_NOINHERIT, 0, &f);
 	if (r < 0)
 		goto out;
 	if (!f->op_vtable->utimens)
@@ -2106,7 +2106,7 @@ DEFINE_SYSCALL(utimes, const char *, filename, const struct timeval *, times)
 	}
 	vfs_release(f);
 out:
-	ReleaseSRWLockExclusive(&vfs->rw_lock);
+	ReleaseSRWLockShared(&vfs->rw_lock);
 	return r;
 }
 
@@ -2133,12 +2133,12 @@ DEFINE_SYSCALL(utimensat, int, dirfd, const char *, pathname, const struct times
 			vfs_release(f);
 		return r;
 	}
-	AcquireSRWLockExclusive(&vfs->rw_lock);
+	AcquireSRWLockShared(&vfs->rw_lock);
 	int openflags = O_WRONLY | O_PATH;
 	if (flags & AT_SYMLINK_NOFOLLOW)
 		openflags |= O_NOFOLLOW;
 	struct file *f;
-	int r = vfs_openat(dirfd, pathname, openflags, 0, 0, &f);
+	int r = vfs_openat(dirfd, pathname, openflags, INTERNAL_O_NOINHERIT, 0, &f);
 	if (r < 0)
 		goto out;
 	if (!f->op_vtable->utimens)
@@ -2150,7 +2150,7 @@ DEFINE_SYSCALL(utimensat, int, dirfd, const char *, pathname, const struct times
 		r = f->op_vtable->utimens(f, times);
 	vfs_release(f);
 out:
-	ReleaseSRWLockExclusive(&vfs->rw_lock);
+	ReleaseSRWLockShared(&vfs->rw_lock);
 	return r;
 }
 
@@ -2272,18 +2272,18 @@ DEFINE_SYSCALL(faccessat, int, dirfd, const char *, pathname, int, mode, int, fl
 	log_info("faccessat(%d, \"%s\", %d, %x)", dirfd, pathname, mode, flags);
 	if (!mm_check_read_string(pathname))
 		return -L_EFAULT;
-	AcquireSRWLockExclusive(&vfs->rw_lock);
+	AcquireSRWLockShared(&vfs->rw_lock);
 	int openflags = O_PATH;
 	if (flags & AT_SYMLINK_NOFOLLOW)
 		openflags |= O_NOFOLLOW;
 	/* Currently emulate access behaviour by testing whether the file exists */
 	struct file *f;
-	int r = vfs_openat(dirfd, pathname, openflags, 0, mode, &f);
+	int r = vfs_openat(dirfd, pathname, openflags, INTERNAL_O_NOINHERIT, mode, &f);
 	if (r < 0)
 		goto out;
 	vfs_release(f);
 out:
-	ReleaseSRWLockExclusive(&vfs->rw_lock);
+	ReleaseSRWLockShared(&vfs->rw_lock);
 	return r;
 }
 
